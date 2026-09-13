@@ -90,13 +90,17 @@ export function ScheduleClient({
     return "SCHEDULED";
   };
 
-  // KPIs
+  // KPIs (scoped to selected model if one is picked)
   const stats = useMemo(() => {
     let pending = 0;
     let scheduled = 0;
     let publishedToday = 0;
 
-    posts.forEach((p) => {
+    const relevantPosts = selectedModelId === "ALL"
+      ? posts
+      : posts.filter((p) => p.modelId === selectedModelId);
+
+    relevantPosts.forEach((p) => {
       const st = getPostStatus(p);
       if (st === "PENDING") pending++;
       else if (st === "SCHEDULED") scheduled++;
@@ -106,7 +110,7 @@ export function ScheduleClient({
     });
 
     return { pending, scheduled, publishedToday };
-  }, [posts]);
+  }, [posts, selectedModelId]);
 
   // Filtered Posts
   const filteredPosts = useMemo(() => {
@@ -337,14 +341,18 @@ export function ScheduleClient({
             <div>
               <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                {t.schedule.todayPostings}
+                {selectedModelId === "ALL" ? "Heute gepostet (Gesamt)" : t.schedule.todayPostings}
               </div>
               <div className="text-2xl font-black mt-1 text-foreground">
                 {stats.publishedToday}
-                <span className="text-xs font-normal text-muted-foreground ml-1.5">/ max. 2</span>
+                {selectedModelId !== "ALL" && (
+                  <span className="text-xs font-normal text-muted-foreground ml-1.5">/ max. 2</span>
+                )}
               </div>
               <div className="text-[11px] text-muted-foreground">
-                {t.schedule.dailyCapNotice}
+                {selectedModelId === "ALL"
+                  ? t.schedule.dailyCapNotice
+                  : "Max. 1–2 Posts pro Tag für diesen Kanal"}
               </div>
             </div>
           </CardContent>
@@ -784,11 +792,12 @@ export function ScheduleClient({
             <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs space-y-1.5">
               <span className="font-semibold text-purple-300 block flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" />
-                Intelligente Pacing-Regeln (Kein Überfluten):
+                Intelligente Pacing-Regeln (Strikt pro Kanal / Model):
               </span>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground text-[11px]">
-                <li><strong>Maximal 1–2 Bilder pro Tag</strong> zu den besten Prime-Zeiten (14:30 & 20:15 Uhr).</li>
-                <li><strong>Automatische Pausentage:</strong> Bei geringem Content-Bestand (&lt; 10–15 Bilder) werden 1–2 Tage Pause zwischen den Beiträgen eingelegt, um die Pipeline stabil zu halten.</li>
+                <li><strong>Unabhängig je Kanal:</strong> Jedes Model bzw. jeder Channel wird völlig separat getaktet.</li>
+                <li><strong>Maximal 1–2 Bilder pro Tag je Kanal:</strong> Prime-Zeiten um 14:30 & 20:15 Uhr verhindern Kanal-Überflutung.</li>
+                <li><strong>Automatische Pausentage:</strong> Bei geringem Content-Bestand (&lt; 10–15 Bilder) eines Models werden für diesen Kanal 1–2 Tage Pause eingelegt, um die Pipeline zu strecken.</li>
                 <li><strong>Automatische VIP-Captions:</strong> Engagierende Telegram-Texte mit Free/Paywall-Aufteilung passend zum Bildtyp.</li>
               </ul>
             </div>
