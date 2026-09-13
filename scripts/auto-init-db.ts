@@ -97,4 +97,4 @@ async function autoSetupDatabase() {
   console.log("=================================================");
 }
 
-autoSetupDatabase();
+await autoSetupDatabase();

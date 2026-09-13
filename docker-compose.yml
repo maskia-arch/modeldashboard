@@ -70,8 +70,12 @@ services:
       NODE_ENV: production
     expose:
       - "3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
     networks:
       - model_network
+      - coolify
 
   # 4. Background Worker Service (BullMQ & MTProto GramJS)
   worker:
@@ -104,4 +108,6 @@ volumes:
 networks:
   model_network:
     driver: bridge
+  coolify:
+    external: true
 
