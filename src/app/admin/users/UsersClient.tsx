@@ -26,7 +26,7 @@ import { format, formatDistanceToNow } from "date-fns";
 
 interface UsersClientProps {
   initialUsers: any[];
-  allModels: Array<{ id: string; name: string; slug: string; telegramChannelId: string }>;
+  allModels: Array<{ id: string; name: string; slug: string; telegramChannelId: string; channelTitle?: string | null }>;
 }
 
 export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
@@ -49,6 +49,10 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  const [editingUserChannels, setEditingUserChannels] = useState<any | null>(null);
+  const [editModelIds, setEditModelIds] = useState<string[]>([]);
+  const [isSavingChannels, setIsSavingChannels] = useState(false);
+
   const handleToggleStatus = async (userId: string, currentActive: boolean) => {
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -63,6 +67,28 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSaveChannels = async () => {
+    if (!editingUserChannels) return;
+    setIsSavingChannels(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editingUserChannels.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignedModelIds: editModelIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update channel assignment");
+      setUsers((prev) =>
+        prev.map((u) => (u.id === editingUserChannels.id ? { ...u, assignedModels: data.assignedModels } : u))
+      );
+      setEditingUserChannels(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSavingChannels(false);
     }
   };
 
@@ -247,6 +273,21 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {!isMaster && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingUserChannels(user);
+                                setEditModelIds(user.assignedModels?.map((m: any) => m.id) || []);
+                              }}
+                              className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                            >
+                              <Radio className="h-3 w-3" />
+                              Kanäle ({user.assignedModels?.length || 0})
+                            </Button>
+                          )}
+
                           {/* Logs Button */}
                           <Button
                             variant="ghost"
@@ -449,6 +490,70 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             <DialogFooter>
               <Button onClick={() => setSelectedUserLogs(null)} variant="outline">
                 Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Assign Channels Modal */}
+      {editingUserChannels && (
+        <Dialog open={true} onOpenChange={() => setEditingUserChannels(null)}>
+          <DialogContent className="max-w-md" onClose={() => setEditingUserChannels(null)}>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <Radio className="h-5 w-5 text-indigo-400" />
+                <DialogTitle>Kanal-Zuweisung für {editingUserChannels.name || editingUserChannels.email}</DialogTitle>
+              </div>
+              <DialogDescription>
+                Wähle die Creator-Kanäle aus, deren Statistiken und Einnahmen dieser Investor im Dashboard einsehen darf.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {allModels.length === 0 ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">
+                  Keine Creator-Kanäle im System angelegt.
+                </div>
+              ) : (
+                allModels.map((model) => {
+                  const isAssigned = editModelIds.includes(model.id);
+                  return (
+                    <div
+                      key={model.id}
+                      onClick={() => {
+                        setEditModelIds((prev) =>
+                          prev.includes(model.id)
+                            ? prev.filter((id) => id !== model.id)
+                            : [...prev, model.id]
+                        );
+                      }}
+                      className={`p-3 rounded-lg border cursor-pointer flex items-center justify-between text-xs transition-all ${
+                        isAssigned
+                          ? "bg-indigo-950/30 border-indigo-500/50 text-foreground"
+                          : "bg-card/60 border-border text-muted-foreground hover:bg-muted/40"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold text-foreground">{model.name}</div>
+                        <div className="text-[11px] font-mono text-muted-foreground">{model.channelTitle || model.telegramChannelId}</div>
+                      </div>
+                      <Badge variant={isAssigned ? "default" : "outline"}>
+                        {isAssigned ? "Sichtbar" : "Gesperrt"}
+                      </Badge>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button onClick={() => setEditingUserChannels(null)} variant="outline" size="sm">
+                Abbrechen
+              </Button>
+              <Button onClick={handleSaveChannels} disabled={isSavingChannels} size="sm" className="gap-1.5">
+                {isSavingChannels ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Zuweisung speichern
               </Button>
             </DialogFooter>
           </DialogContent>

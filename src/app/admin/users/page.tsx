@@ -16,7 +16,7 @@ export default async function AdminUsersPage() {
     prisma.user.findMany({
       include: {
         assignedModels: {
-          select: { id: true, name: true, slug: true, telegramChannelId: true },
+          select: { id: true, name: true, slug: true, telegramChannelId: true, channelTitle: true },
         },
         activityLogs: {
           orderBy: { createdAt: "desc" },
@@ -29,7 +29,7 @@ export default async function AdminUsersPage() {
       orderBy: { createdAt: "desc" },
     }),
     prisma.model.findMany({
-      select: { id: true, name: true, slug: true, telegramChannelId: true },
+      select: { id: true, name: true, slug: true, telegramChannelId: true, channelTitle: true },
     }),
   ]);
 

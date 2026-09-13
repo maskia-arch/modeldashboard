@@ -59,11 +59,9 @@ export function Navbar() {
           <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal">
             VPS Live
           </Badge>
-          {user && (
-            <Badge variant={isMaster ? "default" : "secondary"} className="text-[10px] py-0 px-1.5">
-              {isMaster ? "Master Admin" : "Investor Account"}
+            <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
+              {isMaster ? "Partner" : "Investor"}
             </Badge>
-          )}
         </div>
       </div>
 

@@ -3,14 +3,14 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Flame, ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, RefreshCw, KeyRound } from "lucide-react";
+import { Lock, User, ArrowRight, AlertCircle, RefreshCw, KeyRound, Shield } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +24,12 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Login failed");
+        throw new Error(data.error || "Login fehlgeschlagen");
       }
 
       // Redirect based on role
@@ -40,7 +40,7 @@ export default function LoginPage() {
       }
       router.refresh();
     } catch (err: any) {
-      setError(err.message || "Invalid credentials");
+      setError(err.message || "Ungültige Anmeldedaten");
     } finally {
       setLoading(false);
     }
@@ -51,11 +51,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-500 mx-auto flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
-            <Flame className="h-6 w-6 fill-current" />
+            <Shield className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight">AutoActs Portal</h1>
+          <h1 className="text-2xl font-black tracking-tight">Investor Portal</h1>
           <p className="text-xs text-muted-foreground">
-            Agency Management & Investor Capital Gateway
+            Capital Management & Performance Gateway
           </p>
         </div>
 
@@ -63,7 +63,7 @@ export default function LoginPage() {
           <CardHeader className="space-y-1">
             <CardTitle className="text-lg">Sign In</CardTitle>
             <CardDescription className="text-xs">
-              Master Admin credentials or Investor access
+              Enter your credentials to access your channels
             </CardDescription>
           </CardHeader>
 
@@ -77,22 +77,23 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Email</label>
+                <label className="text-xs font-semibold text-muted-foreground">Username</label>
                 <div className="relative">
-                  <Mail className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
+                  <User className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                   <Input
-                    type="email"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@autoacts.link or investor email"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Username"
                     className="pl-9"
+                    autoComplete="username"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Password</label>
+                <label className="text-xs font-semibold text-muted-foreground">Passwort</label>
                 <div className="relative">
                   <Lock className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                   <Input
@@ -102,6 +103,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
                     className="pl-9"
+                    autoComplete="current-password"
                   />
                 </div>
               </div>

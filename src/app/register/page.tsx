@@ -74,7 +74,7 @@ function RegisterContent() {
           </div>
           <h1 className="text-2xl font-black tracking-tight">Investor Activation</h1>
           <p className="text-xs text-muted-foreground">
-            Activate your investor access with your Master-issued Key
+            Activate your access with your official invitation key
           </p>
         </div>
 
@@ -82,7 +82,7 @@ function RegisterContent() {
           <CardHeader className="space-y-1">
             <CardTitle className="text-lg">Register Account</CardTitle>
             <CardDescription className="text-xs">
-              Direct signups are closed. A valid registration key is required.
+              Closed investor portal. A valid registration key is required.
             </CardDescription>
           </CardHeader>
 
@@ -109,7 +109,7 @@ function RegisterContent() {
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
                     Registration Key (Required)
-                    <span className="text-[10px] text-purple-400 font-mono">Issued by Master</span>
+                    <span className="text-[10px] text-purple-400 font-mono">Invitation Key</span>
                   </label>
                   <div className="relative">
                     <KeyRound className="h-4 w-4 absolute left-3 top-2.5 text-purple-400" />
