@@ -8,10 +8,19 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
 export default async function FinancesPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+  if (user.role !== "MASTER_ADMIN") {
+    redirect("/investor");
+  }
   const [models, payouts] = await Promise.all([
     prisma.model.findMany({
       include: {

@@ -20,11 +20,23 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 // Server Component with on-demand revalidation
 export const revalidate = 0;
 
 export default async function OverviewPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Investors only see their private portfolio, never global agency financials
+  if (user.role === "INVESTOR") {
+    redirect("/investor");
+  }
+
   let models: any[] = [];
   try {
     models = await prisma.model.findMany({

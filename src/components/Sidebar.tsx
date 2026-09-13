@@ -23,6 +23,10 @@ export function Sidebar() {
   const pathname = usePathname();
   const [userRole, setUserRole] = useState<string>("MASTER_ADMIN");
 
+  if (pathname === "/login" || pathname === "/register") {
+    return null;
+  }
+
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))

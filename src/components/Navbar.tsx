@@ -2,15 +2,20 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { RefreshCw, Globe, LogOut, User, KeyRound, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 export function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [isSyncing, setIsSyncing] = useState(false);
   const [user, setUser] = useState<any>(null);
+
+  if (pathname === "/login" || pathname === "/register") {
+    return null;
+  }
 
   useEffect(() => {
     fetch("/api/auth/me")

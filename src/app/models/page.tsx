@@ -8,11 +8,20 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { ModelsListClient } from "./ModelsListClient";
 
 export const revalidate = 0;
 
 export default async function ModelsPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+  if (user.role !== "MASTER_ADMIN") {
+    redirect("/investor");
+  }
   const models = await prisma.model.findMany({
     include: {
       expenses: true,
