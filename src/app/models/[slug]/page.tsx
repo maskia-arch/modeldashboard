@@ -48,8 +48,8 @@ export default async function ModelDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Investors can only access channels explicitly assigned to them
-  if (user.role === "INVESTOR" && model.investorId !== user.id) {
+  // Non-master users can only access channels explicitly assigned to them
+  if (user.role !== "MASTER_ADMIN" && model.investorId !== user.id) {
     redirect("/investor");
   }
 
@@ -71,6 +71,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
       modelName: model.name,
       channelTitle: model.channelTitle,
       investorSharePercent: model.investorSharePercent,
+      enableExpenseRecoupment: model.enableExpenseRecoupment,
     }
   );
 

@@ -42,6 +42,7 @@ export default async function InvestorPage() {
         modelName: model.name,
         channelTitle: model.channelTitle,
         investorSharePercent: model.investorSharePercent,
+        enableExpenseRecoupment: model.enableExpenseRecoupment,
       }
     );
   });
@@ -74,7 +75,12 @@ export default async function InvestorPage() {
     <InvestorClient
       investor={user}
       portfolio={portfolio}
-      assignedModels={models.map((m) => ({ id: m.id, name: m.name, channelTitle: m.channelTitle }))}
+      assignedModels={models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        channelTitle: m.channelTitle,
+        enableExpenseRecoupment: m.enableExpenseRecoupment,
+      }))}
       submittedExpenses={submittedExpenses}
       fulfilledPayouts={fulfilledPayouts}
     />

@@ -67,6 +67,7 @@ export function ModelDetailClient({
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignInvestorId, setAssignInvestorId] = useState(model.investorId || "");
   const [assignSharePercent, setAssignSharePercent] = useState<number>(model.investorSharePercent ?? 50);
+  const [assignEnableExpenseRecoupment, setAssignEnableExpenseRecoupment] = useState<boolean>(model.enableExpenseRecoupment !== false);
   const [isSavingAssign, setIsSavingAssign] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
 
@@ -81,6 +82,7 @@ export function ModelDetailClient({
         body: JSON.stringify({
           investorId: assignInvestorId || null,
           investorSharePercent: parseFloat(assignSharePercent as any) || 50,
+          enableExpenseRecoupment: assignEnableExpenseRecoupment,
         }),
       });
       const data = await res.json();
@@ -238,7 +240,9 @@ export function ModelDetailClient({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black tracking-tight">{model.name}</h1>
-              {financials.isRecouped ? (
+              {model.enableExpenseRecoupment === false ? (
+                <Badge variant="info">Direkt-Split ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} Aktiv)</Badge>
+              ) : financials.isRecouped ? (
                 <Badge variant="success">100% Recouped ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} Active)</Badge>
               ) : (
                 <Badge variant="warning">Recouping Principal ({model.investorSharePercent || 50}%)</Badge>
@@ -656,11 +660,20 @@ export function ModelDetailClient({
 
         {/* Tab 5: Expenses & Recoupment Tracker */}
         <TabsContent value="expenses" className="space-y-4 pt-2">
+          {model.enableExpenseRecoupment === false && (
+            <div className="p-3 rounded-lg bg-sky-950/20 border border-sky-800/30 text-sky-400 text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Hinweis: Für dieses Model ist die Vorab-Amortisation von Investitionsbelegen deaktiviert. Alle Umsätze fließen sofort zu {model.investorSharePercent || 50}% in den direkten Gewinn-Split. Eingetragene Ausgaben dienen lediglich der internen Dokumentation.</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold">Investments & Expenses</h3>
               <p className="text-xs text-muted-foreground">
-                All logged expenses increase the 100% recoupment target prior to {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} profit splitting
+                {model.enableExpenseRecoupment === false
+                  ? "Direkt-Split aktiv – Keine vorrangige Amortisation von Investitionen/Belegen."
+                  : `All logged expenses increase the 100% recoupment target prior to ${model.investorSharePercent || 50}/${100 - (model.investorSharePercent || 50)} profit splitting`}
               </p>
             </div>
             <Button
@@ -1133,6 +1146,24 @@ export function ModelDetailClient({
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Recoupment & Expense Receipts Toggle */}
+            <div className="p-3 rounded-lg bg-muted/40 border space-y-1.5">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={assignEnableExpenseRecoupment}
+                  onChange={(e) => setAssignEnableExpenseRecoupment(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span className="text-xs font-semibold text-foreground">
+                  Investitionsbelege & Vorab-Amortisation berücksichtigen
+                </span>
+              </label>
+              <p className="text-[11px] text-muted-foreground pl-6">
+                Wenn deaktiviert, greift eine reine Gewinnbeteiligung ab dem ersten Dollar. Investitionsbelege/Ausgaben werden nicht zur vorrangigen Tilgung herangezogen.
+              </p>
             </div>
 
             <DialogFooter className="pt-2">

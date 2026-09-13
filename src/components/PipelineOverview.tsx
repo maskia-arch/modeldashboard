@@ -41,7 +41,12 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-tight">Recoupment & Split Status</h2>
-                {isRecouped ? (
+                {financials.enableExpenseRecoupment === false ? (
+                  <Badge variant="info" className="gap-1">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Direct Split ({investorShare}/{agencyShare} Active)
+                  </Badge>
+                ) : isRecouped ? (
                   <Badge variant="success" className="gap-1">
                     <CheckCircle2 className="h-3 w-3" />
                     100% Recouped ({investorShare}/{agencyShare} Active)
@@ -54,7 +59,9 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                {isRecouped
+                {financials.enableExpenseRecoupment === false
+                  ? `Direct profit split is active. No investment recoupment applies. Net revenue is split ${investorShare}% Investor / ${agencyShare}% Management from dollar one.`
+                  : isRecouped
                   ? `All ${formatUsd(totalInvestTargetUsd)} investments have been recouped! Net profit is actively split ${investorShare}% Investor / ${agencyShare}% Management.`
                   : `${formatUsd(recoupedUsd)} of ${formatUsd(totalInvestTargetUsd)} recouped. ${formatUsd(remainingInvestBalanceUsd)} remaining before ${investorShare}/${agencyShare} profit sharing.`}
               </p>

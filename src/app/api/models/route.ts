@@ -5,6 +5,11 @@ import { getCurrentUser } from "@/lib/auth";
 
 export async function GET() {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized. Master Admin access required." }, { status: 403 });
+    }
+
     const models = await prisma.model.findMany({
       include: {
         investor: {
@@ -34,6 +39,7 @@ export async function GET() {
           modelName: model.name,
           channelTitle: model.channelTitle,
           investorSharePercent: model.investorSharePercent,
+          enableExpenseRecoupment: model.enableExpenseRecoupment,
         }
       );
 
@@ -67,6 +73,7 @@ export async function POST(req: Request) {
       openInvestBalance,
       investorId,
       investorSharePercent,
+      enableExpenseRecoupment,
     } = body;
 
     if (!name || !slug || !telegramChannelId) {
@@ -89,6 +96,7 @@ export async function POST(req: Request) {
           typeof investorSharePercent === "number"
             ? investorSharePercent
             : parseFloat(investorSharePercent) || 50.0,
+        enableExpenseRecoupment: enableExpenseRecoupment !== false,
       },
       include: {
         investor: {

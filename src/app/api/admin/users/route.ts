@@ -41,10 +41,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { email, name, assignedModelIds } = body;
+    const { email, name, assignedModelIds, role } = body;
 
     if (!email) {
-      return NextResponse.json({ error: "Investor email is required" }, { status: 400 });
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -53,18 +53,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
     }
 
+    const targetRole = role === "MASTER_ADMIN" ? Role.MASTER_ADMIN : Role.INVESTOR;
+    const keyPrefix = targetRole === Role.MASTER_ADMIN ? "ACTS-MST" : "ACTS-INV";
+
     // Generate unique Registration Key
-    const registrationKey = generateRegistrationKey("ACTS-INV");
+    const registrationKey = generateRegistrationKey(keyPrefix);
 
     const newUser = await prisma.user.create({
       data: {
         email: cleanEmail,
-        name: name || "Investor",
-        role: Role.INVESTOR,
+        name: name || (targetRole === Role.MASTER_ADMIN ? "Master Admin" : "Investor"),
+        role: targetRole,
         registrationKey,
         isRegistered: false,
         isActive: true,
-        assignedModels: assignedModelIds && Array.isArray(assignedModelIds) ? {
+        assignedModels: assignedModelIds && Array.isArray(assignedModelIds) && targetRole === Role.INVESTOR ? {
           connect: assignedModelIds.map((id: string) => ({ id })),
         } : undefined,
       },

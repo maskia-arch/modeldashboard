@@ -79,11 +79,13 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
   const [openInvestBalance, setOpenInvestBalance] = useState("0");
   const [investorId, setInvestorId] = useState("");
   const [investorSharePercent, setInvestorSharePercent] = useState<number>(50);
+  const [enableExpenseRecoupment, setEnableExpenseRecoupment] = useState<boolean>(true);
 
   // Edit Model State
   const [editingModel, setEditingModel] = useState<any | null>(null);
   const [editInvestorId, setEditInvestorId] = useState<string>("");
   const [editInvestorSharePercent, setEditInvestorSharePercent] = useState<number>(50);
+  const [editEnableExpenseRecoupment, setEditEnableExpenseRecoupment] = useState<boolean>(true);
   const [editName, setEditName] = useState("");
   const [editChannelTitle, setEditChannelTitle] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -93,6 +95,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
     setEditingModel(m);
     setEditInvestorId(m.investorId || "");
     setEditInvestorSharePercent(m.investorSharePercent ?? 50);
+    setEditEnableExpenseRecoupment(m.enableExpenseRecoupment !== false);
     setEditName(m.name || "");
     setEditChannelTitle(m.channelTitle || "");
     setUpdateError(null);
@@ -112,6 +115,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
           channelTitle: editChannelTitle,
           investorId: editInvestorId || null,
           investorSharePercent: parseFloat(editInvestorSharePercent as any) || 50,
+          enableExpenseRecoupment: editEnableExpenseRecoupment,
         }),
       });
       const data = await res.json();
@@ -198,6 +202,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
           openInvestBalance: parseFloat(openInvestBalance) || 0,
           investorId: investorId || null,
           investorSharePercent: parseFloat(investorSharePercent as any) || 50,
+          enableExpenseRecoupment,
         }),
       });
 
@@ -285,7 +290,11 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <CardTitle className="text-base font-bold truncate">{model.name}</CardTitle>
-                          {fin?.isRecouped ? (
+                          {model.enableExpenseRecoupment === false ? (
+                            <Badge variant="info" className="text-[10px] py-0 shrink-0">
+                              {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {t.models.directSplitBadge}
+                            </Badge>
+                          ) : fin?.isRecouped ? (
                             <Badge variant="success" className="text-[10px] py-0 shrink-0">
                               {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)}
                             </Badge>
@@ -315,20 +324,29 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                   </CardHeader>
 
                   <CardContent className="space-y-3 pt-1 text-xs">
-                    {/* Recoupment meter */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>{t.models.recoupment}</span>
-                        <span className="font-semibold text-foreground">
-                          {formatUsd(fin?.recoupedUsd || 0)} / {formatUsd(fin?.totalInvestTargetUsd || 0)}
-                        </span>
+                    {/* Recoupment meter or Direct Split Banner */}
+                    {model.enableExpenseRecoupment === false ? (
+                      <div className="p-2 rounded-lg bg-sky-950/20 border border-sky-800/30 text-sky-400 text-[11px] flex items-center justify-between">
+                        <span className="truncate">{t.models.directSplitDesc}</span>
+                        <Badge variant="outline" className="text-[10px] text-sky-400 border-sky-800/40 shrink-0 ml-2">
+                          {model.investorSharePercent || 50}% Direkt
+                        </Badge>
                       </div>
-                      <Progress
-                        value={fin?.recoupmentProgressPercent || 0}
-                        className="h-1.5"
-                        indicatorClassName={fin?.isRecouped ? "bg-emerald-500" : "bg-indigo-500"}
-                      />
-                    </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{t.models.recoupment}</span>
+                          <span className="font-semibold text-foreground">
+                            {formatUsd(fin?.recoupedUsd || 0)} / {formatUsd(fin?.totalInvestTargetUsd || 0)}
+                          </span>
+                        </div>
+                        <Progress
+                          value={fin?.recoupmentProgressPercent || 0}
+                          className="h-1.5"
+                          indicatorClassName={fin?.isRecouped ? "bg-emerald-500" : "bg-indigo-500"}
+                        />
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t text-muted-foreground">
                       <div>
@@ -643,6 +661,24 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
               </div>
             </div>
 
+            {/* Recoupment & Expense Receipts Toggle */}
+            <div className="p-3 rounded-lg bg-muted/40 border space-y-1.5">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableExpenseRecoupment}
+                  onChange={(e) => setEnableExpenseRecoupment(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span className="text-xs font-semibold text-foreground">
+                  {t.models.enableExpenseRecoupmentLabel}
+                </span>
+              </label>
+              <p className="text-[11px] text-muted-foreground pl-6">
+                {t.models.enableExpenseRecoupmentDesc}
+              </p>
+            </div>
+
             <DialogFooter className="pt-2">
               <Button type="submit" disabled={isSaving} className="w-full gap-2">
                 {isSaving ? (
@@ -765,6 +801,24 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Recoupment & Expense Receipts Toggle */}
+            <div className="p-3 rounded-lg bg-muted/40 border space-y-1.5">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editEnableExpenseRecoupment}
+                  onChange={(e) => setEditEnableExpenseRecoupment(e.target.checked)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span className="text-xs font-semibold text-foreground">
+                  {t.models.enableExpenseRecoupmentLabel}
+                </span>
+              </label>
+              <p className="text-[11px] text-muted-foreground pl-6">
+                {t.models.enableExpenseRecoupmentDesc}
+              </p>
             </div>
 
             <DialogFooter className="pt-2">

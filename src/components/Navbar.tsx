@@ -3,17 +3,19 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { RefreshCw, Globe, LogOut, User, KeyRound, Shield } from "lucide-react";
+import { RefreshCw, Globe, LogOut, User, KeyRound, Shield, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { LanguageSwitch } from "@/components/LanguageSwitch";
 import { useLanguage } from "@/context/LanguageContext";
+import { useNavigation } from "@/context/NavigationContext";
 
 export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { t } = useLanguage();
+  const { toggleMobileMenu } = useNavigation();
   const [isSyncing, setIsSyncing] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -55,12 +57,23 @@ export function Navbar() {
   const isMaster = user?.role === "MASTER_ADMIN";
 
   return (
-    <header className="h-16 border-b border-border bg-card/40 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Globe className="h-3.5 w-3.5 text-indigo-400" />
-          <span className="font-mono font-medium text-foreground">model.autoacts.link</span>
-          <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal">
+    <header className="h-16 border-b border-border bg-card/40 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Mobile Hamburger Toggle Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleMobileMenu}
+          aria-label="Navigation Menu"
+          className="md:hidden h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-muted-foreground">
+          <Globe className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+          <span className="font-mono font-medium text-foreground hidden sm:inline">model.autoacts.link</span>
+          <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal hidden sm:inline-flex">
             {t.navbar.vpsLive}
           </Badge>
           <Badge variant="secondary" className="text-[10px] py-0 px-1.5">

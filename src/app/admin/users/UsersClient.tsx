@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { format, formatDistanceToNow } from "date-fns";
+import { useLanguage } from "@/context/LanguageContext";
+import { cn } from "@/lib/utils";
 
 interface UsersClientProps {
   initialUsers: any[];
@@ -30,6 +32,7 @@ interface UsersClientProps {
 }
 
 export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
+  const { t } = useLanguage();
   const [users, setUsers] = useState(initialUsers);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedUserLogs, setSelectedUserLogs] = useState<any | null>(null);
@@ -37,6 +40,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
   // Invite Form
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [inviteRole, setInviteRole] = useState<"INVESTOR" | "MASTER_ADMIN">("INVESTOR");
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generatedInvite, setGeneratedInvite] = useState<{ key: string; url: string } | null>(null);
@@ -67,6 +71,30 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleRoleToggle = async (user: any) => {
+    const newRole = user.role === "MASTER_ADMIN" ? "INVESTOR" : "MASTER_ADMIN";
+    const targetLabel = newRole === "MASTER_ADMIN" ? "Master Admin" : "Investor";
+    if (!window.confirm(`${t.adminUsers.changeRolePrompt}\n\n${user.name || user.email} ➔ ${targetLabel}`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Rollenänderung fehlgeschlagen");
+
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u))
+      );
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -103,7 +131,8 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
         body: JSON.stringify({
           email,
           name,
-          assignedModelIds: selectedModelIds,
+          role: inviteRole,
+          assignedModelIds: inviteRole === "INVESTOR" ? selectedModelIds : [],
         }),
       });
 
@@ -129,15 +158,15 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Investor Access & Key Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{t.adminUsers.title}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Generate access keys, assign channels, monitor activity logs, and configure account visibility
+            {t.adminUsers.subtitle}
           </p>
         </div>
 
-        <Button onClick={() => { setGeneratedInvite(null); setIsInviteModalOpen(true); }} className="gap-2">
+        <Button onClick={() => { setGeneratedInvite(null); setInviteRole("INVESTOR"); setSelectedModelIds([]); setEmail(""); setName(""); setIsInviteModalOpen(true); }} className="gap-2">
           <UserPlus className="h-4 w-4" />
-          Create Investor Access Key
+          {t.adminUsers.createKey}
         </Button>
       </div>
 
@@ -147,14 +176,14 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                  <th className="p-3">Investor</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Assigned Channels</th>
+                  <th className="p-3">Investor / User</th>
+                  <th className="p-3">{t.adminUsers.roleLabel}</th>
+                  <th className="p-3">{t.adminUsers.assignedChannels}</th>
                   <th className="p-3">TON Wallet (Payout)</th>
                   <th className="p-3">Registration Key</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Last Online</th>
-                  <th className="p-3 text-right">Actions</th>
+                  <th className="p-3">{t.adminUsers.status}</th>
+                  <th className="p-3">{t.adminUsers.lastSeen}</th>
+                  <th className="p-3 text-right">{t.adminUsers.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -167,16 +196,27 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3">
-                        <div className="font-bold text-foreground">{user.name || "Investor"}</div>
+                        <div className="font-bold text-foreground">{user.name || (isMaster ? "Master Admin" : "Investor")}</div>
                         <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
                       </td>
 
                       <td className="p-3">
-                        {isMaster ? (
-                          <Badge variant="default" className="bg-purple-600">Master Admin</Badge>
-                        ) : (
-                          <Badge variant="outline">Investor</Badge>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {isMaster ? (
+                            <Badge variant="default" className="bg-purple-600">Master Admin</Badge>
+                          ) : (
+                            <Badge variant="outline">Investor</Badge>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={t.adminUsers.changeRole}
+                            onClick={() => handleRoleToggle(user)}
+                            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          >
+                            <Shield className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </td>
 
                       <td className="p-3">
@@ -385,20 +425,20 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             <form onSubmit={handleCreateInvite} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Investor Email
+                  E-Mail
                 </label>
                 <Input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="investor@example.com"
+                  placeholder="user@example.com"
                 />
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Investor Name
+                  Name
                 </label>
                 <Input
                   value={name}
@@ -407,28 +447,86 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                 />
               </div>
 
+              {/* Role Selection */}
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
-                  Assign Channel Portfolios (Investments will be channel-bound)
+                  {t.adminUsers.roleLabel}
                 </label>
-                <div className="space-y-2 max-h-40 overflow-y-auto p-2 border rounded-lg bg-muted/20">
-                  {allModels.map((m) => {
-                    const isSelected = selectedModelIds.includes(m.id);
-                    return (
-                      <div
-                        key={m.id}
-                        onClick={() => toggleModelSelection(m.id)}
-                        className={`p-2 rounded-md border text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                          isSelected ? "bg-primary/10 border-primary text-foreground" : "bg-card hover:bg-muted/40"
-                        }`}
-                      >
-                        <span className="font-semibold">{m.name}</span>
-                        <span className="text-[10px] text-muted-foreground font-mono">{m.telegramChannelId}</span>
-                      </div>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInviteRole("INVESTOR")}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-left transition-all",
+                      inviteRole === "INVESTOR"
+                        ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary"
+                        : "border-border bg-card text-muted-foreground hover:border-border/80"
+                    )}
+                  >
+                    <div className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                      <Radio className="h-3 w-3 text-primary" />
+                      {t.adminUsers.roleInvestor}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                      {t.adminUsers.roleInvestorDesc}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setInviteRole("MASTER_ADMIN")}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-left transition-all",
+                      inviteRole === "MASTER_ADMIN"
+                        ? "border-purple-500 bg-purple-500/10 text-foreground ring-1 ring-purple-500"
+                        : "border-border bg-card text-muted-foreground hover:border-border/80"
+                    )}
+                  >
+                    <div className="font-semibold text-xs text-purple-400 flex items-center gap-1.5">
+                      <Shield className="h-3 w-3 text-purple-400" />
+                      {t.adminUsers.roleMaster}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1 leading-tight">
+                      {t.adminUsers.roleMasterDesc}
+                    </div>
+                  </button>
                 </div>
               </div>
+
+              {inviteRole === "INVESTOR" ? (
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
+                    Assign Channel Portfolios (Investments will be channel-bound)
+                  </label>
+                  <div className="space-y-2 max-h-40 overflow-y-auto p-2 border rounded-lg bg-muted/20">
+                    {allModels.map((m) => {
+                      const isSelected = selectedModelIds.includes(m.id);
+                      return (
+                        <div
+                          key={m.id}
+                          onClick={() => toggleModelSelection(m.id)}
+                          className={`p-2 rounded-md border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                            isSelected ? "bg-primary/10 border-primary text-foreground" : "bg-card hover:bg-muted/40"
+                          }`}
+                        >
+                          <span className="font-semibold">{m.name}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">{m.telegramChannelId}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-300 space-y-1">
+                  <span className="font-semibold block flex items-center gap-1.5 text-purple-200">
+                    <Shield className="h-3.5 w-3.5" />
+                    Voller Master Administrator Zugriff
+                  </span>
+                  <p className="text-muted-foreground text-[11px]">
+                    Master Admins haben automatischen Zugriff auf alle Creator Models, das gesamte Finanz-Hauptbuch, Beleggenehmigungen und Systemeinstellungen.
+                  </p>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button type="submit" disabled={isSubmitting} className="w-full gap-2">

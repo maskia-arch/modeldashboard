@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateFinancials } from "@/lib/financial-engine";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { slug } = params;
     const model = await prisma.model.findUnique({
       where: { slug },
@@ -37,6 +43,10 @@ export async function GET(
       return NextResponse.json({ error: "Model not found" }, { status: 404 });
     }
 
+    if (user.role !== "MASTER_ADMIN" && model.investorId !== user.id) {
+      return NextResponse.json({ error: "Forbidden. Channel not assigned to your account." }, { status: 403 });
+    }
+
     const financials = calculateFinancials(
       model.id,
       model.openInvestBalance,
@@ -47,6 +57,7 @@ export async function GET(
         modelName: model.name,
         channelTitle: model.channelTitle,
         investorSharePercent: model.investorSharePercent,
+        enableExpenseRecoupment: model.enableExpenseRecoupment,
       }
     );
 
@@ -65,6 +76,11 @@ export async function PATCH(
   { params }: { params: { slug: string } }
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized. Master Admin access required." }, { status: 403 });
+    }
+
     const { slug } = params;
     const body = await req.json();
 
@@ -74,6 +90,9 @@ export async function PATCH(
     }
     if (body.investorSharePercent !== undefined) {
       updateData.investorSharePercent = parseFloat(body.investorSharePercent) || 50.0;
+    }
+    if (body.enableExpenseRecoupment !== undefined) {
+      updateData.enableExpenseRecoupment = Boolean(body.enableExpenseRecoupment);
     }
     if (body.name !== undefined) updateData.name = body.name;
     if (body.channelTitle !== undefined) updateData.channelTitle = body.channelTitle;

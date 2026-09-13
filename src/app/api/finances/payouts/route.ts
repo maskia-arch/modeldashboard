@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTonTransaction } from "@/lib/ton";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized. Master Admin access required." }, { status: 403 });
+    }
+
     const body = await req.json();
     const { modelId, recipient, amountUsd, amountTon, txHash } = body;
 

@@ -34,8 +34,8 @@ export default async function OverviewPage() {
     redirect("/login");
   }
 
-  // Investors only see their private portfolio, never global agency financials
-  if (user.role === "INVESTOR") {
+  // Strictly protect Master Overview: only MASTER_ADMIN can access
+  if (user.role !== "MASTER_ADMIN") {
     redirect("/investor");
   }
 
@@ -76,6 +76,7 @@ export default async function OverviewPage() {
         modelName: m.name,
         channelTitle: m.channelTitle,
         investorSharePercent: m.investorSharePercent,
+        enableExpenseRecoupment: m.enableExpenseRecoupment,
       }
     ),
   }));

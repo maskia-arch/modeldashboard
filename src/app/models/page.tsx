@@ -53,6 +53,7 @@ export default async function ModelsPage() {
       modelName: m.name,
       channelTitle: m.channelTitle,
       investorSharePercent: m.investorSharePercent,
+      enableExpenseRecoupment: m.enableExpenseRecoupment,
     }),
   }));
 

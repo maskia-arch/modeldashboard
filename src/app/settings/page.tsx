@@ -5,10 +5,20 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertTriangle, Shield, Server, Bot, Key, Sparkles, Wallet } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
 export default async function SettingsPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+  if (user.role !== "MASTER_ADMIN") {
+    redirect("/investor");
+  }
+
   const hasBotToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== "demo_token");
   const hasMTProto = Boolean(process.env.TELEGRAM_SESSION_STRING && process.env.TELEGRAM_SESSION_STRING.length > 20);
   const hasXAI = Boolean(process.env.XAI_API_KEY && process.env.XAI_API_KEY !== "demo_xai_key");

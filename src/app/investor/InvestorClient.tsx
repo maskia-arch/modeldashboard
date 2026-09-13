@@ -34,7 +34,7 @@ import type { InvestorPortfolio } from "@/lib/financial-engine";
 interface InvestorClientProps {
   investor: any;
   portfolio: InvestorPortfolio;
-  assignedModels: Array<{ id: string; name: string; channelTitle?: string | null }>;
+  assignedModels: Array<{ id: string; name: string; channelTitle?: string | null; enableExpenseRecoupment?: boolean }>;
   submittedExpenses: any[];
   fulfilledPayouts?: any[];
 }
@@ -269,7 +269,9 @@ export function InvestorClient({
                         {channel.channelTitle || channel.modelId}
                       </CardDescription>
                     </div>
-                    {channel.isRecouped ? (
+                    {channel.enableExpenseRecoupment === false ? (
+                      <Badge variant="info">Direkt-Split • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"}</Badge>
+                    ) : channel.isRecouped ? (
                       <Badge variant="success">100% Recouped • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} Active</Badge>
                     ) : (
                       <Badge variant="warning">Recouping 100% Share ({channel.investorSharePercent || 50}%)</Badge>
@@ -278,22 +280,36 @@ export function InvestorClient({
                 </CardHeader>
 
                 <CardContent className="space-y-4 pt-1 text-xs">
-                  {/* Recoupment meter */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">
-                        Channel Amortization ({channel.recoupmentProgressPercent}%)
-                      </span>
-                      <span className="font-semibold text-foreground">
-                        {formatUsd(channel.recoupedUsd)} / {formatUsd(channel.totalApprovedInvestUsd)}
-                      </span>
+                  {/* Recoupment meter or Direct Split notice */}
+                  {channel.enableExpenseRecoupment === false ? (
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-blue-400">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{language === "de" ? "Direkte Gewinnbeteiligung (Keine Amortisation)" : "Direct Profit Split (No Recoupment)"}</span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        {language === "de"
+                          ? `Einnahmen werden direkt im Verhältnis ${channel.investorSharePercent || 50}% (Investor) zu ${100 - (channel.investorSharePercent || 50)}% (Agentur) aufgeteilt.`
+                          : `Revenues are split directly at ${channel.investorSharePercent || 50}% (Investor) / ${100 - (channel.investorSharePercent || 50)}% (Agency).`}
+                      </p>
                     </div>
-                    <Progress
-                      value={channel.recoupmentProgressPercent}
-                      className="h-2"
-                      indicatorClassName={channel.isRecouped ? "bg-emerald-500" : "bg-blue-500"}
-                    />
-                  </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Channel Amortization ({channel.recoupmentProgressPercent}%)
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {formatUsd(channel.recoupedUsd)} / {formatUsd(channel.totalApprovedInvestUsd)}
+                        </span>
+                      </div>
+                      <Progress
+                        value={channel.recoupmentProgressPercent}
+                        className="h-2"
+                        indicatorClassName={channel.isRecouped ? "bg-emerald-500" : "bg-blue-500"}
+                      />
+                    </div>
+                  )}
 
                   {/* Channel Ledger Breakdown */}
                   <div className="space-y-2 pt-2 border-t text-xs">
@@ -305,10 +321,12 @@ export function InvestorClient({
                       <span className="text-muted-foreground">Channel 21d Locked (Escrow):</span>
                       <span className="text-amber-400 font-semibold">{formatUsd(channel.pipeline.lockedPendingUsd)}</span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">Remaining Open Invest Target:</span>
-                      <span className="text-blue-400 font-semibold">{formatUsd(channel.remainingInvestBalanceUsd)}</span>
-                    </div>
+                    {channel.enableExpenseRecoupment !== false && (
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">Remaining Open Invest Target:</span>
+                        <span className="text-blue-400 font-semibold">{formatUsd(channel.remainingInvestBalanceUsd)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1 border-b border-border/50">
                       <span className="text-muted-foreground">Bereits ausgezahlt (Erfüllt):</span>
                       <span className="text-muted-foreground font-semibold">{formatUsd(channel.totalPaidOutUsd)}</span>
@@ -601,12 +619,26 @@ export function InvestorClient({
               />
             </div>
 
-            <div className="p-3 bg-muted/40 rounded-lg text-[11px] text-muted-foreground space-y-1">
-              <span className="font-semibold text-foreground block">Recoupment Policy:</span>
-              <p>
-                Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor die vereinbarten Gewinnbeteiligungen greifen.
-              </p>
-            </div>
+            {assignedModels.find((m) => m.id === selectedModelId)?.enableExpenseRecoupment === false ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[11px] text-amber-300 space-y-1">
+                <span className="font-semibold block flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {t.models.expensesDisabledNotice}
+                </span>
+                <p className="text-muted-foreground">
+                  {language === "de"
+                    ? "Für dieses Model ist eine reine Gewinnbeteiligung ohne Vorab-Amortisation vereinbart. Eingereichte Belege dienen ausschließlich der internen Dokumentation und mindern bzw. tilgen keine Auszahlungen vorab."
+                    : "A direct profit split without prior expense recoupment applies to this model. Submitted receipts serve purely for documentation and do not recoup before payout splits."}
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-muted/40 rounded-lg text-[11px] text-muted-foreground space-y-1">
+                <span className="font-semibold text-foreground block">Recoupment Policy:</span>
+                <p>
+                  Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor die vereinbarten Gewinnbeteiligungen greifen.
+                </p>
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="submit" disabled={isSubmitting} className="w-full">

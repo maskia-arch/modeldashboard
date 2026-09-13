@@ -160,6 +160,11 @@ export const translations = {
       locked21d: "Gesperrt (21d)",
       liquidProfit: "Liquider Gewinn",
       profitSplit: "Gewinnbeteiligung",
+      enableExpenseRecoupmentLabel: "Investitionsbelege & Vorab-Amortisation berücksichtigen",
+      enableExpenseRecoupmentDesc: "Wenn deaktiviert, greift eine reine Gewinnbeteiligung ab dem ersten Dollar. Investitionsbelege/Ausgaben werden nicht zur vorrangigen Tilgung herangezogen.",
+      directSplitBadge: "Direkter Split",
+      directSplitDesc: "Für dieses Model werden keine Investitionen/Belege amortisiert. Einnahmen werden sofort gemäß Quote aufgeteilt.",
+      expensesDisabledNotice: "Hinweis: Für diesen Kanal sind Investitionsbelege deaktiviert (reine Gewinnbeteiligung).",
     },
 
     // Investor Portal Page
@@ -236,6 +241,26 @@ export const translations = {
       demoMode: "Demo-Modus",
       sessionActive: "Session aktiv",
       sessionMissing: "Nicht verbunden",
+    },
+
+    // User & Role Management
+    adminUsers: {
+      title: "Zugangs- & Rollenverwaltung",
+      subtitle: "Zugangsschlüssel erstellen, Rollen (Master/Investor) konfigurieren und Kanäle zuweisen",
+      createKey: "Zugangsschlüssel erstellen",
+      roleLabel: "Rolle & Berechtigungen",
+      roleInvestor: "Investor",
+      roleInvestorDesc: "Sieht nur zugewiesene Kanäle, eigenes Wallet und Auszahlungen. Keinen Einblick in die Master-Übersicht oder Agentur-Finanzen.",
+      roleMaster: "Master Administrator",
+      roleMasterDesc: "Volle Agentur-Rechte: Alle Models, globales Hauptbuch, Benutzerverwaltung, Beleg-Freigaben und Systemeinstellungen.",
+      changeRole: "Rolle ändern",
+      changeRolePrompt: "Möchten Sie die Rolle für diesen Nutzer ändern?",
+      cannotDemoteSelf: "Sie können Ihr eigenes aktives Administratorkonto nicht herabstufen.",
+      cannotDemoteRoot: "Das primäre Master-Konto kann nicht modifiziert werden.",
+      assignedChannels: "Zugewiesene Kanäle",
+      status: "Status",
+      lastSeen: "Zuletzt online",
+      actions: "Aktionen",
     },
   },
 
@@ -398,6 +423,11 @@ export const translations = {
       locked21d: "Locked (21d)",
       liquidProfit: "Liquid Profit",
       profitSplit: "Profit Split",
+      enableExpenseRecoupmentLabel: "Factor in Investment Receipts & Recoupment",
+      enableExpenseRecoupmentDesc: "If disabled, direct profit splitting applies from dollar one. Investment receipts/expenses are not prioritized for recoupment.",
+      directSplitBadge: "Direct Split",
+      directSplitDesc: "No investment recoupment applies to this model. Revenues are split immediately based on agreed percentage.",
+      expensesDisabledNotice: "Notice: Investment receipts are not factored in for this channel (direct profit split agreement).",
     },
 
     // Investor Portal Page
@@ -474,6 +504,26 @@ export const translations = {
       demoMode: "Demo Mode",
       sessionActive: "Session Active",
       sessionMissing: "Disconnected",
+    },
+
+    // User & Role Management
+    adminUsers: {
+      title: "Access & Role Management",
+      subtitle: "Generate access keys, configure roles (Master/Investor), and assign channels",
+      createKey: "Create Access Key",
+      roleLabel: "Role & Permissions",
+      roleInvestor: "Investor",
+      roleInvestorDesc: "Can only view assigned channels, private wallet, and payouts. No access to Master overview or agency financials.",
+      roleMaster: "Master Administrator",
+      roleMasterDesc: "Full agency rights: All models, global ledger, user management, expense approvals, and system settings.",
+      changeRole: "Change Role",
+      changeRolePrompt: "Are you sure you want to change the role for this user?",
+      cannotDemoteSelf: "You cannot demote your own active administrator account.",
+      cannotDemoteRoot: "The root Master Admin account cannot be modified.",
+      assignedChannels: "Assigned Channels",
+      status: "Status",
+      lastSeen: "Last Online",
+      actions: "Actions",
     },
   },
 } as const;

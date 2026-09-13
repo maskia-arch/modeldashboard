@@ -37,7 +37,12 @@ export default async function FinancesPage() {
 
   const modelsWithFin = models.map((m) => ({
     ...m,
-    fin: calculateFinancials(m.id, m.openInvestBalance, m.expenses, m.starTransactions, m.payouts),
+    fin: calculateFinancials(m.id, m.openInvestBalance, m.expenses, m.starTransactions, m.payouts, {
+      modelName: m.name,
+      channelTitle: m.channelTitle,
+      investorSharePercent: m.investorSharePercent,
+      enableExpenseRecoupment: m.enableExpenseRecoupment,
+    }),
   }));
 
   const totalGrossRevenue = modelsWithFin.reduce((acc, m) => acc + m.fin.totalGrossRevenueUsd, 0);

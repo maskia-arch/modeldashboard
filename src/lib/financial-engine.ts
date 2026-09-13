@@ -52,6 +52,7 @@ export interface ChannelFinancials {
   totalGrossRevenueUsd: number;
 
   // Recoupment & Amortization
+  enableExpenseRecoupment: boolean; // True: 100% recoupment first. False: direct profit split, no investment deduction.
   recoupedUsd: number;
   remainingInvestBalanceUsd: number;
   isRecouped: boolean;
@@ -107,8 +108,15 @@ export function calculateChannelFinancials(
   expenses: ExpenseRecord[],
   transactions: StarTxRecord[],
   payouts: PayoutRecord[],
-  meta?: { modelName?: string; channelTitle?: string | null; investorSharePercent?: number | null }
+  meta?: {
+    modelName?: string;
+    channelTitle?: string | null;
+    investorSharePercent?: number | null;
+    enableExpenseRecoupment?: boolean | null;
+  }
 ): ChannelFinancials {
+  const enableExpenseRecoupment = meta?.enableExpenseRecoupment !== false;
+
   // 1. Separate approved vs pending review expenses
   let approvedExpensesSum = 0;
   let pendingReviewInvestUsd = 0;
@@ -122,7 +130,9 @@ export function calculateChannelFinancials(
   }
 
   // Approved invest target is max of base initial balance or approved logged expenses
-  const totalApprovedInvestUsd = Number(Math.max(baseInvestBalance, approvedExpensesSum).toFixed(2));
+  const totalApprovedInvestUsd = enableExpenseRecoupment
+    ? Number(Math.max(baseInvestBalance, approvedExpensesSum).toFixed(2))
+    : 0;
   pendingReviewInvestUsd = Number(pendingReviewInvestUsd.toFixed(2));
 
   // 2. Aggregate transactions
@@ -142,16 +152,7 @@ export function calculateChannelFinancials(
   totalMaturedUsd = Number(totalMaturedUsd.toFixed(2));
   const totalGrossRevenueUsd = Number((totalPendingUsd + totalMaturedUsd).toFixed(2));
 
-  // 3. Channel 100% Recoupment Calculation
-  // 100% of matured revenue goes directly to recouping the approved investment
-  const recoupedUsd = Number(Math.min(totalMaturedUsd, totalApprovedInvestUsd).toFixed(2));
-  const remainingInvestBalanceUsd = Number(Math.max(0, totalApprovedInvestUsd - totalMaturedUsd).toFixed(2));
-  const isRecouped = remainingInvestBalanceUsd === 0;
-  const recoupmentProgressPercent = totalApprovedInvestUsd > 0
-    ? Number(Math.min(100, (recoupedUsd / totalApprovedInvestUsd) * 100).toFixed(1))
-    : 100;
-
-  // 4. Post-Recoupment Profit Split (Custom Investor % / Management %)
+  // 3. Profit split ratios
   const sharePercent = typeof meta?.investorSharePercent === "number" && !isNaN(meta.investorSharePercent)
     ? Math.max(0, Math.min(100, meta.investorSharePercent))
     : 50.0;
@@ -159,13 +160,42 @@ export function calculateChannelFinancials(
   const investorRatio = sharePercent / 100;
   const managementRatio = managementSharePercent / 100;
 
-  const grossProfitUsd = Number(Math.max(0, totalMaturedUsd - totalApprovedInvestUsd).toFixed(2));
-  const investorProfitShareUsd = Number((grossProfitUsd * investorRatio).toFixed(2));
-  const managementTotalShareUsd = Number((grossProfitUsd * managementRatio).toFixed(2));
+  let recoupedUsd: number;
+  let remainingInvestBalanceUsd: number;
+  let isRecouped: boolean;
+  let recoupmentProgressPercent: number;
+  let grossProfitUsd: number;
+  let investorProfitShareUsd: number;
+  let managementTotalShareUsd: number;
+  let investorGrossEarningsUsd: number;
 
-  // Total gross amount earned by investor from this channel:
-  // Recouped investment (100%) + X% of any profit beyond recoupment
-  const investorGrossEarningsUsd = Number((recoupedUsd + investorProfitShareUsd).toFixed(2));
+  if (!enableExpenseRecoupment) {
+    // DIRECT SPLIT MODE (No investment/expense recoupment hurdle)
+    recoupedUsd = 0;
+    remainingInvestBalanceUsd = 0;
+    isRecouped = true;
+    recoupmentProgressPercent = 100;
+    grossProfitUsd = totalMaturedUsd;
+    investorProfitShareUsd = Number((grossProfitUsd * investorRatio).toFixed(2));
+    managementTotalShareUsd = Number((grossProfitUsd * managementRatio).toFixed(2));
+    investorGrossEarningsUsd = investorProfitShareUsd;
+  } else {
+    // 100% RECOUPMENT FIRST MODE
+    recoupedUsd = Number(Math.min(totalMaturedUsd, totalApprovedInvestUsd).toFixed(2));
+    remainingInvestBalanceUsd = Number(Math.max(0, totalApprovedInvestUsd - totalMaturedUsd).toFixed(2));
+    isRecouped = remainingInvestBalanceUsd === 0;
+    recoupmentProgressPercent = totalApprovedInvestUsd > 0
+      ? Number(Math.min(100, (recoupedUsd / totalApprovedInvestUsd) * 100).toFixed(1))
+      : 100;
+
+    grossProfitUsd = Number(Math.max(0, totalMaturedUsd - totalApprovedInvestUsd).toFixed(2));
+    investorProfitShareUsd = Number((grossProfitUsd * investorRatio).toFixed(2));
+    managementTotalShareUsd = Number((grossProfitUsd * managementRatio).toFixed(2));
+
+    // Total gross amount earned by investor from this channel:
+    // Recouped investment (100%) + X% of any profit beyond recoupment
+    investorGrossEarningsUsd = Number((recoupedUsd + investorProfitShareUsd).toFixed(2));
+  }
 
   // 5. Payouts deduction
   const totalPaidOutUsd = Number(
@@ -186,6 +216,7 @@ export function calculateChannelFinancials(
     modelId,
     modelName: meta?.modelName,
     channelTitle: meta?.channelTitle,
+    enableExpenseRecoupment,
     investorSharePercent: sharePercent,
     managementSharePercent,
     totalApprovedInvestUsd,
@@ -252,7 +283,12 @@ export const calculateFinancials = (
   expenses: any[],
   transactions: any[],
   payouts: any[],
-  meta?: { modelName?: string; channelTitle?: string | null; investorSharePercent?: number | null }
+  meta?: {
+    modelName?: string;
+    channelTitle?: string | null;
+    investorSharePercent?: number | null;
+    enableExpenseRecoupment?: boolean | null;
+  }
 ) => calculateChannelFinancials(modelId, baseInvestBalance, expenses, transactions, payouts, meta);
 
 export function calculateMaturityDate(transactionDate: Date = new Date()): Date {

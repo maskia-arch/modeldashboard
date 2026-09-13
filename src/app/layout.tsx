@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 };
 
 import { LanguageProvider } from "@/context/LanguageContext";
+import { NavigationProvider } from "@/context/NavigationContext";
 
 export default function RootLayout({
   children,
@@ -19,13 +20,15 @@ export default function RootLayout({
     <html lang="de" className="dark">
       <body className="min-h-screen bg-background text-foreground antialiased flex">
         <LanguageProvider>
-          <Sidebar />
-          <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-            <Navbar />
-            <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
-              {children}
-            </main>
-          </div>
+          <NavigationProvider>
+            <Sidebar />
+            <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+              <Navbar />
+              <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
+                {children}
+              </main>
+            </div>
+          </NavigationProvider>
         </LanguageProvider>
       </body>
     </html>
