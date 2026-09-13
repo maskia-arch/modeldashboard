@@ -97,4 +97,11 @@ async function autoSetupDatabase() {
   console.log("=================================================");
 }
 
-await autoSetupDatabase();
+autoSetupDatabase()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("❌ [Auto-Init] Fatal error during database setup:", err);
+    process.exit(1);
+  });
