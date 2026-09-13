@@ -19,6 +19,9 @@ import {
   FileText,
   Clock,
   Trash2,
+  Sliders,
+  Percent,
+  Users,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,12 +36,25 @@ import { formatUsd, formatStars, truncateAddress } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
 
+interface InvestorItem {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
 interface ModelDetailClientProps {
   initialModel: any;
   initialFinancials: ModelFinancials;
+  investors?: InvestorItem[];
+  isMasterAdmin?: boolean;
 }
 
-export function ModelDetailClient({ initialModel, initialFinancials }: ModelDetailClientProps) {
+export function ModelDetailClient({
+  initialModel,
+  initialFinancials,
+  investors = [],
+  isMasterAdmin = false,
+}: ModelDetailClientProps) {
   const [model, setModel] = useState(initialModel);
   const [financials, setFinancials] = useState<ModelFinancials>(initialFinancials);
   const [isGrokModalOpen, setIsGrokModalOpen] = useState(false);
@@ -46,6 +62,37 @@ export function ModelDetailClient({ initialModel, initialFinancials }: ModelDeta
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBatchAssetModalOpen, setIsBatchAssetModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+
+  // Assign / Profit Split Modal state
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assignInvestorId, setAssignInvestorId] = useState(model.investorId || "");
+  const [assignSharePercent, setAssignSharePercent] = useState<number>(model.investorSharePercent ?? 50);
+  const [isSavingAssign, setIsSavingAssign] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
+  const handleSaveAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingAssign(true);
+    setAssignError(null);
+    try {
+      const res = await fetch(`/api/models/${model.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          investorId: assignInvestorId || null,
+          investorSharePercent: parseFloat(assignSharePercent as any) || 50,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update assignment");
+      setIsAssignModalOpen(false);
+      await refreshData();
+    } catch (err: any) {
+      setAssignError(err.message || "Fehler beim Speichern der Zuweisung");
+    } finally {
+      setIsSavingAssign(false);
+    }
+  };
 
   // New Asset Form state (Metadata-first, no file upload required)
   const [assetTitle, setAssetTitle] = useState("");
@@ -192,28 +239,50 @@ export function ModelDetailClient({ initialModel, initialFinancials }: ModelDeta
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black tracking-tight">{model.name}</h1>
               {financials.isRecouped ? (
-                <Badge variant="success">100% Recouped (50/50 Active)</Badge>
+                <Badge variant="success">100% Recouped ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} Active)</Badge>
               ) : (
-                <Badge variant="warning">Recouping Principal</Badge>
+                <Badge variant="warning">Recouping Principal ({model.investorSharePercent || 50}%)</Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground font-mono mt-0.5">
               Channel: {model.channelTitle || model.telegramChannelId} • ID: {model.telegramChannelId}
             </p>
-            {model.investor && (
-              <div className="flex items-center gap-2 mt-1.5 text-xs">
-                <span className="text-muted-foreground">Investor: <strong className="text-foreground">{model.investor.name || model.investor.email}</strong></span>
-                {model.investor.tonAddress ? (
-                  <span className="font-mono text-[11px] text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 flex items-center gap-1">
-                    💎 {truncateAddress(model.investor.tonAddress)}
-                  </span>
-                ) : (
-                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-400">
-                    Wallet nicht eingerichtet
-                  </Badge>
-                )}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+              {model.investor ? (
+                <>
+                  <span className="text-muted-foreground">Investor: <strong className="text-foreground">{model.investor.name || model.investor.email}</strong></span>
+                  {model.investor.tonAddress ? (
+                    <span className="font-mono text-[11px] text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 flex items-center gap-1">
+                      💎 {truncateAddress(model.investor.tonAddress)}
+                    </span>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-400">
+                      Wallet nicht eingerichtet
+                    </Badge>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground italic">Kein Investor zugeordnet</span>
+              )}
+              <Badge variant="outline" className="text-[10px] font-mono text-primary border-primary/30 ml-1">
+                {model.investorSharePercent || 50}% Inv / {100 - (model.investorSharePercent || 50)}% Agentur
+              </Badge>
+              {isMasterAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAssignInvestorId(model.investorId || "");
+                    setAssignSharePercent(model.investorSharePercent ?? 50);
+                    setIsAssignModalOpen(true);
+                  }}
+                  className="h-6 text-[11px] px-2 text-primary hover:text-primary gap-1 font-semibold"
+                >
+                  <Sliders className="h-3 w-3" />
+                  Zuweisung & Split anpassen
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -591,7 +660,7 @@ export function ModelDetailClient({ initialModel, initialFinancials }: ModelDeta
             <div>
               <h3 className="text-lg font-bold">Investments & Expenses</h3>
               <p className="text-xs text-muted-foreground">
-                All logged expenses increase the 100% recoupment target prior to 50/50 profit splitting
+                All logged expenses increase the 100% recoupment target prior to {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} profit splitting
               </p>
             </div>
             <Button
@@ -933,7 +1002,7 @@ export function ModelDetailClient({ initialModel, initialFinancials }: ModelDeta
           <DialogHeader>
             <DialogTitle>Log Model Expense</DialogTitle>
             <DialogDescription>
-              Record an investment to be recouped 100% prior to 50/50 profit splitting
+              Record an investment to be recouped 100% prior to {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} profit splitting
             </DialogDescription>
           </DialogHeader>
 
@@ -978,6 +1047,115 @@ export function ModelDetailClient({ initialModel, initialFinancials }: ModelDeta
             <DialogFooter>
               <Button type="submit" disabled={isSavingExpense} className="w-full">
                 {isSavingExpense ? "Adding Expense..." : "Add Expense"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Investor & Profit Split Modal */}
+      <Dialog open={isAssignModalOpen} onOpenChange={setIsAssignModalOpen}>
+        <DialogContent className="max-w-md" onClose={() => setIsAssignModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sliders className="h-5 w-5 text-primary" />
+              Investor & Gewinnbeteiligung zuordnen
+            </DialogTitle>
+            <DialogDescription>
+              Legen Sie fest, welcher Investor diesen Kanal in seinem Portal einsehen kann und wie hoch seine Gewinnbeteiligung nach 100% Amortisation ist.
+            </DialogDescription>
+          </DialogHeader>
+
+          {assignError && (
+            <div className="p-3 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{assignError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveAssignment} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                Investor zuordnen
+              </label>
+              <select
+                value={assignInvestorId}
+                onChange={(e) => setAssignInvestorId(e.target.value)}
+                className="w-full h-10 px-3 py-2 text-xs rounded-md border border-input bg-background text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">Kein Investor zugeordnet (Nur Master Admin)</option>
+                {investors.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name ? `${inv.name} (${inv.email})` : inv.email}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Der gewählte Investor sieht diesen Kanal sofort in seinem geschützten Investoren-Portal.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Percent className="h-3.5 w-3.5 text-primary" />
+                  Investor Gewinnbeteiligung (%)
+                </label>
+                <span className="text-xs font-mono font-bold text-primary">
+                  {assignSharePercent}% Investor / {100 - assignSharePercent}% Agentur
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Prozentsatz des Reingewinns nach vollständiger 100% Amortisation aller Investitionen und Ausgaben.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={assignSharePercent}
+                  onChange={(e) => setAssignSharePercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  className="w-24 font-mono font-bold text-center h-8 text-xs"
+                />
+                <div className="flex items-center gap-1 flex-1">
+                  {[30, 40, 50, 60, 70].map((pct) => (
+                    <Button
+                      key={pct}
+                      type="button"
+                      variant={assignSharePercent === pct ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setAssignSharePercent(pct)}
+                      className="h-8 text-xs px-2 flex-1"
+                    >
+                      {pct}%
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAssignModalOpen(false)}
+                disabled={isSavingAssign}
+              >
+                Abbrechen
+              </Button>
+              <Button type="submit" disabled={isSavingAssign} className="gap-2">
+                {isSavingAssign ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Speichere...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Zuweisung speichern
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </form>

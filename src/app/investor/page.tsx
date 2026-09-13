@@ -38,7 +38,11 @@ export default async function InvestorPage() {
       model.expenses as any[],
       model.starTransactions,
       model.payouts,
-      { modelName: model.name, channelTitle: model.channelTitle }
+      {
+        modelName: model.name,
+        channelTitle: model.channelTitle,
+        investorSharePercent: model.investorSharePercent,
+      }
     );
   });
 

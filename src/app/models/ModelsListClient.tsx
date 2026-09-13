@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -14,6 +14,9 @@ import {
   Search,
   Sparkles,
   ExternalLink,
+  Sliders,
+  Pencil,
+  Percent,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,11 +44,18 @@ interface TelegramDialog {
   participantsCount: number | null;
 }
 
-interface ModelsListClientProps {
-  initialModels: any[];
+interface InvestorItem {
+  id: string;
+  name: string | null;
+  email: string;
 }
 
-export function ModelsListClient({ initialModels }: ModelsListClientProps) {
+interface ModelsListClientProps {
+  initialModels: any[];
+  investors?: InvestorItem[];
+}
+
+export function ModelsListClient({ initialModels, investors = [] }: ModelsListClientProps) {
   const { t, language } = useLanguage();
   const [models, setModels] = useState(initialModels);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -67,6 +77,53 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
   const [channelTitle, setChannelTitle] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [openInvestBalance, setOpenInvestBalance] = useState("0");
+  const [investorId, setInvestorId] = useState("");
+  const [investorSharePercent, setInvestorSharePercent] = useState<number>(50);
+
+  // Edit Model State
+  const [editingModel, setEditingModel] = useState<any | null>(null);
+  const [editInvestorId, setEditInvestorId] = useState<string>("");
+  const [editInvestorSharePercent, setEditInvestorSharePercent] = useState<number>(50);
+  const [editName, setEditName] = useState("");
+  const [editChannelTitle, setEditChannelTitle] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const openEditModal = (m: any) => {
+    setEditingModel(m);
+    setEditInvestorId(m.investorId || "");
+    setEditInvestorSharePercent(m.investorSharePercent ?? 50);
+    setEditName(m.name || "");
+    setEditChannelTitle(m.channelTitle || "");
+    setUpdateError(null);
+  };
+
+  const handleUpdateModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingModel) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      const res = await fetch(`/api/models/${editingModel.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName,
+          channelTitle: editChannelTitle,
+          investorId: editInvestorId || null,
+          investorSharePercent: parseFloat(editInvestorSharePercent as any) || 50,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update model");
+      setEditingModel(null);
+      window.location.reload();
+    } catch (err: any) {
+      setUpdateError(err.message || "Fehler beim Aktualisieren des Models");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const fetchTelegramDialogs = async () => {
     setIsLoadingDialogs(true);
@@ -139,6 +196,8 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
           channelTitle,
           avatarUrl,
           openInvestBalance: parseFloat(openInvestBalance) || 0,
+          investorId: investorId || null,
+          investorSharePercent: parseFloat(investorSharePercent as any) || 50,
         }),
       });
 
@@ -228,17 +287,29 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
                           <CardTitle className="text-base font-bold truncate">{model.name}</CardTitle>
                           {fin?.isRecouped ? (
                             <Badge variant="success" className="text-[10px] py-0 shrink-0">
-                              50/50
+                              {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)}
                             </Badge>
                           ) : (
                             <Badge variant="warning" className="text-[10px] py-0 shrink-0">
-                              Recouping
+                              Recouping ({model.investorSharePercent || 50}%)
                             </Badge>
                           )}
                         </div>
                         <CardDescription className="text-xs font-mono truncate">
                           {model.channelTitle || model.telegramChannelId}
                         </CardDescription>
+                        <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
+                          <Users className="h-3 w-3 text-primary shrink-0" />
+                          <span className="truncate">
+                            {model.investor ? (
+                              <span className="font-semibold text-foreground">
+                                {model.investor.name || model.investor.email}
+                              </span>
+                            ) : (
+                              <span className="italic opacity-70">{t.models.unassignedInvestor}</span>
+                            )}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
@@ -276,13 +347,22 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
                   </CardContent>
                 </div>
 
-                <div className="p-4 pt-0">
-                  <Link href={`/models/${model.slug}`}>
+                <div className="p-4 pt-0 grid grid-cols-5 gap-2">
+                  <Link href={`/models/${model.slug}`} className="col-span-4">
                     <Button variant="outline" className="w-full text-xs gap-1.5">
                       {t.models.openCenter}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openEditModal(model)}
+                    title={t.models.editModel}
+                    className="col-span-1 border border-border hover:bg-muted text-muted-foreground hover:text-foreground px-0"
+                  >
+                    <Sliders className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               </Card>
             );
@@ -503,6 +583,66 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
               </div>
             </div>
 
+            {/* Investor Assignment */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                {t.models.investorAssignLabel}
+              </label>
+              <select
+                value={investorId}
+                onChange={(e) => setInvestorId(e.target.value)}
+                className="w-full h-10 px-3 py-2 text-xs rounded-md border border-input bg-background text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{t.models.investorAssignPlaceholder}</option>
+                {investors.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name ? `${inv.name} (${inv.email})` : inv.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Profit Share Split */}
+            <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Percent className="h-3.5 w-3.5 text-primary" />
+                  {t.models.investorShareLabel}
+                </label>
+                <span className="text-xs font-mono font-bold text-primary">
+                  {investorSharePercent}% Investor / {100 - investorSharePercent}% {t.models.agencyShareLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {t.models.investorShareDesc}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={investorSharePercent}
+                  onChange={(e) => setInvestorSharePercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  className="w-24 font-mono font-bold text-center h-8 text-xs"
+                />
+                <div className="flex items-center gap-1 flex-1">
+                  {[30, 40, 50, 60, 70].map((pct) => (
+                    <Button
+                      key={pct}
+                      type="button"
+                      variant={investorSharePercent === pct ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setInvestorSharePercent(pct)}
+                      className="h-8 text-xs px-2 flex-1"
+                    >
+                      {pct}%
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <DialogFooter className="pt-2">
               <Button type="submit" disabled={isSaving} className="w-full gap-2">
                 {isSaving ? (
@@ -514,6 +654,138 @@ export function ModelsListClient({ initialModels }: ModelsListClientProps) {
                   <>
                     <Plus className="h-4 w-4" />
                     {t.models.createButton}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Model Dialog */}
+      <Dialog open={!!editingModel} onOpenChange={(open) => !open && setEditingModel(null)}>
+        <DialogContent className="max-w-lg" onClose={() => setEditingModel(null)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sliders className="h-5 w-5 text-primary" />
+              {t.models.editModel}
+            </DialogTitle>
+            <DialogDescription>
+              {editingModel?.name} ({editingModel?.telegramChannelId})
+            </DialogDescription>
+          </DialogHeader>
+
+          {updateError && (
+            <div className="p-3 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{updateError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateModel} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                {t.models.modelNameLabel}
+              </label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                {t.models.channelTitleLabel}
+              </label>
+              <Input
+                value={editChannelTitle}
+                onChange={(e) => setEditChannelTitle(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                {t.models.investorAssignLabel}
+              </label>
+              <select
+                value={editInvestorId}
+                onChange={(e) => setEditInvestorId(e.target.value)}
+                className="w-full h-10 px-3 py-2 text-xs rounded-md border border-input bg-background text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">{t.models.investorAssignPlaceholder}</option>
+                {investors.map((inv) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.name ? `${inv.name} (${inv.email})` : inv.email}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {language === "de"
+                  ? "Der ausgewählte Investor erhält sofort exklusiven Zugriff auf diesen Kanal in seinem Portal."
+                  : "The selected investor receives immediate exclusive access to this channel in their portal."}
+              </p>
+            </div>
+
+            <div className="space-y-1.5 p-3 rounded-lg bg-muted/30 border">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Percent className="h-3.5 w-3.5 text-primary" />
+                  {t.models.investorShareLabel}
+                </label>
+                <span className="text-xs font-mono font-bold text-primary">
+                  {editInvestorSharePercent}% Investor / {100 - editInvestorSharePercent}% {t.models.agencyShareLabel}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {t.models.investorShareDesc}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={editInvestorSharePercent}
+                  onChange={(e) => setEditInvestorSharePercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  className="w-24 font-mono font-bold text-center h-8 text-xs"
+                />
+                <div className="flex items-center gap-1 flex-1">
+                  {[30, 40, 50, 60, 70].map((pct) => (
+                    <Button
+                      key={pct}
+                      type="button"
+                      variant={editInvestorSharePercent === pct ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEditInvestorSharePercent(pct)}
+                      className="h-8 text-xs px-2 flex-1"
+                    >
+                      {pct}%
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditingModel(null)}
+                disabled={isUpdating}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button type="submit" disabled={isUpdating} className="gap-2">
+                {isUpdating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    {t.models.savingChanges}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    {t.models.saveChanges}
                   </>
                 )}
               </Button>

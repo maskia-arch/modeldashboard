@@ -22,25 +22,39 @@ export default async function ModelsPage() {
   if (user.role !== "MASTER_ADMIN") {
     redirect("/investor");
   }
-  const models = await prisma.model.findMany({
-    include: {
-      expenses: true,
-      starTransactions: true,
-      payouts: true,
-      _count: {
-        select: {
-          assets: true,
-          posts: true,
+  const [models, investors] = await Promise.all([
+    prisma.model.findMany({
+      include: {
+        investor: {
+          select: { id: true, name: true, email: true },
+        },
+        expenses: true,
+        starTransactions: true,
+        payouts: true,
+        _count: {
+          select: {
+            assets: true,
+            posts: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.user.findMany({
+      where: { role: "INVESTOR" },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   const modelsWithFin = models.map((m) => ({
     ...m,
-    fin: calculateFinancials(m.id, m.openInvestBalance, m.expenses, m.starTransactions, m.payouts),
+    fin: calculateFinancials(m.id, m.openInvestBalance, m.expenses, m.starTransactions, m.payouts, {
+      modelName: m.name,
+      channelTitle: m.channelTitle,
+      investorSharePercent: m.investorSharePercent,
+    }),
   }));
 
-  return <ModelsListClient initialModels={modelsWithFin} />;
+  return <ModelsListClient initialModels={modelsWithFin} investors={investors} />;
 }

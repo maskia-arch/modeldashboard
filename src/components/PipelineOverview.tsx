@@ -16,17 +16,21 @@ interface PipelineOverviewProps {
 
 export function PipelineOverview({ financials, modelName, onOpenPayout }: PipelineOverviewProps) {
   const {
-    pipeline,
     totalInvestTargetUsd,
     recoupedUsd,
     remainingInvestBalanceUsd,
-    recoupmentProgressPercent,
     isRecouped,
+    recoupmentProgressPercent,
     partnerTotalShareUsd,
     totalPaidOutUsd,
     partnerAvailablePayoutUsd,
-    totalGrossRevenueUsd,
+    pipeline,
+    modelName: financialsModelName,
+    investorSharePercent = 50,
   } = financials;
+
+  const investorShare = investorSharePercent;
+  const agencyShare = 100 - investorShare;
 
   return (
     <div className="space-y-6">
@@ -40,19 +44,19 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
                 {isRecouped ? (
                   <Badge variant="success" className="gap-1">
                     <CheckCircle2 className="h-3 w-3" />
-                    100% Recouped (50/50 Active)
+                    100% Recouped ({investorShare}/{agencyShare} Active)
                   </Badge>
                 ) : (
                   <Badge variant="warning" className="gap-1">
                     <RefreshCw className="h-3 w-3 animate-spin" />
-                    Recouping In Progress
+                    Recouping In Progress ({investorShare}%)
                   </Badge>
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
                 {isRecouped
-                  ? `All ${formatUsd(totalInvestTargetUsd)} investments have been recouped! Net profit is actively split 50% Management / 50% Partner.`
-                  : `${formatUsd(recoupedUsd)} of ${formatUsd(totalInvestTargetUsd)} recouped. ${formatUsd(remainingInvestBalanceUsd)} remaining before 50/50 profit sharing.`}
+                  ? `All ${formatUsd(totalInvestTargetUsd)} investments have been recouped! Net profit is actively split ${investorShare}% Investor / ${agencyShare}% Management.`
+                  : `${formatUsd(recoupedUsd)} of ${formatUsd(totalInvestTargetUsd)} recouped. ${formatUsd(remainingInvestBalanceUsd)} remaining before ${investorShare}/${agencyShare} profit sharing.`}
               </p>
             </div>
 
@@ -169,13 +173,13 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
         </Card>
       </div>
 
-      {/* 50/50 Split Ledger Details */}
+      {/* Profit Split Ledger Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-emerald-400" />
-              Partner 50% Profit Ledger
+              Investor {investorShare}% Profit Ledger
             </CardTitle>
             <CardDescription>
               Earnings breakdown for {modelName || "Creator"}
@@ -183,7 +187,7 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between py-1.5 border-b">
-              <span className="text-muted-foreground">Cumulative Gross 50% Share</span>
+              <span className="text-muted-foreground">Cumulative Gross {investorShare}% Share</span>
               <span className="font-semibold">{formatUsd(partnerTotalShareUsd)}</span>
             </div>
             <div className="flex justify-between py-1.5 border-b">
@@ -201,7 +205,7 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-indigo-400" />
-              Management 50% + Recoupment Ledger
+              Management {agencyShare}% + Recoupment Ledger
             </CardTitle>
             <CardDescription>
               Agency principal recovery & earnings
@@ -213,8 +217,8 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
               <span className="font-semibold">{formatUsd(recoupedUsd)}</span>
             </div>
             <div className="flex justify-between py-1.5 border-b">
-              <span className="text-muted-foreground">Cumulative 50% Profit Share</span>
-              <span className="font-semibold">{formatUsd(partnerTotalShareUsd)}</span>
+              <span className="text-muted-foreground">Cumulative {agencyShare}% Profit Share</span>
+              <span className="font-semibold">{formatUsd(financials.managementTotalShareUsd)}</span>
             </div>
             <div className="flex justify-between py-1.5 font-bold text-indigo-400">
               <span>Total Management Realized</span>

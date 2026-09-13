@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateFinancials } from "@/lib/financial-engine";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET() {
   try {
     const models = await prisma.model.findMany({
       include: {
+        investor: {
+          select: { id: true, name: true, email: true, tonAddress: true },
+        },
         expenses: true,
         starTransactions: true,
         payouts: true,
@@ -25,7 +29,12 @@ export async function GET() {
         model.openInvestBalance,
         model.expenses,
         model.starTransactions,
-        model.payouts
+        model.payouts,
+        {
+          modelName: model.name,
+          channelTitle: model.channelTitle,
+          investorSharePercent: model.investorSharePercent,
+        }
       );
 
       return {
@@ -43,8 +52,22 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
-    const { name, slug, telegramChannelId, channelTitle, avatarUrl, openInvestBalance } = body;
+    const {
+      name,
+      slug,
+      telegramChannelId,
+      channelTitle,
+      avatarUrl,
+      openInvestBalance,
+      investorId,
+      investorSharePercent,
+    } = body;
 
     if (!name || !slug || !telegramChannelId) {
       return NextResponse.json(
@@ -61,6 +84,16 @@ export async function POST(req: Request) {
         channelTitle,
         avatarUrl,
         openInvestBalance: parseFloat(openInvestBalance) || 0.0,
+        investorId: investorId && investorId !== "NONE" ? investorId : null,
+        investorSharePercent:
+          typeof investorSharePercent === "number"
+            ? investorSharePercent
+            : parseFloat(investorSharePercent) || 50.0,
+      },
+      include: {
+        investor: {
+          select: { id: true, name: true, email: true },
+        },
       },
     });
 

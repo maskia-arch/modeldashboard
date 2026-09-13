@@ -270,9 +270,9 @@ export function InvestorClient({
                       </CardDescription>
                     </div>
                     {channel.isRecouped ? (
-                      <Badge variant="success">100% Recouped • 50/50 Active</Badge>
+                      <Badge variant="success">100% Recouped • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} Active</Badge>
                     ) : (
-                      <Badge variant="warning">Recouping 100% Share</Badge>
+                      <Badge variant="warning">Recouping 100% Share ({channel.investorSharePercent || 50}%)</Badge>
                     )}
                   </div>
                 </CardHeader>
@@ -604,7 +604,7 @@ export function InvestorClient({
             <div className="p-3 bg-muted/40 rounded-lg text-[11px] text-muted-foreground space-y-1">
               <span className="font-semibold text-foreground block">Recoupment Policy:</span>
               <p>
-                Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor 50/50 Profit Splits greifen.
+                Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor die vereinbarten Gewinnbeteiligungen greifen.
               </p>
             </div>
 

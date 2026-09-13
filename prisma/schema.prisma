@@ -82,8 +82,9 @@ model Model {
   createdAt         DateTime          @default(now())
 
   // Assigned Investor (Channel-specific investor)
-  investorId        String?
-  investor          User?             @relation("InvestorModels", fields: [investorId], references: [id])
+  investorId           String?
+  investor             User?             @relation("InvestorModels", fields: [investorId], references: [id])
+  investorSharePercent Float             @default(50.0) // Individueller Investor-Gewinnanteil in % nach Amortisation (z.B. 50, 60, 70)
 
   assets            Asset[]
   posts             Post[]

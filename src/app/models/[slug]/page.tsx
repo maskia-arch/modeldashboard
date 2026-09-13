@@ -53,13 +53,33 @@ export default async function ModelDetailPage({ params }: PageProps) {
     redirect("/investor");
   }
 
+  const investors = user.role === "MASTER_ADMIN"
+    ? await prisma.user.findMany({
+        where: { role: "INVESTOR" },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: "asc" },
+      })
+    : [];
+
   const financials = calculateFinancials(
     model.id,
     model.openInvestBalance,
     model.expenses,
     model.starTransactions,
-    model.payouts
+    model.payouts,
+    {
+      modelName: model.name,
+      channelTitle: model.channelTitle,
+      investorSharePercent: model.investorSharePercent,
+    }
   );
 
-  return <ModelDetailClient initialModel={model} initialFinancials={financials} />;
+  return (
+    <ModelDetailClient
+      initialModel={model}
+      initialFinancials={financials}
+      investors={investors}
+      isMasterAdmin={user.role === "MASTER_ADMIN"}
+    />
+  );
 }

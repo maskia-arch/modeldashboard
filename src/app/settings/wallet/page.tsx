@@ -36,7 +36,7 @@ export default async function WalletSettingsPage() {
             • <strong>Client-Side Non-Custodial:</strong> The 24-word seed phrase is generated directly in your browser using <code>@ton/crypto</code>. The agency server never sees, transmits, or stores your private keys.
           </p>
           <p>
-            • <strong>Zero Fee Internal Transfers:</strong> When 50/50 profit splits are liquidated, payouts are sent directly to your configured public TON address.
+            • <strong>Zero Fee Internal Transfers:</strong> When profit splits are liquidated, payouts are sent directly to your configured public TON address.
           </p>
           <p>
             • <strong>On-Chain Verifiability:</strong> Every recorded payout is validated via public TON RPC endpoints (TonCenter / TonAPI) and permanently linked on TonScan.

@@ -66,7 +66,18 @@ export default async function OverviewPage() {
 
   const modelsWithFin = models.map((m) => ({
     ...m,
-    fin: calculateFinancials(m.id, m.openInvestBalance || 0, m.expenses || [], m.starTransactions || [], m.payouts || []),
+    fin: calculateFinancials(
+      m.id,
+      m.openInvestBalance || 0,
+      m.expenses || [],
+      m.starTransactions || [],
+      m.payouts || [],
+      {
+        modelName: m.name,
+        channelTitle: m.channelTitle,
+        investorSharePercent: m.investorSharePercent,
+      }
+    ),
   }));
 
   // Aggregate global numbers

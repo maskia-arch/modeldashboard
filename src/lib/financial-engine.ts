@@ -59,9 +59,11 @@ export interface ChannelFinancials {
 
   // Investor Share Calculation
   // While recouping: Investor gets 100% of matured funds.
-  // After recouping: Investor gets 100% of recouped amount + 50% of gross profit.
+  // After recouping: Investor gets 100% of recouped amount + X% of gross profit.
+  investorSharePercent: number;
+  managementSharePercent: number;
   grossProfitUsd: number;
-  partnerTotalShareUsd: number; // 50% share alias
+  partnerTotalShareUsd: number; // Share alias
   investorGrossEarningsUsd: number; 
   managementTotalShareUsd: number;
   
@@ -105,7 +107,7 @@ export function calculateChannelFinancials(
   expenses: ExpenseRecord[],
   transactions: StarTxRecord[],
   payouts: PayoutRecord[],
-  meta?: { modelName?: string; channelTitle?: string | null }
+  meta?: { modelName?: string; channelTitle?: string | null; investorSharePercent?: number | null }
 ): ChannelFinancials {
   // 1. Separate approved vs pending review expenses
   let approvedExpensesSum = 0;
@@ -149,13 +151,20 @@ export function calculateChannelFinancials(
     ? Number(Math.min(100, (recoupedUsd / totalApprovedInvestUsd) * 100).toFixed(1))
     : 100;
 
-  // 4. Post-Recoupment Profit Split (50% Investor / 50% Management)
+  // 4. Post-Recoupment Profit Split (Custom Investor % / Management %)
+  const sharePercent = typeof meta?.investorSharePercent === "number" && !isNaN(meta.investorSharePercent)
+    ? Math.max(0, Math.min(100, meta.investorSharePercent))
+    : 50.0;
+  const managementSharePercent = Number((100 - sharePercent).toFixed(1));
+  const investorRatio = sharePercent / 100;
+  const managementRatio = managementSharePercent / 100;
+
   const grossProfitUsd = Number(Math.max(0, totalMaturedUsd - totalApprovedInvestUsd).toFixed(2));
-  const investorProfitShareUsd = Number((grossProfitUsd * 0.5).toFixed(2));
-  const managementTotalShareUsd = Number((grossProfitUsd * 0.5).toFixed(2));
+  const investorProfitShareUsd = Number((grossProfitUsd * investorRatio).toFixed(2));
+  const managementTotalShareUsd = Number((grossProfitUsd * managementRatio).toFixed(2));
 
   // Total gross amount earned by investor from this channel:
-  // Recouped investment (100%) + 50% of any profit beyond recoupment
+  // Recouped investment (100%) + X% of any profit beyond recoupment
   const investorGrossEarningsUsd = Number((recoupedUsd + investorProfitShareUsd).toFixed(2));
 
   // 5. Payouts deduction
@@ -177,6 +186,8 @@ export function calculateChannelFinancials(
     modelId,
     modelName: meta?.modelName,
     channelTitle: meta?.channelTitle,
+    investorSharePercent: sharePercent,
+    managementSharePercent,
     totalApprovedInvestUsd,
     totalInvestTargetUsd: totalApprovedInvestUsd,
     pendingReviewInvestUsd,
@@ -240,8 +251,9 @@ export const calculateFinancials = (
   baseInvestBalance: number,
   expenses: any[],
   transactions: any[],
-  payouts: any[]
-) => calculateChannelFinancials(modelId, baseInvestBalance, expenses, transactions, payouts);
+  payouts: any[],
+  meta?: { modelName?: string; channelTitle?: string | null; investorSharePercent?: number | null }
+) => calculateChannelFinancials(modelId, baseInvestBalance, expenses, transactions, payouts, meta);
 
 export function calculateMaturityDate(transactionDate: Date = new Date()): Date {
   const maturesAt = new Date(transactionDate);

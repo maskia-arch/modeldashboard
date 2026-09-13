@@ -52,7 +52,7 @@ export default async function FinancesPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Financial Ledger & Payouts</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Auditable TON Blockchain disbursement history and 50/50 profit distributions
+            Auditable TON Blockchain disbursement history and profit distributions
           </p>
         </div>
 
@@ -128,7 +128,7 @@ export default async function FinancesPage() {
         <CardHeader>
           <CardTitle className="text-base">Creator Model Split Status</CardTitle>
           <CardDescription className="text-xs">
-            Current stage in the 100% recoupment and 50/50 profit split pipeline
+            Current stage in the 100% recoupment and profit split pipeline
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -140,7 +140,7 @@ export default async function FinancesPage() {
                   <th className="p-3">Target Invest</th>
                   <th className="p-3">Recouped</th>
                   <th className="p-3">Remaining Balance</th>
-                  <th className="p-3">Partner Share (50%)</th>
+                  <th className="p-3">Investor Share</th>
                   <th className="p-3">Available Payout</th>
                   <th className="p-3">Status</th>
                   <th className="p-3">Action</th>
@@ -155,7 +155,7 @@ export default async function FinancesPage() {
                       <td className="p-3">{formatUsd(fin.totalInvestTargetUsd)}</td>
                       <td className="p-3 text-blue-400 font-semibold">{formatUsd(fin.recoupedUsd)}</td>
                       <td className="p-3 font-semibold">{formatUsd(fin.remainingInvestBalanceUsd)}</td>
-                      <td className="p-3 font-semibold">{formatUsd(fin.partnerTotalShareUsd)}</td>
+                      <td className="p-3 font-semibold">{formatUsd(fin.partnerTotalShareUsd)} ({m.investorSharePercent || 50}%)</td>
                       <td className="p-3 font-bold text-emerald-400">
                         {formatUsd(fin.partnerAvailablePayoutUsd)}
                       </td>
