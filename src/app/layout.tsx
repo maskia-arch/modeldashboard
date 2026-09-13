@@ -8,21 +8,25 @@ export const metadata: Metadata = {
   description: "Enterprise Agency Dashboard with Telegram Stars MTProto Sync, Recoupment & TON Payouts",
 };
 
+import { LanguageProvider } from "@/context/LanguageContext";
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="de" className="dark">
       <body className="min-h-screen bg-background text-foreground antialiased flex">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-          <Navbar />
-          <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
-            {children}
-          </main>
-        </div>
+        <LanguageProvider>
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+            <Navbar />
+            <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6">
+              {children}
+            </main>
+          </div>
+        </LanguageProvider>
       </body>
     </html>
   );

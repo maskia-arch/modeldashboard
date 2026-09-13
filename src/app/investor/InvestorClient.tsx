@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TonWalletGenerator } from "@/components/TonWalletGenerator";
 import { formatUsd, truncateAddress } from "@/lib/utils";
 import { format } from "date-fns";
+import { useLanguage } from "@/context/LanguageContext";
 import type { InvestorPortfolio } from "@/lib/financial-engine";
 
 interface InvestorClientProps {
@@ -45,6 +46,7 @@ export function InvestorClient({
   submittedExpenses: initialExpenses,
   fulfilledPayouts: initialPayouts = [],
 }: InvestorClientProps) {
+  const { t, language } = useLanguage();
   const [expenses, setExpenses] = useState(initialExpenses);
   const [fulfilledPayouts, setFulfilledPayouts] = useState(initialPayouts);
   const [currentTonAddress, setCurrentTonAddress] = useState<string | null>(investor.tonAddress || null);
@@ -104,16 +106,17 @@ export function InvestorClient({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-card border shadow-sm">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-black tracking-tight">Investor Portfolio Portal</h1>
-            <Badge variant="success">100% Recoupment Entitlement Active</Badge>
+            <h1 className="text-2xl font-black tracking-tight">{t.investorPortal.title}</h1>
+            <Badge variant="success">100% Recoupment Active</Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Welcome back, <strong>{investor.name || investor.email}</strong> • Channel-specific investments & revenue amortization
+            {language === "de" ? "Willkommen zurück" : "Welcome back"},{" "}
+            <strong>{investor.name || investor.email}</strong> • {t.investorPortal.subtitle}
           </p>
 
           {/* TON Address Status */}
           <div className="mt-3 flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Auszahlungsadresse:</span>
+            <span className="text-muted-foreground">{language === "de" ? "Auszahlungsadresse:" : "Payout Address:"}</span>
             {currentTonAddress ? (
               <span className="font-mono font-bold text-[#0098EA] bg-[#0098EA]/10 px-2 py-0.5 rounded border border-[#0098EA]/20">
                 {truncateAddress(currentTonAddress, 10)}
@@ -126,7 +129,7 @@ export function InvestorClient({
                 className="h-6 text-[11px] text-amber-400 border-amber-500/40 gap-1"
               >
                 <AlertCircle className="h-3 w-3" />
-                Wallet jetzt einrichten
+                {t.investorPortal.manageWallet}
               </Button>
             )}
           </div>
@@ -140,12 +143,12 @@ export function InvestorClient({
             className="gap-1.5 text-xs font-semibold text-[#0098EA] border-[#0098EA]/30"
           >
             <Wallet className="h-4 w-4" />
-            {currentTonAddress ? "Wallet einsehen" : "Wallet generieren"}
+            {currentTonAddress ? t.investorPortal.manageWallet : (language === "de" ? "Wallet generieren" : "Generate Wallet")}
           </Button>
 
           <Button onClick={() => setIsSubmitModalOpen(true)} className="gap-2 font-semibold text-xs">
             <Plus className="h-4 w-4" />
-            Submit Channel Expense
+            {t.investorPortal.submitExpense}
           </Button>
         </div>
       </div>
@@ -156,7 +159,7 @@ export function InvestorClient({
         <Card className="border-border">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-              Approved Capital Invested
+              {t.investorPortal.statInvested}
               <DollarSign className="h-4 w-4 text-primary" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-foreground">
@@ -166,10 +169,10 @@ export function InvestorClient({
           <CardContent className="text-xs text-muted-foreground">
             {portfolio.totalPendingReviewInvestUsd > 0 && (
               <span className="text-amber-400 block font-semibold">
-                +{formatUsd(portfolio.totalPendingReviewInvestUsd)} pending review
+                +{formatUsd(portfolio.totalPendingReviewInvestUsd)} {language === "de" ? "in Prüfung" : "pending review"}
               </span>
             )}
-            Approved capital across assigned channels
+            {t.investorPortal.statInvestedDesc}
           </CardContent>
         </Card>
 
@@ -177,7 +180,7 @@ export function InvestorClient({
         <Card className="border-blue-500/30 bg-blue-950/10">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center justify-between">
-              Investments Recouped
+              {t.investorPortal.statRecouped}
               <RefreshCw className="h-4 w-4 text-blue-400" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-blue-300">
@@ -185,7 +188,8 @@ export function InvestorClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            Remaining unamortized: {formatUsd(portfolio.totalRemainingInvestBalanceUsd)}
+            {language === "de" ? "Offene Amortisation: " : "Remaining balance: "}
+            {formatUsd(portfolio.totalRemainingInvestBalanceUsd)}
           </CardContent>
         </Card>
 
@@ -193,7 +197,7 @@ export function InvestorClient({
         <Card className="border-amber-500/30 bg-amber-950/10">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center justify-between">
-              21-Day Telegram Escrow
+              {language === "de" ? "21-Tage Haltefrist" : "21-Day Locked Revenue"}
               <Lock className="h-4 w-4 text-amber-400" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-amber-300">
@@ -201,7 +205,7 @@ export function InvestorClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            Locked on Telegram, matures into payouts
+            {language === "de" ? "Wartet in Treuhand auf Reifung" : "Locked on Telegram, matures into payouts"}
           </CardContent>
         </Card>
 
@@ -209,7 +213,7 @@ export function InvestorClient({
         <Card className="border-emerald-500/30 bg-emerald-950/10">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
-              Liquid Payout Entitlement
+              {language === "de" ? "Auszahlungsanspruch" : "Liquid Payout Entitlement"}
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-emerald-300">
@@ -218,8 +222,8 @@ export function InvestorClient({
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
             {portfolio.totalAvailablePayoutUsd > 0
-              ? "Wird vom Master per TON an dich überwiesen"
-              : "Aktuell alle fälligen Beträge vollständig ausbezahlt"}
+              ? (language === "de" ? "Wird vom Master per TON an dich überwiesen" : "Ready for TON blockchain transfer")
+              : (language === "de" ? "Aktuell alle fälligen Beträge vollständig ausbezahlt" : "All eligible earnings currently disbursed")}
           </CardContent>
         </Card>
       </div>
@@ -229,24 +233,28 @@ export function InvestorClient({
         <TabsList className="grid grid-cols-3 max-w-xl">
           <TabsTrigger value="channels" className="gap-2 text-xs">
             <TrendingUp className="h-3.5 w-3.5" />
-            Channel Breakdown ({portfolio.channels.length})
+            {t.investorPortal.channelsTab} ({portfolio.channels.length})
           </TabsTrigger>
           <TabsTrigger value="expenses" className="gap-2 text-xs">
             <Receipt className="h-3.5 w-3.5" />
-            Invoices ({expenses.length})
+            {t.investorPortal.expensesTab} ({expenses.length})
           </TabsTrigger>
           <TabsTrigger value="payouts" className="gap-2 text-xs">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            Erfüllte Auszahlungen ({fulfilledPayouts.length})
+            {t.investorPortal.payoutsTab} ({fulfilledPayouts.length})
           </TabsTrigger>
         </TabsList>
 
         {/* Tab 1: Per-Channel Independent Balance Sheets */}
         <TabsContent value="channels" className="space-y-4 pt-2">
           <div className="space-y-1">
-            <h3 className="text-lg font-bold">Channel-by-Channel Balance Sheets</h3>
+            <h3 className="text-lg font-bold">
+              {language === "de" ? "Kanal-Amortisationsübersicht" : "Channel-by-Channel Balance Sheets"}
+            </h3>
             <p className="text-xs text-muted-foreground">
-              Investitionen sind strikt channelbezogen: Erträge eines Kanals tilgen ausschließlich die genehmigten Ausgaben dieses Kanals.
+              {language === "de"
+                ? "Investitionen sind strikt kanalbezogen: Erträge eines Kanals tilgen ausschließlich die genehmigten Ausgaben dieses Kanals."
+                : "Investments are channel-specific: revenues recoup exclusively approved expenses of that channel."}
             </p>
           </div>
 

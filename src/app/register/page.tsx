@@ -8,11 +8,15 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { useLanguage } from "@/context/LanguageContext";
+
 export const dynamic = "force-dynamic";
 
 function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLanguage();
 
   const [registrationKey, setRegistrationKey] = useState("");
   const [email, setEmail] = useState("");
@@ -50,7 +54,7 @@ function RegisterContent() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Registration failed");
+        throw new Error(data.error || t.register.errorDefault);
       }
 
       setSuccess(true);
@@ -59,30 +63,35 @@ function RegisterContent() {
         router.refresh();
       }, 1500);
     } catch (err: any) {
-      setError(err.message || "Failed to register");
+      setError(err.message || t.register.errorDefault);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-4">
+    <div className="min-h-[85vh] flex items-center justify-center p-4 relative">
+      {/* Language Switcher */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+        <LanguageSwitch variant="pill" />
+      </div>
+
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="h-12 w-12 rounded-xl bg-purple-500/20 text-purple-400 mx-auto flex items-center justify-center border border-purple-500/30">
             <KeyRound className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Investor Activation</h1>
+          <h1 className="text-2xl font-black tracking-tight">{t.register.portalTitle}</h1>
           <p className="text-xs text-muted-foreground">
-            Activate your access with your official invitation key
+            {t.register.portalSubtitle}
           </p>
         </div>
 
         <Card className="border-border shadow-xl">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-lg">Register Account</CardTitle>
+            <CardTitle className="text-lg">{t.register.cardTitle}</CardTitle>
             <CardDescription className="text-xs">
-              Closed investor portal. A valid registration key is required.
+              {t.register.cardSubtitle}
             </CardDescription>
           </CardHeader>
 
@@ -91,9 +100,9 @@ function RegisterContent() {
               <div className="h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
                 <CheckCircle2 className="h-6 w-6" />
               </div>
-              <h3 className="text-base font-bold">Investor Account Activated!</h3>
+              <h3 className="text-base font-bold">{t.register.successTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                Redirecting you to your channel portfolio...
+                {t.register.successSubtitle}
               </p>
             </CardContent>
           ) : (
@@ -108,8 +117,8 @@ function RegisterContent() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
-                    Registration Key (Required)
-                    <span className="text-[10px] text-purple-400 font-mono">Invitation Key</span>
+                    {t.register.keyLabel}
+                    <span className="text-[10px] text-purple-400 font-mono">{t.register.invitationBadge}</span>
                   </label>
                   <div className="relative">
                     <KeyRound className="h-4 w-4 absolute left-3 top-2.5 text-purple-400" />
@@ -124,21 +133,21 @@ function RegisterContent() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Full Name</label>
+                  <label className="text-xs font-semibold text-muted-foreground">{t.register.nameLabel}</label>
                   <div className="relative">
                     <User className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                     <Input
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Markus Weber"
+                      placeholder={t.register.namePlaceholder}
                       className="pl-9"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Email</label>
+                  <label className="text-xs font-semibold text-muted-foreground">{t.register.emailLabel}</label>
                   <div className="relative">
                     <Mail className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                     <Input
@@ -146,14 +155,14 @@ function RegisterContent() {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="investor@example.com"
+                      placeholder={t.register.emailPlaceholder}
                       className="pl-9"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Choose Password</label>
+                  <label className="text-xs font-semibold text-muted-foreground">{t.register.passwordLabel}</label>
                   <div className="relative">
                     <Lock className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                     <Input
@@ -161,7 +170,7 @@ function RegisterContent() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
+                      placeholder={t.register.passwordPlaceholder}
                       className="pl-9"
                     />
                   </div>
@@ -169,14 +178,14 @@ function RegisterContent() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-muted-foreground">
-                    Receiving TON Address (Optional)
+                    {t.register.tonLabel}
                   </label>
                   <div className="relative">
                     <Wallet className="h-4 w-4 absolute left-3 top-2.5 text-[#0098EA]" />
                     <Input
                       value={tonAddress}
                       onChange={(e) => setTonAddress(e.target.value)}
-                      placeholder="EQ... or UQ... for 100% recoupment payouts"
+                      placeholder={t.register.tonPlaceholder}
                       className="pl-9 font-mono text-xs"
                     />
                   </div>
@@ -188,11 +197,11 @@ function RegisterContent() {
                   {loading ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Validating Key & Activating...
+                      {t.register.activating}
                     </>
                   ) : (
                     <>
-                      Activate Account
+                      {t.register.submitButton}
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -200,7 +209,7 @@ function RegisterContent() {
 
                 <div className="text-center">
                   <Link href="/login" className="text-xs text-muted-foreground hover:underline">
-                    Already registered? Sign In
+                    {t.register.alreadyRegistered}
                   </Link>
                 </div>
               </CardFooter>

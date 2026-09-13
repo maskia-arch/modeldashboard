@@ -18,9 +18,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/context/LanguageContext";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { t } = useLanguage();
   const [userRole, setUserRole] = useState<string>("MASTER_ADMIN");
 
   if (pathname === "/login" || pathname === "/register") {
@@ -41,54 +43,54 @@ export function Sidebar() {
   const NAV_ITEMS = isInvestor
     ? [
         {
-          label: "My Portfolio",
+          label: t.sidebar.myPortfolio,
           href: "/investor",
           icon: PieChart,
         },
         {
-          label: "TON Wallet",
+          label: t.sidebar.tonWallet,
           href: "/settings/wallet",
           icon: Wallet,
         },
       ]
     : [
         {
-          label: "Overview",
+          label: t.sidebar.overview,
           href: "/",
           icon: LayoutDashboard,
         },
         {
-          label: "Creator Models",
+          label: t.sidebar.creatorModels,
           href: "/models",
           icon: Users,
         },
         {
-          label: "Financial Ledger",
+          label: t.sidebar.financialLedger,
           href: "/finances",
           icon: TrendingUp,
         },
         {
-          label: "Investor Keys",
+          label: t.sidebar.investorKeys,
           href: "/admin/users",
           icon: KeyRound,
         },
         {
-          label: "Expense Approvals",
+          label: t.sidebar.expenseApprovals,
           href: "/admin/expenses",
           icon: FileCheck2,
         },
         {
-          label: "Investor View",
+          label: t.sidebar.investorView,
           href: "/investor",
           icon: PieChart,
         },
         {
-          label: "TON Wallet",
+          label: t.sidebar.tonWallet,
           href: "/settings/wallet",
           icon: Wallet,
         },
         {
-          label: "Settings",
+          label: t.sidebar.settings,
           href: "/settings",
           icon: Settings,
         },
@@ -107,7 +109,7 @@ export function Sidebar() {
               AutoActs
             </span>
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
-              {isInvestor ? "Investor Gateway" : "Master Management"}
+              {isInvestor ? t.sidebar.investorGateway : t.sidebar.masterManagement}
             </span>
           </div>
         </div>
@@ -143,14 +145,14 @@ export function Sidebar() {
           <div className="flex items-center justify-between font-semibold">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              Role: {isInvestor ? "Investor" : "Master"}
+              {t.sidebar.role}: {isInvestor ? "Investor" : "Master"}
             </span>
             <Badge variant="success" className="text-[10px] px-1.5 py-0">
-              Active
+              {t.common.active}
             </Badge>
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {isInvestor ? "Channel Recoupment active" : "GramJS MTProto & BullMQ"}
+            {isInvestor ? t.sidebar.channelRecoupmentActive : t.sidebar.workerActive}
           </div>
         </div>
       </div>

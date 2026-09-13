@@ -7,9 +7,13 @@ import { RefreshCw, Globe, LogOut, User, KeyRound, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { useLanguage } from "@/context/LanguageContext";
+
 export function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useLanguage();
   const [isSyncing, setIsSyncing] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -57,15 +61,18 @@ export function Navbar() {
           <Globe className="h-3.5 w-3.5 text-indigo-400" />
           <span className="font-mono font-medium text-foreground">model.autoacts.link</span>
           <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal">
-            VPS Live
+            {t.navbar.vpsLive}
           </Badge>
-            <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
-              {isMaster ? "Partner" : "Investor"}
-            </Badge>
+          <Badge variant="secondary" className="text-[10px] py-0 px-1.5">
+            {isMaster ? t.navbar.partner : t.navbar.investor}
+          </Badge>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Bilingual Switcher */}
+        <LanguageSwitch />
+
         {isMaster && (
           <Button
             variant="outline"
@@ -75,7 +82,7 @@ export function Navbar() {
             className="gap-1.5 text-xs h-8"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin text-primary" : ""}`} />
-            {isSyncing ? "Syncing MTProto..." : "Sync Stars"}
+            {isSyncing ? t.navbar.syncing : t.navbar.syncStars}
           </Button>
         )}
 
@@ -88,7 +95,7 @@ export function Navbar() {
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              title="Sign Out"
+              title={t.navbar.signOut}
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
             >
               <LogOut className="h-4 w-4" />
@@ -97,7 +104,7 @@ export function Navbar() {
         ) : (
           <Link href="/login">
             <Button variant="outline" size="sm" className="text-xs h-8">
-              Sign In
+              {t.navbar.signIn}
             </Button>
           </Link>
         )}

@@ -8,8 +8,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { useLanguage } from "@/context/LanguageContext";
+
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,7 +33,7 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Login fehlgeschlagen");
+        throw new Error(data.error || t.login.errorFailed);
       }
 
       // Redirect based on role
@@ -40,30 +44,35 @@ export default function LoginPage() {
       }
       router.refresh();
     } catch (err: any) {
-      setError(err.message || "Ungültige Anmeldedaten");
+      setError(err.message || t.login.errorDefault);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-4">
+    <div className="min-h-[85vh] flex items-center justify-center p-4 relative">
+      {/* Top right language switch */}
+      <div className="absolute top-4 right-4 sm:top-6 sm:right-6">
+        <LanguageSwitch variant="pill" />
+      </div>
+
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-blue-500 mx-auto flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
             <Shield className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight">Investor Portal</h1>
+          <h1 className="text-2xl font-black tracking-tight">{t.login.portalTitle}</h1>
           <p className="text-xs text-muted-foreground">
-            Capital Management & Performance Gateway
+            {t.login.portalSubtitle}
           </p>
         </div>
 
         <Card className="border-border shadow-xl">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-lg">Sign In</CardTitle>
+            <CardTitle className="text-lg">{t.login.cardTitle}</CardTitle>
             <CardDescription className="text-xs">
-              Enter your credentials to access your channels
+              {t.login.cardSubtitle}
             </CardDescription>
           </CardHeader>
 
@@ -77,7 +86,7 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Username</label>
+                <label className="text-xs font-semibold text-muted-foreground">{t.login.usernameLabel}</label>
                 <div className="relative">
                   <User className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                   <Input
@@ -85,7 +94,7 @@ export default function LoginPage() {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Username"
+                    placeholder={t.login.usernamePlaceholder}
                     className="pl-9"
                     autoComplete="username"
                   />
@@ -93,7 +102,7 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Passwort</label>
+                <label className="text-xs font-semibold text-muted-foreground">{t.login.passwordLabel}</label>
                 <div className="relative">
                   <Lock className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                   <Input
@@ -101,7 +110,7 @@ export default function LoginPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
+                    placeholder={t.login.passwordPlaceholder}
                     className="pl-9"
                     autoComplete="current-password"
                   />
@@ -114,11 +123,11 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Authenticating...
+                    {t.login.authenticating}
                   </>
                 ) : (
                   <>
-                    Sign In
+                    {t.login.submitButton}
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
@@ -130,7 +139,7 @@ export default function LoginPage() {
                   className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-medium"
                 >
                   <KeyRound className="h-3 w-3" />
-                  Have an Invitation Key? Complete Registration
+                  {t.login.haveKey}
                 </Link>
               </div>
             </CardFooter>
