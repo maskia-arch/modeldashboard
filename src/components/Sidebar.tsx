@@ -15,6 +15,7 @@ import {
   KeyRound,
   FileCheck2,
   PieChart,
+  CalendarClock,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,11 @@ export function Sidebar() {
           label: t.sidebar.creatorModels,
           href: "/models",
           icon: Users,
+        },
+        {
+          label: t.sidebar.schedule,
+          href: "/schedule",
+          icon: CalendarClock,
         },
         {
           label: t.sidebar.financialLedger,

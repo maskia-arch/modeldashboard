@@ -104,6 +104,7 @@ export function ModelDetailClient({
   const [assetType, setAssetType] = useState<"PHOTO" | "VIDEO" | "TEXT">("PHOTO");
   const [assetLevel, setAssetLevel] = useState<"TEASER" | "SOFT" | "PPV">("TEASER");
   const [assetTags, setAssetTags] = useState("");
+  const [assetCount, setAssetCount] = useState<number>(1);
   const [isSavingAsset, setIsSavingAsset] = useState(false);
 
   // Batch Asset Form state
@@ -150,6 +151,7 @@ export function ModelDetailClient({
           type: assetType,
           explicitLevel: assetLevel,
           tags,
+          count: assetCount,
         }),
       });
       if (res.ok) {
@@ -158,6 +160,7 @@ export function ModelDetailClient({
         setAssetNotes("");
         setAssetUrl("");
         setAssetTags("");
+        setAssetCount(1);
         await refreshData();
       }
     } catch (err) {
@@ -806,19 +809,19 @@ export function ModelDetailClient({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Titel / Bezeichnung
+                  Titel / Basis-Name
                 </label>
                 <Input
                   value={assetTitle}
                   onChange={(e) => setAssetTitle(e.target.value)}
-                  placeholder="z.B. Strand Bikini Set #1"
+                  placeholder="z.B. Strand Bikini Set"
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
                   Thema / Setting
                 </label>
@@ -828,7 +831,26 @@ export function ModelDetailClient({
                   placeholder="z.B. Lingerie, Strand, Gym"
                 />
               </div>
+
+              <div className="sm:col-span-1">
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                  Anzahl / Menge
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={assetCount}
+                  onChange={(e) => setAssetCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  className="font-bold text-center"
+                />
+              </div>
             </div>
+            {assetCount > 1 && (
+              <p className="text-[11px] text-purple-400 font-medium">
+                ⚡ Erstellt automatisch {assetCount} nummerierte Medien-Slots (z. B. {assetTitle || "Medium"} #1 bis #{assetCount})
+              </p>
+            )}
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
