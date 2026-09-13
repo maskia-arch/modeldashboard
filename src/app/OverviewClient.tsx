@@ -131,8 +131,21 @@ export function OverviewClient({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {modelsWithFin.map((model) => {
+        {modelsWithFin.length === 0 ? (
+          <Card className="border-dashed border-2 p-8 text-center">
+            <p className="text-sm text-muted-foreground mb-4">
+              {t.overview.noChannelsYet}
+            </p>
+            <Link href="/models">
+              <Button size="sm" className="gap-2">
+                <Users className="h-4 w-4" />
+                {t.overview.manageModels}
+              </Button>
+            </Link>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {modelsWithFin.map((model) => {
             const { fin } = model;
             return (
               <Card
@@ -233,6 +246,7 @@ export function OverviewClient({
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

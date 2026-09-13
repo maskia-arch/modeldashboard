@@ -80,30 +80,7 @@ async function autoSetupDatabase() {
       console.log("✅ [Auto-Init] Master Admin verified & synced with current environment credentials.");
     }
 
-    // 3. Ensure Default Models exist if DB is empty
-    const modelCount = await prisma.model.count();
-    if (modelCount === 0) {
-      console.log("📦 [Auto-Init] No creator channels found. Seeding default channels...");
-      await prisma.model.createMany({
-        data: [
-          {
-            name: "Luna Starr",
-            slug: "luna-starr",
-            telegramChannelId: "-1002145896321",
-            channelTitle: "Luna Starr Official VIP ✨",
-            openInvestBalance: 0.0,
-          },
-          {
-            name: "Elena Fox",
-            slug: "elena-fox",
-            telegramChannelId: "-1002987654321",
-            channelTitle: "Elena Fox Club 🔥",
-            openInvestBalance: 0.0,
-          },
-        ],
-      });
-      console.log("✅ [Auto-Init] Default channels seeded.");
-    }
+    // 3. Models are managed dynamically by the administrator (no mock data)
   } catch (err) {
     console.error("⚠️ [Auto-Init] Error during master account / model verification:", err);
   } finally {
