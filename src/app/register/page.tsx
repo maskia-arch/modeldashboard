@@ -59,8 +59,7 @@ function RegisterContent() {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/investor");
-        router.refresh();
+        window.location.href = "/investor";
       }, 1500);
     } catch (err: any) {
       setError(err.message || t.register.errorDefault);

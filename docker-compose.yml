@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   # 1. PostgreSQL 16 Database
-  postgres:
+  model_postgres:
     image: postgres:16-alpine
     container_name: model_postgres
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       - model_network
 
   # 2. Redis 7 Cache & BullMQ Queue Broker
-  redis:
+  model_redis:
     image: redis:7-alpine
     container_name: model_redis
     restart: unless-stopped
@@ -48,16 +48,18 @@ services:
     container_name: model_app
     restart: unless-stopped
     depends_on:
-      postgres:
+      model_postgres:
         condition: service_healthy
-      redis:
+      model_redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass}@postgres:5432/model_dashboard?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass}@model_postgres:5432/model_dashboard?schema=public
+      REDIS_URL: redis://model_redis:6379
       NEXTAUTH_URL: https://model.autoacts.link
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-super-secret-random-key-32-chars-minimum-autoacts}
       JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-key-autoacts-models}
+      MASTER_ADMIN_EMAIL: ${MASTER_ADMIN_EMAIL:-admin@autoacts.link}
+      MASTER_ADMIN_PASSWORD: ${MASTER_ADMIN_PASSWORD:-MasterAdmin2025!}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
@@ -85,13 +87,13 @@ services:
     container_name: model_worker
     restart: unless-stopped
     depends_on:
-      postgres:
+      model_postgres:
         condition: service_healthy
-      redis:
+      model_redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass}@postgres:5432/model_dashboard?schema=public
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres_secure_pass}@model_postgres:5432/model_dashboard?schema=public
+      REDIS_URL: redis://model_redis:6379
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}

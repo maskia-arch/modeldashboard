@@ -47,18 +47,18 @@ export function InvestorClient({
   fulfilledPayouts: initialPayouts = [],
 }: InvestorClientProps) {
   const { t, language } = useLanguage();
-  const [expenses, setExpenses] = useState(initialExpenses);
-  const [fulfilledPayouts, setFulfilledPayouts] = useState(initialPayouts);
-  const [currentTonAddress, setCurrentTonAddress] = useState<string | null>(investor.tonAddress || null);
+  const [expenses, setExpenses] = useState(initialExpenses || []);
+  const [fulfilledPayouts, setFulfilledPayouts] = useState(initialPayouts || []);
+  const [currentTonAddress, setCurrentTonAddress] = useState<string | null>(investor?.tonAddress || null);
   
   // Mandatory first-login prompt if no TON address exists yet
-  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(!investor.tonAddress);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(!investor?.tonAddress);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form
-  const [selectedModelId, setSelectedModelId] = useState(assignedModels[0]?.id || "");
+  const [selectedModelId, setSelectedModelId] = useState(assignedModels?.[0]?.id || "");
   const [description, setDescription] = useState("");
   const [amountUsd, setAmountUsd] = useState("");
   const [receiptUrl, setReceiptUrl] = useState("");
@@ -377,7 +377,7 @@ export function InvestorClient({
                             {exp.status === "REJECTED" && <Badge variant="destructive">Rejected</Badge>}
                           </td>
                           <td className="p-3 whitespace-nowrap text-muted-foreground">
-                            {format(new Date(exp.createdAt), "dd.MM.yyyy")}
+                            {exp.createdAt ? (() => { try { return format(new Date(exp.createdAt), "dd.MM.yyyy"); } catch { return "-"; } })() : "-"}
                           </td>
                           <td className="p-3 font-semibold">{exp.model?.name}</td>
                           <td className="p-3 max-w-xs truncate" title={exp.description}>
@@ -457,7 +457,7 @@ export function InvestorClient({
                             </Badge>
                           </td>
                           <td className="p-3 whitespace-nowrap text-muted-foreground">
-                            {format(new Date(p.paidAt), "dd.MM.yyyy HH:mm")}
+                            {p.paidAt ? (() => { try { return format(new Date(p.paidAt), "dd.MM.yyyy HH:mm"); } catch { return "-"; } })() : "-"}
                           </td>
                           <td className="p-3 font-semibold">{p.modelName}</td>
                           <td className="p-3 font-bold text-emerald-400">{formatUsd(p.amountUsd)}</td>

@@ -36,13 +36,12 @@ export default function LoginPage() {
         throw new Error(data.error || t.login.errorFailed);
       }
 
-      // Redirect based on role
+      // Redirect based on role with full window reload to reset layout and apply session
       if (data.user?.role === "INVESTOR") {
-        router.push("/investor");
+        window.location.href = "/investor";
       } else {
-        router.push("/");
+        window.location.href = "/";
       }
-      router.refresh();
     } catch (err: any) {
       setError(err.message || t.login.errorDefault);
     } finally {

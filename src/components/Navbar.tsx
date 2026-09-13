@@ -17,10 +17,6 @@ export function Navbar() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  if (pathname === "/login" || pathname === "/register") {
-    return null;
-  }
-
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
@@ -29,6 +25,10 @@ export function Navbar() {
       })
       .catch(() => {});
   }, []);
+
+  if (pathname === "/login" || pathname === "/register") {
+    return null;
+  }
 
   const handleManualSync = async () => {
     setIsSyncing(true);
