@@ -46,7 +46,7 @@ enum TxStatus {
 
 model User {
   id              String            @id @default(uuid())
-  email           String            @unique
+  email           String?           @unique
   passwordHash    String?           // Can be null until user finishes registration via key
   name            String?
   role            Role              @default(INVESTOR)

@@ -47,7 +47,7 @@ interface TelegramDialog {
 interface InvestorItem {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
 }
 
 interface ModelsListClientProps {

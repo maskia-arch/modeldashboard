@@ -2,6 +2,63 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, signToken, logUserActivity } from "@/lib/auth";
 
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const key = searchParams.get("key");
+
+    if (!key || typeof key !== "string" || !key.trim()) {
+      return NextResponse.json(
+        { error: "Registrierungsschlüssel erforderlich" },
+        { status: 400 }
+      );
+    }
+
+    const cleanKey = key.trim().toUpperCase();
+    const user = await prisma.user.findFirst({
+      where: {
+        registrationKey: cleanKey,
+      },
+      include: {
+        assignedModels: {
+          select: { id: true, name: true, slug: true },
+        },
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Ungültiger Registrierungsschlüssel. Bitte wenden Sie sich an den Master Administrator." },
+        { status: 404 }
+      );
+    }
+
+    if (user.isRegistered) {
+      return NextResponse.json(
+        { error: "Dieser Registrierungsschlüssel wurde bereits eingelöst. Bitte loggen Sie sich ein." },
+        { status: 409 }
+      );
+    }
+
+    if (!user.isActive) {
+      return NextResponse.json(
+        { error: "Dieser Zugangsschlüssel wurde vom Administrator deaktiviert." },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json({
+      valid: true,
+      email: user.email || "",
+      name: user.name || "",
+      role: user.role,
+      assignedModels: user.assignedModels || [],
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -38,6 +95,20 @@ export async function POST(req: Request) {
       );
     }
 
+    // Verify email is not already taken by another user
+    const existingWithEmail = await prisma.user.findFirst({
+      where: {
+        email: cleanEmail,
+        id: { not: user.id },
+      },
+    });
+    if (existingWithEmail) {
+      return NextResponse.json(
+        { error: "Diese E-Mail-Adresse wird bereits von einem anderen Benutzer verwendet." },
+        { status: 409 }
+      );
+    }
+
     // Complete registration
     const passwordHash = await hashPassword(password);
     const updatedUser = await prisma.user.update({
@@ -61,7 +132,7 @@ export async function POST(req: Request) {
     // Sign JWT session
     const token = signToken({
       id: updatedUser.id,
-      email: updatedUser.email,
+      email: cleanEmail,
       name: updatedUser.name,
       role: updatedUser.role as "MASTER_ADMIN" | "INVESTOR",
       tonAddress: updatedUser.tonAddress,

@@ -56,7 +56,9 @@ export async function PATCH(
     }
 
     const masterAdminEmail = process.env.MASTER_ADMIN_EMAIL || "admin@autoacts.link";
-    const isRootMaster = targetUser.email.toLowerCase() === masterAdminEmail.toLowerCase();
+    const isRootMaster = targetUser.email
+      ? targetUser.email.toLowerCase() === masterAdminEmail.toLowerCase()
+      : false;
 
     const dataToUpdate: any = {};
 

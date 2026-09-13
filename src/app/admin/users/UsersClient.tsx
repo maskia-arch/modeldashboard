@@ -122,15 +122,14 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
-          name,
+          email: email.trim() || undefined,
+          name: name.trim() || undefined,
           role: inviteRole,
           assignedModelIds: inviteRole === "INVESTOR" ? selectedModelIds : [],
         }),
@@ -196,8 +195,12 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                   return (
                     <tr key={user.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3">
-                        <div className="font-bold text-foreground">{user.name || (isMaster ? "Master Admin" : "Investor")}</div>
-                        <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
+                        <div className="font-bold text-foreground">
+                          {user.name || (isMaster ? "Master Admin" : (user.isRegistered ? "Investor" : "Investor (ausstehend)"))}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground font-mono">
+                          {user.email || <span className="italic text-muted-foreground/60">Wird bei Registrierung gewählt</span>}
+                        </div>
                       </td>
 
                       <td className="p-3">
@@ -378,10 +381,10 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
           <DialogHeader>
             <div className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-purple-400" />
-              <DialogTitle>Issue Investor Access Key</DialogTitle>
+              <DialogTitle>{t.adminUsers.dialogTitle}</DialogTitle>
             </div>
             <DialogDescription>
-              Create an investor pre-profile and generate a one-time registration key
+              {t.adminUsers.dialogDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -423,27 +426,36 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             </div>
           ) : (
             <form onSubmit={handleCreateInvite} className="space-y-4">
+              <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs space-y-1 text-muted-foreground">
+                <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+                  <Info className="h-3.5 w-3.5 shrink-0" />
+                  E-Mail & Name sind rein optional
+                </div>
+                <p className="text-[11px] leading-relaxed">
+                  {t.adminUsers.prefillHint}
+                </p>
+              </div>
+
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  E-Mail
+                  {t.adminUsers.emailOptionalLabel}
                 </label>
                 <Input
                   type="email"
-                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="user@example.com"
+                  placeholder="z.B. user@example.com (optional)"
                 />
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Name
+                  {t.adminUsers.nameOptionalLabel}
                 </label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Markus Weber"
+                  placeholder="z.B. Markus Weber (optional)"
                 />
               </div>
 

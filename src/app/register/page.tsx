@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { KeyRound, ShieldCheck, Mail, Lock, User, Wallet, ArrowRight, AlertCircle, RefreshCw, CheckCircle2 } from "lucide-react";
+import { KeyRound, ShieldCheck, Mail, Lock, User, Wallet, ArrowRight, AlertCircle, RefreshCw, CheckCircle2, Info } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,73 @@ function RegisterContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const [isVerifyingKey, setIsVerifyingKey] = useState(false);
+  const [keyInfo, setKeyInfo] = useState<{
+    valid: boolean;
+    role?: string;
+    prefilled?: boolean;
+    message?: string;
+  } | null>(null);
+
+  const verifyKey = async (keyToVerify: string) => {
+    const trimmed = keyToVerify.trim().toUpperCase();
+    if (!trimmed || trimmed.length < 6) {
+      setKeyInfo(null);
+      return;
+    }
+    setIsVerifyingKey(true);
+    try {
+      const res = await fetch(`/api/auth/register?key=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        let hasPrefilled = false;
+        if (data.email) {
+          setEmail(data.email);
+          hasPrefilled = true;
+        }
+        if (data.name) {
+          setName(data.name);
+          hasPrefilled = true;
+        }
+        setKeyInfo({
+          valid: true,
+          role: data.role,
+          prefilled: hasPrefilled || Boolean(data.email || data.name),
+          message: `${t.register.keyVerifiedBadge} (${data.role === "MASTER_ADMIN" ? "Master Admin" : "Investor"})`,
+        });
+      } else {
+        setKeyInfo({
+          valid: false,
+          message: data.error || t.register.errorDefault,
+        });
+      }
+    } catch {
+      setKeyInfo(null);
+    } finally {
+      setIsVerifyingKey(false);
+    }
+  };
+
   useEffect(() => {
     const keyParam = searchParams.get("key");
     const emailParam = searchParams.get("email");
-    if (keyParam) setRegistrationKey(keyParam);
+    if (keyParam) {
+      const upper = keyParam.toUpperCase();
+      setRegistrationKey(upper);
+      verifyKey(upper);
+    }
     if (emailParam) setEmail(emailParam);
   }, [searchParams]);
+
+  const handleKeyChange = (val: string) => {
+    const upper = val.toUpperCase();
+    setRegistrationKey(upper);
+    if (upper.length >= 10) {
+      verifyKey(upper);
+    } else {
+      setKeyInfo(null);
+    }
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,11 +185,41 @@ function RegisterContent() {
                     <Input
                       required
                       value={registrationKey}
-                      onChange={(e) => setRegistrationKey(e.target.value.toUpperCase())}
+                      onChange={(e) => handleKeyChange(e.target.value)}
+                      onBlur={() => verifyKey(registrationKey)}
                       placeholder="ACTS-INV-XXXXXXXX"
                       className="pl-9 font-mono uppercase tracking-wider"
                     />
                   </div>
+
+                  {isVerifyingKey && (
+                    <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-1 animate-pulse">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>{t.register.keyChecking}</span>
+                    </div>
+                  )}
+
+                  {keyInfo && keyInfo.valid && (
+                    <div className="space-y-1.5 mt-1.5">
+                      <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-md">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-semibold">{keyInfo.message}</span>
+                      </div>
+                      {keyInfo.prefilled && (
+                        <div className="text-[11px] text-purple-300 flex items-start gap-1.5 bg-purple-500/10 border border-purple-500/20 px-2.5 py-1.5 rounded-md leading-tight">
+                          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-purple-400" />
+                          <span>{t.register.prefillInfoNotice}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {keyInfo && !keyInfo.valid && (
+                    <div className="text-[11px] text-destructive flex items-center gap-1.5 mt-1.5 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-md">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{keyInfo.message}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1">

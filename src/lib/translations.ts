@@ -94,6 +94,9 @@ export const translations = {
       activating: "Schlüssel prüfen & Aktivieren...",
       alreadyRegistered: "Bereits registriert? Anmelden",
       errorDefault: "Registrierung fehlgeschlagen",
+      prefillInfoNotice: "Daten anhand des Keys vorausgefüllt: Sie können Name und E-Mail nach Wunsch anpassen oder ändern.",
+      keyVerifiedBadge: "Schlüssel verifiziert",
+      keyChecking: "Schlüssel wird geprüft...",
     },
 
     // Overview Page
@@ -249,6 +252,11 @@ export const translations = {
       title: "Zugangs- & Rollenverwaltung",
       subtitle: "Zugangsschlüssel erstellen, Rollen (Master/Investor) konfigurieren und Kanäle zuweisen",
       createKey: "Zugangsschlüssel erstellen",
+      dialogTitle: "Neuen Zugangsschlüssel ausstellen",
+      dialogDesc: "Generieren Sie einen einmaligen Registrierungsschlüssel. E-Mail und Name sind rein optional.",
+      emailOptionalLabel: "E-Mail (optional zur Vorbelegung)",
+      nameOptionalLabel: "Name (optional zur Vorbelegung)",
+      prefillHint: "E-Mail und Name sind rein optional. Bleiben die Felder leer, trägt der Benutzer seine Daten bei der Registrierung selbst ein. Bei Vorbelegung kann der Benutzer diese noch anpassen.",
       roleLabel: "Rolle & Berechtigungen",
       roleInvestor: "Investor",
       roleInvestorDesc: "Sieht nur zugewiesene Kanäle, eigenes Wallet und Auszahlungen. Keinen Einblick in die Master-Übersicht oder Agentur-Finanzen.",
@@ -384,6 +392,9 @@ export const translations = {
       activating: "Validating Key & Activating...",
       alreadyRegistered: "Already registered? Sign In",
       errorDefault: "Registration failed",
+      prefillInfoNotice: "Prefilled from key: You can adjust or replace your name and email as desired.",
+      keyVerifiedBadge: "Key verified",
+      keyChecking: "Verifying key...",
     },
 
     // Overview Page
@@ -539,6 +550,11 @@ export const translations = {
       title: "Access & Role Management",
       subtitle: "Generate access keys, configure roles (Master/Investor), and assign channels",
       createKey: "Create Access Key",
+      dialogTitle: "Issue New Access Key",
+      dialogDesc: "Generate a one-time registration key. Email and Name are strictly optional.",
+      emailOptionalLabel: "Email (optional prefill)",
+      nameOptionalLabel: "Name (optional prefill)",
+      prefillHint: "Email and Name are optional. If left blank, the user fills them in during registration. If prefilled, the user can still adjust them.",
       roleLabel: "Role & Permissions",
       roleInvestor: "Investor",
       roleInvestorDesc: "Can only view assigned channels, private wallet, and payouts. No access to Master overview or agency financials.",

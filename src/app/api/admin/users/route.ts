@@ -43,16 +43,16 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, name, assignedModelIds, role } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+    let cleanEmail: string | null = null;
+    if (email && typeof email === "string" && email.trim()) {
+      cleanEmail = email.toLowerCase().trim();
+      const existing = await prisma.user.findFirst({ where: { email: cleanEmail } });
+      if (existing) {
+        return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
+      }
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
-    if (existing) {
-      return NextResponse.json({ error: "A user with this email already exists" }, { status: 409 });
-    }
-
+    const cleanName = name && typeof name === "string" && name.trim() ? name.trim() : null;
     const targetRole = role === "MASTER_ADMIN" ? Role.MASTER_ADMIN : Role.INVESTOR;
     const keyPrefix = targetRole === Role.MASTER_ADMIN ? "ACTS-MST" : "ACTS-INV";
 
@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const newUser = await prisma.user.create({
       data: {
         email: cleanEmail,
-        name: name || (targetRole === Role.MASTER_ADMIN ? "Master Admin" : "Investor"),
+        name: cleanName,
         role: targetRole,
         registrationKey,
         isRegistered: false,
@@ -76,11 +76,15 @@ export async function POST(req: Request) {
       },
     });
 
+    const inviteUrl = cleanEmail
+      ? `https://model.autoacts.link/register?key=${registrationKey}&email=${encodeURIComponent(cleanEmail)}`
+      : `https://model.autoacts.link/register?key=${registrationKey}`;
+
     return NextResponse.json({
       success: true,
       user: newUser,
       registrationKey,
-      inviteUrl: `https://model.autoacts.link/register?key=${registrationKey}&email=${encodeURIComponent(cleanEmail)}`,
+      inviteUrl,
     }, { status: 201 });
   } catch (error: any) {
     console.error("Error creating investor invitation:", error);

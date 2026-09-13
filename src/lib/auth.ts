@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "default_super_secret_jwt_key_autoa
 
 export interface SessionUser {
   id: string;
-  email: string;
+  email: string | null;
   name?: string | null;
   role: "MASTER_ADMIN" | "INVESTOR";
   tonAddress?: string | null;
