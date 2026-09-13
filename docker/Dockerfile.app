@@ -6,6 +6,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
+ENV NODE_ENV=development
 RUN npm ci
 
 FROM base AS builder
@@ -13,6 +14,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build?schema=public"
+ENV NEXTAUTH_SECRET="build-secret-key-32-chars-minimum-autoacts"
+ENV JWT_SECRET="build-jwt-secret-key"
 RUN npx prisma generate
 RUN npm run build
 
