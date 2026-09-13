@@ -25,36 +25,42 @@ import { Progress } from "@/components/ui/progress";
 export const revalidate = 0;
 
 export default async function OverviewPage() {
-  const models = await prisma.model.findMany({
-    include: {
-      expenses: true,
-      starTransactions: true,
-      payouts: true,
-      posts: {
-        take: 3,
-        orderBy: { scheduledFor: "desc" },
-      },
-      _count: {
-        select: {
-          assets: true,
-          posts: true,
+  let models: any[] = [];
+  try {
+    models = await prisma.model.findMany({
+      include: {
+        expenses: true,
+        starTransactions: true,
+        payouts: true,
+        posts: {
+          take: 3,
+          orderBy: { scheduledFor: "desc" },
+        },
+        _count: {
+          select: {
+            assets: true,
+            posts: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    });
+  } catch (error) {
+    console.error("[OverviewPage] Database query warning (schema initializing?):", error);
+    models = [];
+  }
 
   const modelsWithFin = models.map((m) => ({
     ...m,
-    fin: calculateFinancials(m.id, m.openInvestBalance, m.expenses, m.starTransactions, m.payouts),
+    fin: calculateFinancials(m.id, m.openInvestBalance || 0, m.expenses || [], m.starTransactions || [], m.payouts || []),
   }));
 
   // Aggregate global numbers
-  const totalLocked = modelsWithFin.reduce((acc, m) => acc + m.fin.pipeline.lockedPendingUsd, 0);
-  const totalRecouped = modelsWithFin.reduce((acc, m) => acc + m.fin.recoupedUsd, 0);
-  const totalAvailablePayout = modelsWithFin.reduce((acc, m) => acc + m.fin.partnerAvailablePayoutUsd, 0);
-  const totalGrossRevenue = modelsWithFin.reduce((acc, m) => acc + m.fin.totalGrossRevenueUsd, 0);
-  const totalPaidOut = modelsWithFin.reduce((acc, m) => acc + m.fin.totalPaidOutUsd, 0);
+  const totalLocked = modelsWithFin.reduce((acc, m) => acc + (m.fin?.pipeline?.lockedPendingUsd || 0), 0);
+  const totalRecouped = modelsWithFin.reduce((acc, m) => acc + (m.fin?.recoupedUsd || 0), 0);
+  const totalAvailablePayout = modelsWithFin.reduce((acc, m) => acc + (m.fin?.partnerAvailablePayoutUsd || 0), 0);
+  const totalGrossRevenue = modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalGrossRevenueUsd || 0), 0);
+  const totalPaidOut = modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalPaidOutUsd || 0), 0);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">

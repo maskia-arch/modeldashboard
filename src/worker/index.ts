@@ -285,12 +285,34 @@ async function main() {
   startCronSchedulers();
   console.log("[Worker] 30-minute MTProto Sync loop initialized.");
 
-  // Run initial checks on startup
-  await checkMaturedTransactions();
-  await syncStarsTransactions();
+  // Wait for database schema to be ready (up to 30 attempts, 2s intervals)
+  console.log("[Worker] Verifying database connectivity...");
+  let dbReady = false;
+  for (let i = 1; i <= 30; i++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      await checkMaturedTransactions();
+      dbReady = true;
+      console.log("[Worker] Database is ready and synchronized.");
+      break;
+    } catch (e: any) {
+      console.log(`[Worker] Database initializing... waiting (attempt ${i}/30)...`);
+      await sleep(2000);
+    }
+  }
+
+  if (dbReady) {
+    try {
+      await syncStarsTransactions();
+    } catch (err) {
+      console.error("[Worker] Initial stars sync warning:", err);
+    }
+  } else {
+    console.warn("[Worker] Database was not ready after 60s. Worker will continue running background cron.");
+  }
 }
 
 main().catch((err) => {
-  console.error("[Worker] Fatal error running worker:", err);
-  process.exit(1);
+  console.error("[Worker] Error in worker main:", err);
+  // Keep process alive so Docker/Coolify does not enter crash loop
 });

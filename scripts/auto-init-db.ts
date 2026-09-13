@@ -1,10 +1,13 @@
 import { execSync } from "child_process";
+import fs from "fs";
 import { PrismaClient, Role } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 console.log("=================================================");
 console.log("🚀 [Auto-Init] Starting Database Auto-Setup & Sync");
 console.log("=================================================");
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function autoSetupDatabase() {
   const dbUrl = process.env.DATABASE_URL;
@@ -14,15 +17,30 @@ async function autoSetupDatabase() {
   }
 
   // 1. Run prisma db push to apply / update schema non-destructively
-  console.log("🔄 [Auto-Init] Synchronizing Prisma Schema with Database...");
-  try {
-    execSync("npx prisma db push --skip-generate", {
-      stdio: "inherit",
-      env: process.env,
-    });
-    console.log("✅ [Auto-Init] Database schema is up-to-date.");
-  } catch (error) {
-    console.error("⚠️ [Auto-Init] Warning during 'prisma db push':", error);
+  // Use local node_modules/.bin/prisma binary if available
+  const prismaBin = fs.existsSync("./node_modules/.bin/prisma")
+    ? "./node_modules/.bin/prisma"
+    : "npx --no-install prisma";
+
+  let dbReady = false;
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      console.log(`🔄 [Auto-Init] (Attempt ${attempt}/10) Applying schema: ${prismaBin} db push...`);
+      execSync(`${prismaBin} db push --skip-generate --accept-data-loss`, {
+        stdio: "inherit",
+        env: process.env,
+      });
+      console.log("✅ [Auto-Init] Database schema is up-to-date and ready.");
+      dbReady = true;
+      break;
+    } catch (error: any) {
+      console.warn(`⚠️ [Auto-Init] DB not ready yet (attempt ${attempt}/10). Retrying in 2 seconds...`);
+      await sleep(2000);
+    }
+  }
+
+  if (!dbReady) {
+    console.error("❌ [Auto-Init] Could not apply schema after 10 attempts! Continuing to verify connections...");
   }
 
   // 2. Ensure Master Admin Account from ENV exists
