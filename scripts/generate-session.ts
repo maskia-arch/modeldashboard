@@ -81,10 +81,10 @@ async function main() {
           apiHash: apiHash.trim(),
         },
         {
-          phoneNumber,
+          phoneNumber: async () => phoneNumber,
           phoneCodeHash: sendCodeResult.phoneCodeHash,
-          phoneCode: code,
-        }
+          phoneCode: async () => code,
+        } as any
       );
     } catch (loginErr: any) {
       if (loginErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
