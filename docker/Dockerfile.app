@@ -7,7 +7,7 @@ FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 ENV NODE_ENV=development
-RUN npm ci
+RUN npm ci --include=dev
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
