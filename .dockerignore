@@ -1,0 +1,57 @@
+# ==============================================
+# Security & Environment Variables
+# Excluded from Docker Build Context (Injected via Docker Compose runtime)
+# ==============================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.session
+*.session-journal
+secrets/
+credentials/
+
+# ==============================================
+# Git & Documentation
+# ==============================================
+.git
+.gitignore
+.gitattributes
+.dockerignore
+README.md
+
+# ==============================================
+# Local Dependencies & Builds (Built cleanly in multi-stage Dockerfile)
+# ==============================================
+node_modules
+.next
+out
+build
+dist
+*.tsbuildinfo
+
+# ==============================================
+# Local Data Volumes & Databases
+# ==============================================
+postgres_data
+redis_data
+caddy_data
+caddy_config
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+
+# ==============================================
+# Logs & Testing
+# ==============================================
+*.log
+tests
+coverage
+.vscode
+.idea
+.DS_Store
+Thumbs.db

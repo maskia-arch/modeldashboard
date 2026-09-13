@@ -1,0 +1,14 @@
+# Dockerfile for BullMQ & MTProto Worker
+FROM node:20-alpine
+WORKDIR /app
+
+RUN apk add --no-cache python3 make g++
+
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+RUN npm ci
+
+COPY . .
+RUN npx prisma generate
+
+CMD ["npx", "tsx", "src/worker/index.ts"]
