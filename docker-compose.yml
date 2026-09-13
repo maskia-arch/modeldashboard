@@ -97,29 +97,11 @@ services:
     networks:
       - model_network
 
-  # 5. Caddy Reverse Proxy (SSL & Routing for model.autoacts.link)
-  caddy:
-    image: caddy:2-alpine
-    container_name: model_caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - app
-    networks:
-      - model_network
-
 volumes:
   postgres_data:
   redis_data:
-  caddy_data:
-  caddy_config:
 
 networks:
   model_network:
     driver: bridge
+
