@@ -142,6 +142,20 @@ export async function POST(req: Request) {
             caption = `Hey ihr Lieben! 💕\n\n${asset.notes || `${assetTitle} aus der neuen ${assetTheme}-Reihe. Schreibt mir mal in die Kommentare, was ihr heute macht! 🥰`}`;
           }
 
+          // If Grok 4.1 Vision has classified this asset, use its custom generated caption & stars
+          if (asset.notes && asset.notes.includes('Caption: "')) {
+            const match = asset.notes.match(/Caption: "([^"]+)"/);
+            if (match && match[1]) {
+              caption = match[1];
+            }
+          }
+          if (asset.notes && asset.notes.includes('Stars: ')) {
+            const sMatch = asset.notes.match(/Stars:\s*(\d+)/);
+            if (sMatch && sMatch[1]) {
+              starsPrice = parseInt(sMatch[1], 10) || starsPrice;
+            }
+          }
+
           await prisma.post.create({
             data: {
               modelId: model.id,

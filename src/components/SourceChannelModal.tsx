@@ -43,6 +43,7 @@ export function SourceChannelModal({
   const [selectedChannelId, setSelectedChannelId] = useState<string>("");
   const [customChannelInput, setCustomChannelInput] = useState<string>("");
   const [syncLimit, setSyncLimit] = useState<number>(50);
+  const [classifyWithGrok, setClassifyWithGrok] = useState<boolean>(true);
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -155,7 +156,7 @@ export function SourceChannelModal({
       const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: syncLimit }),
+        body: JSON.stringify({ limit: syncLimit, classifyWithGrok }),
       });
 
       const data = await res.json();
@@ -336,6 +337,21 @@ export function SourceChannelModal({
                   ))}
                 </div>
               </div>
+
+              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer pt-1 pb-1">
+                <input
+                  type="checkbox"
+                  checked={classifyWithGrok}
+                  onChange={(e) => setClassifyWithGrok(e.target.checked)}
+                  className="rounded border-input text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                />
+                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  {language === "de"
+                    ? "Fotos beim Import direkt mit Grok 4.1 Vision bewerten & klassifizieren"
+                    : "Automatically classify photos with Grok 4.1 Vision upon download"}
+                </span>
+              </label>
 
               <Button
                 type="button"

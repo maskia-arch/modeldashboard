@@ -13,10 +13,11 @@ const PUBLIC_PATHS = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow static files, Next.js internal chunks, and images
+  // Allow static files, Next.js internal chunks, images, and user uploads
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/uploads") ||
     pathname.includes(".") // favicon.ico, images, etc.
   ) {
     return NextResponse.next();

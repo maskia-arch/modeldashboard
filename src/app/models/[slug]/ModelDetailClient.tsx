@@ -157,6 +157,41 @@ export function ModelDetailClient({
     }
   };
 
+  const [classifyingAssetId, setClassifyingAssetId] = useState<string | null>(null);
+  const [isBatchClassifying, setIsBatchClassifying] = useState(false);
+
+  const handleQuickGrokClassify = async (assetId: string) => {
+    setClassifyingAssetId(assetId);
+    try {
+      const res = await fetch(`/api/assets/${assetId}/classify`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Grok Klassifizierung fehlgeschlagen");
+      await refreshData();
+    } catch (err: any) {
+      alert(err.message || "Fehler bei der Grok-Analyse");
+    } finally {
+      setClassifyingAssetId(null);
+    }
+  };
+
+  const handleBatchGrokClassify = async () => {
+    setIsBatchClassifying(true);
+    try {
+      const res = await fetch(`/api/models/${model.slug}/classify-all`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Batch-Klassifizierung fehlgeschlagen");
+      await refreshData();
+    } catch (err: any) {
+      alert(err.message || "Fehler bei der Batch-Klassifizierung");
+    } finally {
+      setIsBatchClassifying(false);
+    }
+  };
+
   const handleCreateAsset = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingAsset(true);
@@ -248,6 +283,15 @@ export function ModelDetailClient({
       setIsSavingExpense(false);
     }
   };
+
+  const unclassifiedPhotosCount = (model.assets || []).filter((a: any) => {
+    if (a.isUsed || a.type !== "PHOTO") return false;
+    const isUnclassifiedTag = a.tags?.includes("unclassified");
+    const isQuelleGeneric =
+      a.tags?.includes("quelle") &&
+      (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
+    return isUnclassifiedTag || isQuelleGeneric;
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -499,22 +543,42 @@ export function ModelDetailClient({
         {/* Tab 3: Content Inventar & Vault */}
         <TabsContent value="assets" className="space-y-4 pt-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-bold">{t.modelDetail.vaultTitle}</h3>
-              <p className="text-xs text-muted-foreground">
-                {t.modelDetail.vaultSubtitle}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsSourceModalOpen(true)}
-                className="gap-1.5 text-xs font-semibold border-indigo-500/40 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/30 shadow-sm"
-              >
-                <Radio className="h-3.5 w-3.5" />
-                {t.sourceChannel?.button || (language === "de" ? "Quell-Kanal" : "Source Channel")}
-              </Button>
+                <div>
+                  <h3 className="text-lg font-bold">{t.modelDetail.vaultTitle}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {t.modelDetail.vaultSubtitle}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {unclassifiedPhotosCount > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isBatchClassifying}
+                      onClick={handleBatchGrokClassify}
+                      className="gap-1.5 text-xs font-bold bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 shadow-sm"
+                    >
+                      {isBatchClassifying ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                      )}
+                      {isBatchClassifying
+                        ? (language === "de" ? "Grok analysiert..." : "Grok analyzing...")
+                        : (language === "de"
+                            ? `🤖 Grok AI: Alle Fotos bewerten (${unclassifiedPhotosCount})`
+                            : `🤖 Grok AI: Classify All (${unclassifiedPhotosCount})`)}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsSourceModalOpen(true)}
+                    className="gap-1.5 text-xs font-semibold border-indigo-500/40 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/30 shadow-sm"
+                  >
+                    <Radio className="h-3.5 w-3.5" />
+                    {t.sourceChannel?.button || (language === "de" ? "Quell-Kanal" : "Source Channel")}
+                  </Button>
               <Button
                 variant="gradient"
                 size="sm"
@@ -545,131 +609,223 @@ export function ModelDetailClient({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {model.assets.map((asset: any) => (
-              <Card key={asset.id} className="overflow-hidden border group bg-card/60 flex flex-col justify-between">
+          {/* Prominent One-Click Initial Grok Classification Banner */}
+          {unclassifiedPhotosCount > 0 && (
+            <div className="p-4 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                  <Sparkles className="h-5 w-5" />
+                </div>
                 <div>
-                  <div className="relative aspect-square bg-muted flex flex-col items-center justify-center p-3 text-center border-b">
-                    {asset.fileUrl ? (
-                      asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
-                        <video
-                          src={asset.fileUrl}
-                          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          muted
-                        />
+                  <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <span>{t.schedule.classifyAllBannerTitle}</span>
+                    <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 text-[10px] font-bold">
+                      {unclassifiedPhotosCount} {language === "de" ? "Fotos ausstehend" : "photos pending"}
+                    </Badge>
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t.schedule.classifyAllBannerDesc}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                disabled={isBatchClassifying}
+                onClick={handleBatchGrokClassify}
+                className="gap-2 bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white font-bold h-9 shadow-md shrink-0"
+              >
+                {isBatchClassifying ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>{language === "de" ? "Grok bewertet Content..." : "Grok analyzing..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    <span>{t.schedule.classifyAllButton}</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            {model.assets.map((asset: any) => {
+              const isUnclassified =
+                asset.tags?.includes("unclassified") ||
+                (asset.tags?.includes("quelle") && (!asset.theme || asset.theme === "Allgemein" || asset.theme === "Unklassifiziert" || asset.title?.startsWith("Quell-Medium")));
+
+              return (
+                <Card key={asset.id} className="overflow-hidden border group bg-card/60 flex flex-col justify-between">
+                  <div>
+                    <div className="relative aspect-square bg-muted flex flex-col items-center justify-center p-3 text-center border-b">
+                      {asset.fileUrl ? (
+                        asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
+                          <video
+                            src={asset.fileUrl}
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            muted
+                          />
+                        ) : (
+                          <>
+                            <img
+                              src={asset.fileUrl}
+                              alt={asset.title || "Vault asset"}
+                              loading="lazy"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = "flex";
+                              }}
+                              className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            />
+                            <div style={{ display: "none" }} className="h-full w-full flex flex-col items-center justify-center p-3 text-center space-y-1 bg-muted/60">
+                              <div className="h-10 w-10 rounded-full bg-indigo-500/10 text-indigo-400 mx-auto flex items-center justify-center font-bold text-xs">
+                                📷 PIC
+                              </div>
+                              <span className="text-[11px] font-semibold text-foreground truncate max-w-[130px] block">
+                                {asset.title || "Medium"}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground block">
+                                📁 {language === "de" ? "Auf Festplatte hinterlegt" : "Stored on disk"}
+                              </span>
+                            </div>
+                          </>
+                        )
                       ) : (
-                        <img
-                          src={asset.fileUrl}
-                          alt="Vault asset"
-                          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        />
-                      )
-                    ) : (
-                      <div className="space-y-1">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center font-bold text-xs uppercase">
-                          {asset.type === "VIDEO" ? "🎬 VID" : "📷 PIC"}
-                        </div>
-                        <span className="text-xs font-bold block text-foreground truncate max-w-[130px]">
-                          {asset.title || `${asset.type} #${asset.id.slice(0, 4)}`}
-                        </span>
-                        {asset.theme && (
-                          <span className="text-[10px] text-muted-foreground block truncate">
-                            {asset.theme}
+                        <div className="space-y-1">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center font-bold text-xs uppercase">
+                            {asset.type === "VIDEO" ? "🎬 VID" : "📷 PIC"}
+                          </div>
+                          <span className="text-xs font-bold block text-foreground truncate max-w-[130px]">
+                            {asset.title || `${asset.type} #${asset.id.slice(0, 4)}`}
                           </span>
+                          {asset.theme && (
+                            <span className="text-[10px] text-muted-foreground block truncate">
+                              {asset.theme}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="absolute top-2 left-2 flex gap-1">
+                        {isUnclassified ? (
+                          <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 text-[10px] font-bold gap-1 shadow-sm backdrop-blur-sm">
+                            <Sparkles className="h-3 w-3 text-amber-400" />
+                            {language === "de" ? "Grok AI ausstehend" : "Grok AI pending"}
+                          </Badge>
+                        ) : (
+                          <>
+                            {asset.explicitLevel === "PPV" && <Badge variant="ppv">PPV</Badge>}
+                            {asset.explicitLevel === "SOFT" && <Badge variant="soft">SOFT</Badge>}
+                            {asset.explicitLevel === "TEASER" && <Badge variant="teaser">TEASER</Badge>}
+                          </>
                         )}
                       </div>
-                    )}
 
-                    <div className="absolute top-2 left-2 flex gap-1">
-                      {asset.explicitLevel === "PPV" && <Badge variant="ppv">PPV</Badge>}
-                      {asset.explicitLevel === "SOFT" && <Badge variant="soft">SOFT</Badge>}
-                      {asset.explicitLevel === "TEASER" && <Badge variant="teaser">TEASER</Badge>}
+                      <div className="absolute bottom-2 right-2 flex flex-col gap-1 items-end">
+                        {asset.fileUrl?.startsWith("/uploads/") && (
+                          <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
+                            📁 Festplatte
+                          </Badge>
+                        )}
+                        {asset.isUsed && (
+                          <Badge variant="outline" className="bg-black/70 text-[10px] text-emerald-400 border-emerald-500/40">
+                            {t.modelDetail.inScheduleBadge}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="absolute bottom-2 right-2 flex flex-col gap-1 items-end">
-                      {asset.fileUrl?.startsWith("/uploads/") && (
-                        <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
-                          📁 Festplatte
-                        </Badge>
-                      )}
-                      {asset.isUsed && (
-                        <Badge variant="outline" className="bg-black/70 text-[10px] text-emerald-400 border-emerald-500/40">
-                          {t.modelDetail.inScheduleBadge}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <CardContent className="p-3 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-semibold text-foreground truncate" title={asset.title}>
-                        {asset.title || "Content-Eintrag"}
-                      </span>
-                      <Badge variant="outline" className="text-[9px] py-0 h-4">
-                        {asset.type}
-                      </Badge>
-                    </div>
-
-                    {asset.notes && (
-                      <p className="text-[10px] text-muted-foreground italic line-clamp-1" title={asset.notes}>
-                        "{asset.notes}"
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {asset.tags?.map((tag: string, i: number) => (
-                        <span key={i} className="text-[9px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                          #{tag}
+                    <CardContent className="p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-foreground truncate" title={asset.title}>
+                          {asset.title || "Content-Eintrag"}
                         </span>
-                      ))}
-                    </div>
-                  </CardContent>
-                </div>
+                        <Badge variant="outline" className="text-[9px] py-0 h-4">
+                          {asset.type}
+                        </Badge>
+                      </div>
 
-                {/* Card Action Buttons (Direct Publish, Classify, Schedule) */}
-                {!asset.isUsed && (
-                  <div className="p-2.5 pt-0 border-t border-border/40 mt-1 flex items-center justify-between gap-1 flex-wrap">
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="h-6 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-500 font-bold gap-1"
-                      onClick={() => {
-                        setSelectedAssetForPublish(asset);
-                        setSelectedPostForPublish(null);
-                        setIsDirectPublishOpen(true);
-                      }}
-                    >
-                      <Send className="h-2.5 w-2.5" />
-                      {t.modelDetail.directPostButton}
-                    </Button>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-1.5"
-                        onClick={() => {
-                          setSelectedAssetForClassify(asset);
-                          setIsManualClassifyOpen(true);
-                        }}
-                      >
-                        {t.modelDetail.classifyButton}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 text-[10px] px-1.5"
-                        onClick={() => {
-                          setSelectedAssetForSchedule(asset);
-                          setIsScheduleAssetOpen(true);
-                        }}
-                      >
-                        {t.modelDetail.scheduleAssetButton}
-                      </Button>
-                    </div>
+                      {asset.notes && (
+                        <p className="text-[10px] text-muted-foreground italic line-clamp-1" title={asset.notes}>
+                          "{asset.notes}"
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {asset.tags?.map((tag: string, i: number) => (
+                          <span key={i} className="text-[9px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </CardContent>
                   </div>
-                )}
-              </Card>
-            ))}
+
+                  {/* Card Action Buttons (Direct Publish, Grok Classify, Manual Classify, Schedule) */}
+                  {!asset.isUsed && (
+                    <div className="p-2.5 pt-0 border-t border-border/40 mt-1 flex items-center justify-between gap-1 flex-wrap">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-500 font-bold gap-1"
+                        onClick={() => {
+                          setSelectedAssetForPublish(asset);
+                          setSelectedPostForPublish(null);
+                          setIsDirectPublishOpen(true);
+                        }}
+                      >
+                        <Send className="h-2.5 w-2.5" />
+                        {t.modelDetail.directPostButton}
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        {isUnclassified && asset.type === "PHOTO" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={classifyingAssetId === asset.id}
+                            className="h-6 text-[10px] px-2 bg-gradient-to-r from-amber-500/15 to-purple-500/15 border-amber-500/40 text-amber-300 hover:text-amber-200 font-bold gap-1"
+                            onClick={() => handleQuickGrokClassify(asset.id)}
+                          >
+                            {classifyingAssetId === asset.id ? (
+                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="h-2.5 w-2.5 text-amber-400" />
+                            )}
+                            {classifyingAssetId === asset.id
+                              ? (language === "de" ? "Grok..." : "Grok...")
+                              : "🤖 Grok AI"}
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[10px] px-1.5"
+                          onClick={() => {
+                            setSelectedAssetForClassify(asset);
+                            setIsManualClassifyOpen(true);
+                          }}
+                        >
+                          {t.modelDetail.classifyButton}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[10px] px-1.5"
+                          onClick={() => {
+                            setSelectedAssetForSchedule(asset);
+                            setIsScheduleAssetOpen(true);
+                          }}
+                        >
+                          {t.modelDetail.scheduleAssetButton}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         </TabsContent>
 

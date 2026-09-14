@@ -79,6 +79,40 @@ export function ScheduleClient({
   // Auto-Plan Form State
   const [planModelId, setPlanModelId] = useState<string>("ALL");
   const [planStartDate, setPlanStartDate] = useState<string>("");
+  const [isClassifyingFromSchedule, setIsClassifyingFromSchedule] = useState(false);
+  const [grokClassifyStatus, setGrokClassifyStatus] = useState<string | null>(null);
+
+  const handleScheduleGrokClassify = async () => {
+    setIsClassifyingFromSchedule(true);
+    setGrokClassifyStatus(null);
+    try {
+      const targetModels =
+        planModelId && planModelId !== "ALL"
+          ? models.filter((m) => m.id === planModelId)
+          : models;
+
+      let totalClassified = 0;
+      for (const m of targetModels) {
+        const res = await fetch(`/api/models/${m.slug}/classify-all`, {
+          method: "POST",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          totalClassified += data.classifiedCount || 0;
+        }
+      }
+
+      setGrokClassifyStatus(
+        language === "de"
+          ? `✓ ${totalClassified} Medien erfolgreich mit Grok 4.1 Vision bewertet!`
+          : `✓ ${totalClassified} media items successfully classified with Grok 4.1 Vision!`
+      );
+    } catch (err: any) {
+      alert(err.message || "Fehler bei der Klassifizierung");
+    } finally {
+      setIsClassifyingFromSchedule(false);
+    }
+  };
 
   // Clipboard copy state
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -634,7 +668,7 @@ export function ScheduleClient({
                             className="h-8 text-xs font-bold gap-1.5 text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm"
                           >
                             <Send className="h-3.5 w-3.5" />
-                            {t.modelDetail.directPostButton}
+                            {t.schedule?.directPostButton || (language === "de" ? "🚀 Jetzt Posten" : "🚀 Post Now")}
                           </Button>
                           <Button
                             variant="default"
@@ -802,6 +836,48 @@ export function ScheduleClient({
           </DialogHeader>
 
           <form onSubmit={handleAutoPlanSubmit} className="space-y-4 py-2">
+            {/* Step 1: Initial One-Click Grok Classification */}
+            <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                  {t.schedule.step1GrokTitle}
+                </span>
+                <Badge variant="outline" className="text-[10px] text-amber-300 border-amber-500/40 font-bold">
+                  {language === "de" ? "Initial / Einmalig" : "Initial / One-Time"}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {t.schedule.step1GrokDesc}
+              </p>
+              {grokClassifyStatus && (
+                <div className="p-2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>{grokClassifyStatus}</span>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isClassifyingFromSchedule}
+                onClick={handleScheduleGrokClassify}
+                className="w-full gap-2 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 text-xs font-bold h-8"
+              >
+                {isClassifyingFromSchedule ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>{language === "de" ? "Grok klassifiziert Content..." : "Grok analyzing..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                    <span>{t.schedule.step1GrokButton}</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.selectModelLabel}</label>
               <select
@@ -885,13 +961,21 @@ export function ScheduleClient({
           open={isDirectPublishOpen}
           onOpenChange={setIsDirectPublishOpen}
           modelId={selectedPostForPublish.modelId}
-          channelTitle={selectedPostForPublish.model?.channelTitle}
+          channelTitle={selectedPostForPublish.model?.channelTitle || selectedPostForPublish.model?.name}
           telegramChannelId={selectedPostForPublish.model?.telegramChannelId}
           post={selectedPostForPublish}
-          onPublished={() => {
+          asset={selectedPostForPublish.asset}
+          onPublished={(updated) => {
             setPosts((prev) =>
               prev.map((p) =>
-                p.id === selectedPostForPublish.id ? { ...p, status: "PUBLISHED" } : p
+                p.id === selectedPostForPublish.id
+                  ? {
+                      ...p,
+                      status: "PUBLISHED",
+                      caption: updated?.caption ?? p.caption,
+                      starsPrice: updated?.starsPrice ?? p.starsPrice,
+                    }
+                  : p
               )
             );
           }}

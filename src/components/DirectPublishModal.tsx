@@ -35,7 +35,7 @@ interface DirectPublishModalProps {
       type: "PHOTO" | "VIDEO" | "TEXT";
     } | null;
   } | null;
-  onPublished?: () => void;
+  onPublished?: (updatedData?: { caption: string; starsPrice: number }) => void;
 }
 
 export function DirectPublishModal({
@@ -112,7 +112,7 @@ export function DirectPublishModal({
       if (!res.ok) throw new Error(data.error || "Publishing failed");
 
       onOpenChange(false);
-      if (onPublished) onPublished();
+      if (onPublished) onPublished({ caption: caption.trim(), starsPrice });
     } catch (err: any) {
       setError(err.message || "Failed to publish post");
     } finally {

@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "./prisma";
 import { createTelegramClient, resolveChannelPeer } from "./telegram-stars";
-import { saveUploadedBuffer, isPhotoExtension, isVideoOrGifExtension } from "./assets";
+import { saveUploadedBuffer, getAssetLocalPath, isPhotoExtension, isVideoOrGifExtension } from "./assets";
+import { classifyImageWithGrokVision } from "./grok";
 
 const SOURCES_FILE = path.join(process.cwd(), "data", "model-sources.json");
 
@@ -73,7 +74,8 @@ export function deleteModelSource(modelId: string): void {
  */
 export async function syncMediaFromSourceChannel(
   modelId: string,
-  limit: number = 50
+  limit: number = 50,
+  autoClassifyPhotos: boolean = false
 ): Promise<{ success: boolean; importedCount: number; message: string; error?: string }> {
   const model = await prisma.model.findUnique({ where: { id: modelId } });
   if (!model) {
@@ -164,16 +166,43 @@ export async function syncMediaFromSourceChannel(
             const rawCaption = msg.message ? String(msg.message).trim() : "";
             const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(filename);
 
+            let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
+            let assetTheme = "Unklassifiziert";
+            let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
+            let assetTags = ["quelle", "telegram", model.slug, "unclassified"];
+            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "");
+
+            // If auto-classify is requested and it's a photo, run Grok 4.1 Vision immediately
+            if (autoClassifyPhotos && !isVideo) {
+              const localPath = getAssetLocalPath(fileUrl);
+              if (localPath) {
+                try {
+                  console.log(`[SourceChannel] Auto-classifying photo from msg #${msg.id} with Grok Vision...`);
+                  const grokRes = await classifyImageWithGrokVision({
+                    localFilePath: localPath,
+                    modelName: model.name,
+                  });
+                  assetTitle = grokRes.title || assetTitle;
+                  assetTheme = grokRes.theme || "Allgemein";
+                  assetLevel = grokRes.explicitLevel || "TEASER";
+                  assetTags = ["quelle", "telegram", model.slug, ...(grokRes.tags || [])];
+                  assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${grokRes.suggestedStarsPrice}`;
+                } catch (grokErr: any) {
+                  console.warn(`[SourceChannel] Grok classification failed for msg #${msg.id}:`, grokErr.message);
+                }
+              }
+            }
+
             await prisma.asset.create({
               data: {
                 modelId: model.id,
-                title: rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`,
-                theme: "Allgemein",
+                title: assetTitle,
+                theme: assetTheme,
                 type: isVideo ? "VIDEO" : "PHOTO",
-                explicitLevel: "TEASER", // Starts as TEASER before Grok or manual classification
-                notes: sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : ""),
+                explicitLevel: assetLevel,
+                notes: assetNotes,
                 fileUrl,
-                tags: ["quelle", "telegram", model.slug],
+                tags: assetTags,
                 isUsed: false,
               },
             });

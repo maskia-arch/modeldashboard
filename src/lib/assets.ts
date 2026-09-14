@@ -56,8 +56,16 @@ export function getAssetLocalPath(fileUrl?: string | null): string | null {
   // Only manage files located under /uploads/
   if (fileUrl.startsWith("/uploads/")) {
     const relativePath = fileUrl.startsWith("/") ? fileUrl.slice(1) : fileUrl;
-    const fullPath = path.join(process.cwd(), "public", relativePath);
-    return fs.existsSync(fullPath) ? fullPath : null;
+    const candidates = [
+      path.join(process.cwd(), "public", relativePath),
+      path.join(process.cwd(), relativePath),
+      path.join(process.cwd(), ".next", "standalone", "public", relativePath),
+      path.join(process.cwd(), ".next", "standalone", relativePath),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    return null;
   }
 
   // If already absolute and exists
