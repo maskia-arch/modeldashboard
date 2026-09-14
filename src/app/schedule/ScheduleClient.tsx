@@ -22,6 +22,7 @@ import {
   Undo2,
   Send,
   UploadCloud,
+  Pencil,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,8 +80,89 @@ export function ScheduleClient({
   // Auto-Plan Form State
   const [planModelId, setPlanModelId] = useState<string>("ALL");
   const [planStartDate, setPlanStartDate] = useState<string>("");
+  const [planResetExisting, setPlanResetExisting] = useState<boolean>(true);
   const [isClassifyingFromSchedule, setIsClassifyingFromSchedule] = useState(false);
   const [grokClassifyStatus, setGrokClassifyStatus] = useState<string | null>(null);
+
+  // Edit Post Modal State
+  const [editingPost, setEditingPost] = useState<any>(null);
+  const [editCaption, setEditCaption] = useState("");
+  const [editStarsPrice, setEditStarsPrice] = useState<number>(0);
+  const [editScheduledDate, setEditScheduledDate] = useState("");
+  const [editScheduledTime, setEditScheduledTime] = useState("");
+  const [editStatus, setEditStatus] = useState("SCHEDULED");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isClearingSchedule, setIsClearingSchedule] = useState(false);
+
+  const openEditModal = (post: any) => {
+    setEditingPost(post);
+    setEditCaption(post.caption || "");
+    setEditStarsPrice(post.starsPrice || 0);
+    const d = new Date(post.scheduledFor);
+    setEditScheduledDate(format(d, "yyyy-MM-dd"));
+    setEditScheduledTime(format(d, "HH:mm"));
+    setEditStatus(post.status || "SCHEDULED");
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPost) return;
+    setIsSavingEdit(true);
+    try {
+      const scheduledDateTime = new Date(`${editScheduledDate}T${editScheduledTime}`);
+      const res = await fetch(`/api/schedule/posts/${editingPost.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption: editCaption,
+          starsPrice: editStarsPrice,
+          scheduledFor: scheduledDateTime.toISOString(),
+          status: editStatus,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fehler beim Speichern");
+
+      setPosts((prev) => prev.map((p) => (p.id === editingPost.id ? data : p)));
+      setEditingPost(null);
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Speichern");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleClearSchedule = async () => {
+    const targetModel = models.find((m) => m.id === selectedModelId);
+    const modelLabel = targetModel ? targetModel.name : (language === "de" ? "ALLE Models" : "ALL Models");
+    const confirmMsg = language === "de"
+      ? `Möchten Sie wirklich alle noch nicht geposteten Zeitplan-Einträge für "${modelLabel}" löschen? Verknüpfte Inhalte werden wieder als unbenutzt freigegeben.`
+      : `Are you sure you want to clear all unposted schedule entries for "${modelLabel}"? Linked media will be released back to inventory.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setIsClearingSchedule(true);
+    try {
+      const url = selectedModelId !== "ALL"
+        ? `/api/schedule/posts?modelId=${selectedModelId}`
+        : "/api/schedule/posts?modelId=ALL";
+      const res = await fetch(url, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fehler beim Leeren des Zeitplans");
+
+      alert(data.message || "Zeitplan erfolgreich geleert.");
+      // Refresh posts
+      const refreshRes = await fetch("/api/schedule/posts");
+      if (refreshRes.ok) {
+        const refreshedPosts = await refreshRes.json();
+        setPosts(refreshedPosts);
+      }
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Leeren des Zeitplans");
+    } finally {
+      setIsClearingSchedule(false);
+    }
+  };
 
   const handleScheduleGrokClassify = async () => {
     setIsClassifyingFromSchedule(true);
@@ -140,11 +222,9 @@ export function ScheduleClient({
     let scheduled = 0;
     let publishedToday = 0;
 
-    const relevantPosts = selectedModelId === "ALL"
-      ? posts
-      : posts.filter((p) => p.modelId === selectedModelId);
+    posts.forEach((p) => {
+      if (selectedModelId !== "ALL" && p.modelId !== selectedModelId) return;
 
-    relevantPosts.forEach((p) => {
       const st = getPostStatus(p);
       if (st === "PENDING") pending++;
       else if (st === "SCHEDULED") scheduled++;
@@ -215,7 +295,7 @@ export function ScheduleClient({
 
   // Delete Post
   const handleDeletePost = async (postId: string) => {
-    if (!window.confirm("Möchten Sie dieses geplante Posting wirklich löschen?")) return;
+    if (!window.confirm(language === "de" ? "Möchten Sie dieses geplante Posting wirklich löschen? Das verknüpfte Medium wird wieder für die Neuplanung freigegeben." : "Delete this scheduled post? Linked media will be released.")) return;
     try {
       const res = await fetch(`/api/schedule/posts/${postId}`, { method: "DELETE" });
       if (res.ok) {
@@ -277,6 +357,7 @@ export function ScheduleClient({
         body: JSON.stringify({
           modelId: planModelId,
           startDate: planStartDate || undefined,
+          resetExisting: planResetExisting,
         }),
       });
 
@@ -338,6 +419,18 @@ export function ScheduleClient({
           >
             <Sparkles className="h-4 w-4" />
             {t.schedule.generateAutoPlan}
+          </Button>
+
+          <Button
+            onClick={handleClearSchedule}
+            disabled={isClearingSchedule}
+            variant="outline"
+            className="gap-1.5 text-xs h-9 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          >
+            <Trash2 className="h-4 w-4" />
+            {isClearingSchedule 
+              ? (language === "de" ? "Wird geleert..." : "Clearing...")
+              : (language === "de" ? "Zeitplan leeren" : "Clear Schedule")}
           </Button>
         </div>
       </div>
@@ -662,15 +755,26 @@ export function ScheduleClient({
 
                   {/* Card Actions Footer */}
                   <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeletePost(post.id)}
-                      className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      {t.schedule.deleteButton}
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditModal(post)}
+                        className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        {language === "de" ? "Bearbeiten" : "Edit"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeletePost(post.id)}
+                        className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {t.schedule.deleteButton}
+                      </Button>
+                    </div>
 
                     <div className="flex items-center gap-2">
                       {isPublished ? (
@@ -932,6 +1036,29 @@ export function ScheduleClient({
               <span className="text-[11px] text-muted-foreground mt-0.5 block">{t.schedule.startDateHint}</span>
             </div>
 
+            {/* Reset / Regenerate Option */}
+            <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10">
+              <input
+                type="checkbox"
+                id="planResetExisting"
+                checked={planResetExisting}
+                onChange={(e) => setPlanResetExisting(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input bg-card text-primary focus:ring-primary"
+              />
+              <label htmlFor="planResetExisting" className="text-xs text-foreground font-medium cursor-pointer select-none">
+                <span className="font-bold text-amber-300 block">
+                  {language === "de"
+                    ? "Bestehende Entwürfe überschreiben / neu generieren"
+                    : "Reset and regenerate existing unposted drafts"}
+                </span>
+                <span className="text-[11px] text-muted-foreground block mt-0.5 leading-relaxed">
+                  {language === "de"
+                    ? "Löscht vorherige, noch nicht gepostete Zeitplan-Einträge und plant den gesamten Content-Bestand komplett neu. Bereits gepostete Einträge bleiben sicher erhalten."
+                    : "Removes previous unposted schedule entries and re-plans the entire inventory fresh. Already published posts remain safe and untouched."}
+                </span>
+              </label>
+            </div>
+
             {/* Smart Pacing Rules Box */}
             <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs space-y-1.5">
               <span className="font-semibold text-purple-300 block flex items-center gap-1.5">
@@ -1008,6 +1135,126 @@ export function ScheduleClient({
           }}
         />
       )}
+
+      {/* Modal: Post bearbeiten */}
+      <Dialog open={!!editingPost} onOpenChange={(open) => !open && setEditingPost(null)}>
+        <DialogContent className="max-w-md" onClose={() => setEditingPost(null)}>
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              <DialogTitle>
+                {language === "de" ? "Zeitplan-Eintrag bearbeiten" : "Edit Schedule Entry"}
+              </DialogTitle>
+            </div>
+            <DialogDescription>
+              {language === "de"
+                ? "Passen Sie Caption, Sterne-Preis, Veröffentlichungszeitpunkt und Status an."
+                : "Adjust caption, star price, scheduled timing, and status."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingPost && (
+            <form onSubmit={handleSaveEdit} className="space-y-4 py-2">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                  {language === "de" ? "Caption / Post-Text" : "Caption / Post Text"}
+                </label>
+                <textarea
+                  value={editCaption}
+                  onChange={(e) => setEditCaption(e.target.value)}
+                  rows={4}
+                  className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                  placeholder={language === "de" ? "Post-Text eingeben..." : "Enter post caption..."}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                  {language === "de" ? "Preis in Telegram Stars ⭐ (0 = Kostenlos / Teaser)" : "Price in Telegram Stars ⭐ (0 = Free / Teaser)"}
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={editStarsPrice}
+                  onChange={(e) => setEditStarsPrice(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                    {language === "de" ? "Datum" : "Date"}
+                  </label>
+                  <Input
+                    type="date"
+                    required
+                    value={editScheduledDate}
+                    onChange={(e) => setEditScheduledDate(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                    {language === "de" ? "Uhrzeit" : "Time"}
+                  </label>
+                  <Input
+                    type="time"
+                    required
+                    value={editScheduledTime}
+                    onChange={(e) => setEditScheduledTime(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                  {language === "de" ? "Status" : "Status"}
+                </label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-xs"
+                >
+                  <option value="SCHEDULED">{language === "de" ? "SCHEDULED (Geplant)" : "SCHEDULED (Planned)"}</option>
+                  <option value="PENDING">{language === "de" ? "PENDING (Fällig)" : "PENDING (Due)"}</option>
+                  <option value="PUBLISHED">{language === "de" ? "PUBLISHED (Gepostet)" : "PUBLISHED (Posted)"}</option>
+                </select>
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingPost(null)}
+                >
+                  {language === "de" ? "Abbrechen" : "Cancel"}
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSavingEdit}
+                  className="gap-1.5"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      {language === "de" ? "Speichern..." : "Saving..."}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      {language === "de" ? "Änderungen speichern" : "Save Changes"}
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

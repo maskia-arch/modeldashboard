@@ -109,3 +109,56 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/schedule/posts:
+ * Clears all unposted (SCHEDULED, PENDING, DRAFT) posts for a specific model or all models,
+ * and resets isUsed on their linked assets.
+ */
+export async function DELETE(req: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized. Master Admin access required." }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const modelId = searchParams.get("modelId");
+
+    const where: any = {
+      status: { in: [PostStatus.SCHEDULED, PostStatus.PENDING, PostStatus.DRAFT] },
+    };
+    if (modelId && modelId !== "ALL") {
+      where.modelId = modelId;
+    }
+
+    // Find posts to release assets
+    const postsToClear = await prisma.post.findMany({
+      where,
+      select: { id: true, assetId: true },
+    });
+
+    const assetIds = postsToClear.map((p) => p.assetId).filter(Boolean) as string[];
+
+    await prisma.$transaction([
+      // Release assets
+      prisma.asset.updateMany({
+        where: { id: { in: assetIds } },
+        data: { isUsed: false },
+      }),
+      // Delete draft & scheduled posts
+      prisma.post.deleteMany({
+        where,
+      }),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      clearedCount: postsToClear.length,
+      message: `${postsToClear.length} ungepostete Zeitplan-Einträge gelöscht und Assets freigegeben.`,
+    });
+  } catch (error: any) {
+    console.error("Error clearing schedule posts:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

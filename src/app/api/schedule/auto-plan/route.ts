@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { modelId, startDate } = body;
+    const { modelId, startDate, resetExisting } = body;
 
     const modelsToPlan = modelId && modelId !== "ALL"
       ? await prisma.model.findMany({ where: { id: modelId } })
@@ -36,6 +36,34 @@ export async function POST(req: Request) {
     baseStart.setHours(0, 0, 0, 0);
 
     for (const model of modelsToPlan) {
+      // If resetExisting is requested: Clear prior unposted draft/scheduled posts for this model
+      if (resetExisting) {
+        const existingUnposted = await prisma.post.findMany({
+          where: {
+            modelId: model.id,
+            status: { in: [PostStatus.SCHEDULED, PostStatus.PENDING, PostStatus.DRAFT] },
+          },
+          select: { id: true, assetId: true },
+        });
+
+        const assetIdsToRelease = existingUnposted
+          .map((p) => p.assetId)
+          .filter(Boolean) as string[];
+
+        await prisma.$transaction([
+          prisma.asset.updateMany({
+            where: { id: { in: assetIdsToRelease } },
+            data: { isUsed: false },
+          }),
+          prisma.post.deleteMany({
+            where: {
+              modelId: model.id,
+              status: { in: [PostStatus.SCHEDULED, PostStatus.PENDING, PostStatus.DRAFT] },
+            },
+          }),
+        ]);
+      }
+
       // Find unused assets not yet linked to any future post
       const scheduledAssetIds = (
         await prisma.post.findMany({

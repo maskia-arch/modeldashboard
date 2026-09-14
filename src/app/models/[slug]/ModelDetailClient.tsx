@@ -170,6 +170,30 @@ export function ModelDetailClient({
     }
   };
 
+  const [assetToDelete, setAssetToDelete] = useState<any>(null);
+  const [isDeletingAsset, setIsDeletingAsset] = useState(false);
+
+  const handleDeleteSingleAsset = async () => {
+    if (!assetToDelete) return;
+    setIsDeletingAsset(true);
+    try {
+      const res = await fetch(`/api/assets/${assetToDelete.id}`, {
+        method: "DELETE",
+      });
+      const data = await safeJson(res);
+      if (res.ok) {
+        setAssetToDelete(null);
+        await refreshData();
+      } else {
+        alert(data.error || "Fehler beim Löschen des Contents");
+      }
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Löschen");
+    } finally {
+      setIsDeletingAsset(false);
+    }
+  };
+
   const handleSaveAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingAssign(true);
@@ -1279,7 +1303,35 @@ export function ModelDetailClient({
                         >
                           {t.modelDetail.scheduleAssetButton}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 w-6 p-0 border-rose-500/30 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40"
+                          onClick={() => setAssetToDelete(asset)}
+                          title={language === "de" ? "Content von Festplatte löschen" : "Delete asset from disk"}
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                        </Button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* If asset is used (published), also provide Master Admin delete option */}
+                  {asset.isUsed && (
+                    <div className="p-2 pt-0 border-t border-border/40 mt-1 flex items-center justify-between">
+                      <Badge variant="secondary" className="text-[9px] bg-muted/60 text-muted-foreground">
+                        {language === "de" ? "Verbraucht / Gepostet" : "Used / Published"}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 text-rose-400 border-rose-500/30 hover:bg-rose-950/40 gap-1 font-medium"
+                        onClick={() => setAssetToDelete(asset)}
+                        title={language === "de" ? "Content von Festplatte löschen" : "Delete asset from disk"}
+                      >
+                        <Trash2 className="h-2.5 w-2.5" />
+                        {language === "de" ? "Löschen" : "Delete"}
+                      </Button>
                     </div>
                   )}
                 </Card>
@@ -2395,6 +2447,73 @@ export function ModelDetailClient({
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Single Asset Deletion Confirmation Dialog */}
+      {assetToDelete && (
+        <Dialog
+          open={Boolean(assetToDelete)}
+          onOpenChange={(open) => !open && setAssetToDelete(null)}
+        >
+          <DialogContent className="max-w-md bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-rose-400">
+                    {language === "de" ? "Content von Festplatte löschen" : "Delete Content from Disk"}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {assetToDelete.title || "Unbenanntes Asset"}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <p className="text-muted-foreground">
+                {language === "de"
+                  ? "Möchten Sie dieses Asset und die dazugehörige Datei wirklich unwiderruflich von der Festplatte löschen?"
+                  : "Are you sure you want to permanently delete this asset and its file from disk?"}
+              </p>
+              <div className="p-2.5 rounded-lg bg-muted/50 border border-border/50 space-y-1 text-[11px] font-mono">
+                <div><span className="text-muted-foreground">Titel:</span> {assetToDelete.title || "—"}</div>
+                <div><span className="text-muted-foreground">Typ:</span> {assetToDelete.type} • {assetToDelete.explicitLevel}</div>
+                {assetToDelete.fileUrl && (
+                  <div className="truncate"><span className="text-muted-foreground">Pfad:</span> {assetToDelete.fileUrl}</div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssetToDelete(null)}
+                disabled={isDeletingAsset}
+                className="text-xs"
+              >
+                {language === "de" ? "Abbrechen" : "Cancel"}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDeleteSingleAsset}
+                disabled={isDeletingAsset}
+                className="text-xs font-bold gap-1.5"
+              >
+                {isDeletingAsset ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {language === "de" ? "Endgültig löschen" : "Delete permanently"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

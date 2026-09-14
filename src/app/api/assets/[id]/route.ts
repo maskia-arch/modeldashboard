@@ -32,13 +32,33 @@ export async function DELETE(
       await deleteAssetLocalFile(asset.fileUrl);
     }
 
-    await prisma.asset.delete({
-      where: { id: asset.id },
-    });
+    // Transactionally clean up post references and delete asset
+    await prisma.$transaction([
+      // Delete draft/scheduled posts referencing this deleted asset
+      prisma.post.deleteMany({
+        where: {
+          assetId: asset.id,
+          status: { in: ["DRAFT", "SCHEDULED", "PENDING"] },
+        },
+      }),
+      // Disconnect already published posts so history remains intact
+      prisma.post.updateMany({
+        where: {
+          assetId: asset.id,
+        },
+        data: {
+          assetId: null,
+        },
+      }),
+      // Delete asset record
+      prisma.asset.delete({
+        where: { id: asset.id },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
-      message: "Asset and file deleted from disk successfully.",
+      message: "Asset und Datei erfolgreich von der Festplatte gelöscht.",
     });
   } catch (error: any) {
     console.error("Delete asset error:", error);
