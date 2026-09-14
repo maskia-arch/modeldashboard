@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { restoreAssetMediaByFilename } from "@/lib/model-sources";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /uploads/[...path]
- * Serves dynamic uploaded files (photos, videos, gifs) directly from disk.
- * Solves Next.js production 404 issue when files are created at runtime.
+ * GET /api/media/[...path]
+ * Serves media files directly by relative path (e.g. /api/media/models/mausi/file.jpg).
+ * Completely immune to Next.js static asset folder shadowing.
+ * Automatically restores missing media from Telegram if lost from disk.
  */
 export async function GET(
   request: NextRequest,
@@ -19,8 +21,8 @@ export async function GET(
       return new NextResponse("Not Found", { status: 404 });
     }
 
-    // Sanitize path parts
     const safeParts = pathParts.map((p) => path.basename(p));
+    const filename = safeParts[safeParts.length - 1];
 
     const possiblePaths = [
       path.join(process.cwd(), "public", "uploads", ...safeParts),
@@ -37,9 +39,9 @@ export async function GET(
       }
     }
 
+    // If file missing on disk, attempt on-demand restoration from Telegram!
     if (!foundPath) {
-      const filename = safeParts[safeParts.length - 1];
-      const { restoreAssetMediaByFilename } = await import("@/lib/model-sources");
+      console.log(`[MediaRoute] File ${filename} not on disk. Attempting auto-restore...`);
       const restored = await restoreAssetMediaByFilename(filename);
       if (restored.success && restored.filePath && fs.existsSync(restored.filePath)) {
         foundPath = restored.filePath;
@@ -47,7 +49,6 @@ export async function GET(
     }
 
     if (!foundPath || !fs.existsSync(foundPath)) {
-      console.warn("[UploadsRoute] File not found in candidates:", safeParts.join("/"));
       return new NextResponse("File Not Found", { status: 404 });
     }
 
@@ -72,7 +73,7 @@ export async function GET(
 
     const contentType = mimeMap[ext] || "application/octet-stream";
 
-    // Handle range requests for videos
+    // Handle range requests for video streaming
     const rangeHeader = request.headers.get("range");
     if (rangeHeader && (contentType.startsWith("video/") || contentType.startsWith("audio/"))) {
       const parts = rangeHeader.replace(/bytes=/, "").split("-");
@@ -107,11 +108,11 @@ export async function GET(
       headers: {
         "Content-Type": contentType,
         "Content-Length": stat.size.toString(),
-        "Cache-Control": "public, max-age=86400",
+        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
       },
     });
   } catch (error: any) {
-    console.error("[UploadsRoute] Error serving upload:", error);
+    console.error("[MediaRoute] Error serving media:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

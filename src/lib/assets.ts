@@ -28,14 +28,29 @@ export async function saveUploadedBuffer(
   buffer: Buffer,
   originalFilename: string,
   modelSlug: string
-): Promise<{ fileUrl: string; filePath: string; fileName: string }> {
+): Promise<{ fileUrl: string; filePath: string; fileName: string; size: number }> {
   const dir = getUploadsDirectory(modelSlug);
   const ext = path.extname(originalFilename).toLowerCase();
   const baseName = path.basename(originalFilename, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
   const uniqueName = `${Date.now()}_${Math.floor(Math.random() * 10000)}_${baseName}${ext}`;
   const filePath = path.join(dir, uniqueName);
 
+  // Write primary file
   await fs.promises.writeFile(filePath, buffer);
+
+  // Secondary dual-write to root /uploads to ensure persistence across any volume configuration
+  try {
+    const secondaryDir = path.join(process.cwd(), "uploads", "models", sanitizeSlug(modelSlug));
+    if (!fs.existsSync(secondaryDir)) {
+      fs.mkdirSync(secondaryDir, { recursive: true });
+    }
+    await fs.promises.writeFile(path.join(secondaryDir, uniqueName), buffer);
+  } catch {}
+
+  const stat = await fs.promises.stat(filePath);
+  if (stat.size === 0) {
+    throw new Error(`Written file was 0 bytes: ${filePath}`);
+  }
 
   const cleanSlug = sanitizeSlug(modelSlug);
   const fileUrl = `/uploads/models/${cleanSlug}/${uniqueName}`;
@@ -44,18 +59,21 @@ export async function saveUploadedBuffer(
     fileUrl,
     filePath,
     fileName: uniqueName,
+    size: stat.size,
   };
 }
 
 /**
- * Resolves a fileUrl (e.g. /uploads/models/mausi/pic.jpg) to its absolute local disk path.
+ * Resolves a fileUrl (e.g. /uploads/models/mausi/pic.jpg or /api/media/models/mausi/pic.jpg) to its absolute local disk path.
  */
 export function getAssetLocalPath(fileUrl?: string | null): string | null {
   if (!fileUrl) return null;
 
+  const cleanUrl = fileUrl.replace(/^\/api\/media\//, "/uploads/");
+
   // Only manage files located under /uploads/
-  if (fileUrl.startsWith("/uploads/")) {
-    const relativePath = fileUrl.startsWith("/") ? fileUrl.slice(1) : fileUrl;
+  if (cleanUrl.startsWith("/uploads/")) {
+    const relativePath = cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl;
     const candidates = [
       path.join(process.cwd(), "public", relativePath),
       path.join(process.cwd(), relativePath),
@@ -75,6 +93,8 @@ export function getAssetLocalPath(fileUrl?: string | null): string | null {
 
   return null;
 }
+
+export { getMediaDisplayUrl } from "./utils";
 
 /**
  * Deletes a media file from the local hard drive to avoid duplicates and free storage.

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import type { ScheduleItem, SchedulingStrategy, ScheduleStats } from "@/lib/grok";
 import { useLanguage } from "@/context/LanguageContext";
+import { getMediaDisplayUrl } from "@/lib/utils";
 
 interface Asset {
   id: string;
@@ -367,7 +368,7 @@ export function GrokSchedulerModal({
                   <div className="h-16 w-16 rounded-md bg-muted overflow-hidden shrink-0 border flex flex-col items-center justify-center p-1 text-center">
                     {asset?.fileUrl ? (
                       <img
-                        src={asset.fileUrl}
+                        src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
                         alt="Asset"
                         className="h-full w-full object-cover"
                       />

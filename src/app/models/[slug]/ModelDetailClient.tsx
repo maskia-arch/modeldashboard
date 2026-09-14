@@ -39,7 +39,7 @@ import { DirectPublishModal } from "@/components/DirectPublishModal";
 import { ManualClassifyModal } from "@/components/ManualClassifyModal";
 import { ScheduleAssetModal } from "@/components/ScheduleAssetModal";
 import { SourceChannelModal } from "@/components/SourceChannelModal";
-import { formatUsd, formatStars, truncateAddress } from "@/lib/utils";
+import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
@@ -662,14 +662,14 @@ export function ModelDetailClient({
                       {asset.fileUrl ? (
                         asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
                           <video
-                            src={asset.fileUrl}
+                            src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
                             className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
                             muted
                           />
                         ) : (
                           <>
                             <img
-                              src={asset.fileUrl}
+                              src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
                               alt={asset.title || "Vault asset"}
                               loading="lazy"
                               onError={(e) => {
@@ -686,9 +686,23 @@ export function ModelDetailClient({
                               <span className="text-[11px] font-semibold text-foreground truncate max-w-[130px] block">
                                 {asset.title || "Medium"}
                               </span>
-                              <span className="text-[9px] text-muted-foreground block">
-                                📁 {language === "de" ? "Auf Festplatte hinterlegt" : "Stored on disk"}
-                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-[10px] text-amber-300 border-amber-500/40 hover:bg-amber-500/10 gap-1 px-2 mt-1"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await fetch(`/api/assets/${asset.id}/preview?reload=1`);
+                                    if (res.ok) {
+                                      window.location.reload();
+                                    }
+                                  } catch {}
+                                }}
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                                {language === "de" ? "Neu laden" : "Reload"}
+                              </Button>
                             </div>
                           </>
                         )

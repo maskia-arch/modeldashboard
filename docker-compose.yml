@@ -79,6 +79,10 @@ services:
       - model_network
       - coolify
 
+    volumes:
+      - uploads_data:/app/public/uploads
+      - data_storage:/app/data
+
   # 4. Background Worker Service (BullMQ & MTProto GramJS)
   worker:
     build:
@@ -102,14 +106,20 @@ services:
       NODE_ENV: production
     networks:
       - model_network
+    volumes:
+      - uploads_data:/app/public/uploads
+      - data_storage:/app/data
 
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
+  data_storage:
 
 networks:
   model_network:
     driver: bridge
   coolify:
     external: true
+
 

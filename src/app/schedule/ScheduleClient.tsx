@@ -33,7 +33,7 @@ import { ContentUploadModal } from "@/components/ContentUploadModal";
 import { format, formatDistanceToNow, isToday } from "date-fns";
 import { de, enUS } from "date-fns/locale";
 import { useLanguage } from "@/context/LanguageContext";
-import { cn } from "@/lib/utils";
+import { cn, getMediaDisplayUrl } from "@/lib/utils";
 
 interface ScheduleClientProps {
   initialModels: any[];
@@ -600,9 +600,33 @@ export function ScheduleClient({
                         <span className="font-semibold text-muted-foreground block">{t.schedule.assignedMedia}</span>
                         {post.asset ? (
                           <>
-                            <div className="font-bold text-foreground">{post.asset.title || (language === "de" ? "Foto/Video" : "Photo/Video")}</div>
-                            <div className="text-[11px] text-muted-foreground">{language === "de" ? "Thema" : "Theme"}: {post.asset.theme || (language === "de" ? "Allgemein" : "General")}</div>
-                            <div className="text-[11px] text-muted-foreground">Level: {post.asset.explicitLevel}</div>
+                            <div className="flex items-start gap-2 pt-0.5">
+                              {post.asset.fileUrl && (
+                                <div className="h-12 w-12 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
+                                  {post.asset.type === "VIDEO" || post.asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
+                                    <video
+                                      src={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
+                                      className="h-full w-full object-cover"
+                                      muted
+                                    />
+                                  ) : (
+                                    <img
+                                      src={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
+                                      alt="Preview"
+                                      className="h-full w-full object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLElement).style.display = "none";
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-bold text-foreground truncate">{post.asset.title || (language === "de" ? "Foto/Video" : "Photo/Video")}</div>
+                                <div className="text-[11px] text-muted-foreground truncate">{language === "de" ? "Thema" : "Theme"}: {post.asset.theme || (language === "de" ? "Allgemein" : "General")}</div>
+                                <div className="text-[11px] text-muted-foreground">Level: {post.asset.explicitLevel}</div>
+                              </div>
+                            </div>
                             {post.asset.fileUrl?.startsWith("/uploads/") && (
                               <div className="mt-1">
                                 <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
@@ -612,7 +636,7 @@ export function ScheduleClient({
                             )}
                             {post.asset.fileUrl && (
                               <a
-                                href={post.asset.fileUrl}
+                                href={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-[11px] text-sky-400 hover:underline flex items-center gap-1 mt-1 truncate"

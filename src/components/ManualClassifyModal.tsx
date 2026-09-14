@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/context/LanguageContext";
+import { getMediaDisplayUrl } from "@/lib/utils";
 
 interface ManualClassifyModalProps {
   open: boolean;
@@ -117,9 +118,9 @@ export function ManualClassifyModal({
             <div className="h-14 w-14 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
               {asset?.fileUrl ? (
                 isVideo ? (
-                  <video src={asset.fileUrl} className="h-full w-full object-cover" muted />
+                  <video src={getMediaDisplayUrl(asset.fileUrl, asset.id)} className="h-full w-full object-cover" muted />
                 ) : (
-                  <img src={asset.fileUrl} alt="Preview" className="h-full w-full object-cover" />
+                  <img src={getMediaDisplayUrl(asset.fileUrl, asset.id)} alt="Preview" className="h-full w-full object-cover" />
                 )
               ) : (
                 <span className="text-[10px] font-bold text-muted-foreground">{asset?.type}</span>

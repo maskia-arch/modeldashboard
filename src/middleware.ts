@@ -17,6 +17,8 @@ export function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/media") ||
+    pathname.includes("/preview") ||
     pathname.startsWith("/uploads") ||
     pathname.includes(".") // favicon.ico, images, etc.
   ) {

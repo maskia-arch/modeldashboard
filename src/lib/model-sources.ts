@@ -6,6 +6,7 @@ import { saveUploadedBuffer, getAssetLocalPath, isPhotoExtension, isVideoOrGifEx
 import { classifyImageWithGrokVision } from "./grok";
 
 const SOURCES_FILE = path.join(process.cwd(), "data", "model-sources.json");
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export interface ModelSourceConfig {
   sourceChannelId: string;
@@ -146,31 +147,72 @@ export async function syncMediaFromSourceChannel(
 
       const filename = `source_msg_${msg.id}_${Date.now()}${ext}`;
 
-      try {
-        console.log(`[SourceChannel] Downloading media from message #${msg.id}...`);
-        const buffer = (await client.downloadMedia(msg, {})) as Buffer | undefined;
+      let buffer: Buffer | undefined = undefined;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          console.log(`[SourceChannel] Downloading media from msg #${msg.id} (attempt ${attempt}/3)...`);
+          const res = (await client.downloadMedia(msg, {})) as Buffer | undefined;
+          if (res && Buffer.isBuffer(res) && res.length > 0) {
+            buffer = res;
+            break;
+          }
+        } catch (err: any) {
+          console.warn(`[SourceChannel] Download attempt ${attempt}/3 for msg #${msg.id} failed:`, err.message);
+          await sleep(1000);
+        }
+      }
 
+      try {
         if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0) {
-          const { fileUrl } = await saveUploadedBuffer(buffer, filename, model.slug);
+          const { fileUrl, filePath, size } = await saveUploadedBuffer(buffer, filename, model.slug);
+          console.log(`[SourceChannel] Message #${msg.id}: verified ${size} bytes saved to disk at ${filePath}`);
+
+          const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(filename);
+
+          // Immortal Database Backup for photos <= 2.5 MB: preserves image even if source channel is dissolved!
+          let backupTag = "";
+          if (!isVideo && buffer.length <= 2.5 * 1024 * 1024) {
+            const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+            backupTag = ` | [BACKUP_DATA:data:${mime};base64,${buffer.toString("base64")}]`;
+          }
 
           // Check if an asset with caption / source message already exists
           const sourceNote = `Aus Quellkanal importiert (Nachricht #${msg.id})`;
           const existing = await prisma.asset.findFirst({
             where: {
               modelId: model.id,
-              notes: sourceNote,
+              notes: { contains: `Nachricht #${msg.id}` },
             },
           });
 
-          if (!existing) {
+          if (existing) {
+            // Check if local file is missing on disk - if so, restore it!
+            const localPath = getAssetLocalPath(existing.fileUrl);
+            if (!localPath || !fs.existsSync(localPath)) {
+              console.log(`[SourceChannel] Restoring missing disk file for existing asset #${existing.id} (msg #${msg.id})...`);
+              const updatedNotes = existing.notes
+                ? existing.notes.includes("[BACKUP_DATA:")
+                  ? existing.notes
+                  : existing.notes + backupTag
+                : backupTag;
+
+              await prisma.asset.update({
+                where: { id: existing.id },
+                data: {
+                  fileUrl,
+                  notes: updatedNotes,
+                },
+              });
+              importedCount++;
+            }
+          } else {
             const rawCaption = msg.message ? String(msg.message).trim() : "";
-            const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(filename);
 
             let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
             let assetTheme = "Unklassifiziert";
             let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
             let assetTags = ["quelle", "telegram", model.slug, "unclassified"];
-            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "");
+            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + backupTag;
 
             // If auto-classify is requested and it's a photo, run Grok 4.1 Vision immediately
             if (autoClassifyPhotos && !isVideo) {
@@ -211,7 +253,7 @@ export async function syncMediaFromSourceChannel(
           }
         }
       } catch (dlErr: any) {
-        console.warn(`[SourceChannel] Failed to download media from msg #${msg.id}:`, dlErr.message);
+        console.warn(`[SourceChannel] Failed to process media from msg #${msg.id}:`, dlErr.message);
       }
     }
 
@@ -221,11 +263,11 @@ export async function syncMediaFromSourceChannel(
       totalImported: (sourceConfig.totalImported || 0) + importedCount,
     });
 
-    console.log(`[SourceChannel] Successfully imported ${importedCount} media items for ${model.name}`);
+    console.log(`[SourceChannel] Successfully imported/restored ${importedCount} media items for ${model.name}`);
     return {
       success: true,
       importedCount,
-      message: `${importedCount} neue Medien erfolgreich aus dem Quell-Kanal auf die Festplatte geladen!`,
+      message: `${importedCount} Medien erfolgreich aus dem Quell-Kanal auf die Festplatte geladen!`,
     };
   } catch (error: any) {
     console.error("[SourceChannel] Error during media sync:", error);
@@ -239,5 +281,193 @@ export async function syncMediaFromSourceChannel(
     try {
       await client.disconnect();
     } catch {}
+  }
+}
+
+/**
+ * On-demand self-healing restoration of an asset's media file.
+ * Features triple redundancy:
+ * 1. Disk Verification (high-speed local filesystem)
+ * 2. Immortal Database Backup (restores photo immediately even if Telegram channel is deleted!)
+ * 3. Telegram Channel Re-fetch (if channel is still active)
+ */
+export async function restoreAssetMediaFile(assetId: string): Promise<{
+  success: boolean;
+  filePath?: string;
+  fileUrl?: string;
+  buffer?: Buffer;
+  error?: string;
+}> {
+  try {
+    const asset = await prisma.asset.findUnique({
+      where: { id: assetId },
+      include: { model: true },
+    });
+    if (!asset) {
+      return { success: false, error: "Asset not found" };
+    }
+
+    // 1. Check if file is already present on disk and non-empty
+    if (asset.fileUrl) {
+      const existingPath = getAssetLocalPath(asset.fileUrl);
+      if (existingPath && fs.existsSync(existingPath)) {
+        const stat = await fs.promises.stat(existingPath);
+        if (stat.size > 0) {
+          const buffer = await fs.promises.readFile(existingPath);
+          return {
+            success: true,
+            filePath: existingPath,
+            fileUrl: asset.fileUrl,
+            buffer,
+          };
+        }
+      }
+    }
+
+    // 2. Immortal Database Backup: Check if image is preserved in database notes
+    const backupMatch = asset.notes?.match(/\[BACKUP_DATA:(data:[^\]]+)\]/);
+    if (backupMatch && backupMatch[1]) {
+      try {
+        console.log(`[AssetRestore] Restoring asset #${asset.id} from immortal database backup...`);
+        const dataUri = backupMatch[1];
+        const commaIdx = dataUri.indexOf(",");
+        if (commaIdx !== -1) {
+          const base64Str = dataUri.slice(commaIdx + 1);
+          const restoredBuffer = Buffer.from(base64Str, "base64");
+          if (restoredBuffer.length > 0) {
+            const ext = dataUri.includes("image/png") ? ".png" : dataUri.includes("image/webp") ? ".webp" : ".jpg";
+            const filename = `restored_${asset.id}_${Date.now()}${ext}`;
+            const { fileUrl, filePath } = await saveUploadedBuffer(restoredBuffer, filename, asset.model.slug);
+            await prisma.asset.update({
+              where: { id: assetId },
+              data: { fileUrl },
+            });
+            console.log(`[AssetRestore] Successfully restored asset #${asset.id} from database backup to ${filePath}`);
+            return {
+              success: true,
+              filePath,
+              fileUrl,
+              buffer: restoredBuffer,
+            };
+          }
+        }
+      } catch (backupErr: any) {
+        console.warn(`[AssetRestore] Failed restoring from database backup:`, backupErr.message);
+      }
+    }
+
+    // Extract Telegram message ID from asset notes or tags
+    const match = asset.notes?.match(/Nachricht #(\d+)/);
+    if (!match) {
+      return { success: false, error: "No Telegram message reference found in asset notes" };
+    }
+    const msgId = parseInt(match[1], 10);
+    if (isNaN(msgId)) {
+      return { success: false, error: "Invalid message ID in asset notes" };
+    }
+
+    const sourceConfig = getModelSource(asset.modelId);
+    if (!sourceConfig || !sourceConfig.sourceChannelId) {
+      return { success: false, error: "Source channel not configured for model" };
+    }
+
+    const client = await createTelegramClient();
+    if (!client) {
+      return { success: false, error: "Telegram Userbot not configured" };
+    }
+
+    try {
+      const peer = await resolveChannelPeer(client, sourceConfig.sourceChannelId);
+      if (!peer) {
+        return { success: false, error: "Failed to resolve source channel peer" };
+      }
+
+      console.log(`[AssetRestore] Fetching message #${msgId} for asset ${asset.title || asset.id}...`);
+      const messages = await client.getMessages(peer, { ids: [msgId] });
+      const msg = messages && messages.length > 0 ? messages[0] : null;
+
+      if (!msg || !msg.media) {
+        return { success: false, error: `Message #${msgId} does not contain media` };
+      }
+
+      let ext = ".jpg";
+      const mediaAny: any = msg.media;
+      if (mediaAny.document) {
+        const mime = String(mediaAny.document.mimeType || "");
+        if (mime.includes("video") || mime.includes("mp4")) ext = ".mp4";
+        else if (mime.includes("gif")) ext = ".gif";
+        else if (mime.includes("png")) ext = ".png";
+        else if (mime.includes("webp")) ext = ".webp";
+      }
+
+      const filename = `source_msg_${msgId}_${Date.now()}${ext}`;
+      const buffer = (await client.downloadMedia(msg, {})) as Buffer | undefined;
+
+      if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return { success: false, error: "Failed to download media buffer from Telegram" };
+      }
+
+      const { fileUrl, filePath } = await saveUploadedBuffer(buffer, filename, asset.model.slug);
+
+      await prisma.asset.update({
+        where: { id: assetId },
+        data: { fileUrl },
+      });
+
+      console.log(`[AssetRestore] Restored media for asset ${assetId} -> ${filePath}`);
+      return {
+        success: true,
+        filePath,
+        fileUrl,
+        buffer,
+      };
+    } finally {
+      try {
+        await client.disconnect();
+      } catch {}
+    }
+  } catch (err: any) {
+    console.error(`[AssetRestore] Error restoring asset ${assetId}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Attempts self-healing media restoration given a filename.
+ */
+export async function restoreAssetMediaByFilename(filename: string): Promise<{
+  success: boolean;
+  filePath?: string;
+  fileUrl?: string;
+  buffer?: Buffer;
+  error?: string;
+}> {
+  try {
+    const cleanFilename = path.basename(filename);
+    const asset = await prisma.asset.findFirst({
+      where: {
+        fileUrl: { contains: cleanFilename },
+      },
+    });
+    if (asset) {
+      return await restoreAssetMediaFile(asset.id);
+    }
+
+    const match = cleanFilename.match(/source_msg_(\d+)/);
+    if (match) {
+      const msgId = match[1];
+      const fallbackAsset = await prisma.asset.findFirst({
+        where: {
+          notes: { contains: `Nachricht #${msgId}` },
+        },
+      });
+      if (fallbackAsset) {
+        return await restoreAssetMediaFile(fallbackAsset.id);
+      }
+    }
+
+    return { success: false, error: `No asset found matching filename ${cleanFilename}` };
+  } catch (err: any) {
+    return { success: false, error: err.message };
   }
 }

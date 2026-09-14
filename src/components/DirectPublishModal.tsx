@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/context/LanguageContext";
+import { getMediaDisplayUrl } from "@/lib/utils";
 
 interface DirectPublishModalProps {
   open: boolean;
@@ -151,13 +152,13 @@ export function DirectPublishModal({
               {activeAsset?.fileUrl ? (
                 isVideo ? (
                   <video
-                    src={activeAsset.fileUrl}
+                    src={getMediaDisplayUrl(activeAsset.fileUrl, activeAsset.id)}
                     className="h-full w-full object-cover"
                     muted
                   />
                 ) : (
                   <img
-                    src={activeAsset.fileUrl}
+                    src={getMediaDisplayUrl(activeAsset.fileUrl, activeAsset.id)}
                     alt="Preview"
                     className="h-full w-full object-cover"
                   />

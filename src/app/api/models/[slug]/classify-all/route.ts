@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getAssetLocalPath, isPhotoExtension } from "@/lib/assets";
 import { classifyImageWithGrokVision } from "@/lib/grok";
+import { restoreAssetMediaFile } from "@/lib/model-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,15 @@ export async function POST(
     for (const asset of unclassifiedAssets) {
       if (!asset.fileUrl || !isPhotoExtension(asset.fileUrl)) continue;
 
-      const localPath = getAssetLocalPath(asset.fileUrl);
+      let localPath = getAssetLocalPath(asset.fileUrl);
+      if (!localPath) {
+        // Attempt automatic restoration from Telegram
+        const restored = await restoreAssetMediaFile(asset.id);
+        if (restored.success && restored.filePath) {
+          localPath = restored.filePath;
+        }
+      }
+
       if (!localPath) {
         errors.push(`Datei nicht auf Festplatte gefunden für ${asset.title}`);
         continue;
