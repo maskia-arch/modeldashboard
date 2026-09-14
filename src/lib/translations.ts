@@ -340,6 +340,14 @@ export const translations = {
       reclassifyButton: "🔄 Neu bewerten",
       reclassifyAllButton: "🔄 Gesamten Content erneut mit Grok AI klassifizieren",
       scheduleAssetButton: "📅 Verplanen",
+      storageTitle: "Content-Speicher (50 GB reserviert)",
+      storageQuota: "50 GB Kontingent",
+      storageUsed: "Belegt",
+      storageFree: "Frei",
+      storageFiles: "Dateien",
+      storageCleanupButton: "🧹 Speicher optimieren (Duplikate & verbrauchten Content löschen)",
+      storageCleaning: "Bereinige Festplatte...",
+      storageNearQuotaWarning: "Achtung: Content-Speicher ist zu über 80% belegt!",
     },
 
     // Content Upload & Management
@@ -1207,6 +1215,14 @@ export const translations = {
       reclassifyButton: "🔄 Re-classify",
       reclassifyAllButton: "🔄 Re-classify All Content with Grok AI",
       scheduleAssetButton: "📅 Schedule",
+      storageTitle: "Content Storage (50 GB Reserved)",
+      storageQuota: "50 GB Quota",
+      storageUsed: "Used",
+      storageFree: "Free",
+      storageFiles: "Files",
+      storageCleanupButton: "🧹 Optimize Storage (Delete Duplicates & Used Content)",
+      storageCleaning: "Cleaning disk...",
+      storageNearQuotaWarning: "Warning: Content storage is over 80% full!",
     },
 
     // Content Upload & Management

@@ -164,8 +164,19 @@ export async function syncMediaFromSourceChannel(
 
       try {
         if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0) {
-          const { fileUrl, filePath, size } = await saveUploadedBuffer(buffer, filename, model.slug);
+          const { fileUrl, filePath, size, hash } = await saveUploadedBuffer(buffer, filename, model.slug);
           console.log(`[SourceChannel] Message #${msg.id}: verified ${size} bytes saved to disk at ${filePath}`);
+
+          // Check if identical content hash already exists for this model
+          const { findDuplicateAsset } = await import("@/lib/storage");
+          const duplicate = await findDuplicateAsset(model.id, hash);
+
+          if (duplicate) {
+            console.log(`[SourceChannel] Message #${msg.id}: duplicate content detected (matches asset #${duplicate.id}). Skipping to save storage.`);
+            const { deleteAssetLocalFile } = await import("@/lib/assets");
+            await deleteAssetLocalFile(fileUrl);
+            continue;
+          }
 
           const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(filename);
 
@@ -200,7 +211,7 @@ export async function syncMediaFromSourceChannel(
                 where: { id: existing.id },
                 data: {
                   fileUrl,
-                  notes: updatedNotes,
+                  notes: updatedNotes.includes("[HASH:") ? updatedNotes : `${updatedNotes} | [HASH:${hash}]`,
                 },
               });
               importedCount++;
@@ -212,7 +223,7 @@ export async function syncMediaFromSourceChannel(
             let assetTheme = "Unklassifiziert";
             let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
             let assetTags = ["quelle", "telegram", model.slug, "unclassified"];
-            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + backupTag;
+            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + backupTag + ` | [HASH:${hash}]`;
 
             // If auto-classify is requested and it's a photo, run Grok 4.1 Vision immediately
             if (autoClassifyPhotos && !isVideo) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Sparkles,
   Wallet,
@@ -24,6 +24,7 @@ import {
   Users,
   UploadCloud,
   Radio,
+  HardDrive,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -167,6 +168,25 @@ export function ModelDetailClient({
   const [expenseReceipt, setExpenseReceipt] = useState("");
   const [isSavingExpense, setIsSavingExpense] = useState(false);
 
+  const [storageStatus, setStorageStatus] = useState<any>(null);
+  const [isCleaningStorage, setIsCleaningStorage] = useState(false);
+
+  const fetchStorageStatus = async () => {
+    try {
+      const res = await fetch("/api/storage");
+      if (res.ok) {
+        const data = await res.json();
+        setStorageStatus(data.storage);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchStorageStatus();
+  }, []);
+
   const refreshData = async () => {
     try {
       const res = await fetch(`/api/models/${model.slug}`);
@@ -175,8 +195,40 @@ export function ModelDetailClient({
         setModel(data);
         setFinancials(data.financials);
       }
+      await fetchStorageStatus();
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleCleanupStorage = async () => {
+    if (
+      !confirm(
+        language === "de"
+          ? "Möchten Sie verbrauchten (bereits geposteten) Content von der Festplatte löschen und Duplikate bereinigen?"
+          : "Do you want to delete used content and remove duplicates from disk?"
+      )
+    ) {
+      return;
+    }
+    setIsCleaningStorage(true);
+    try {
+      const res = await fetch("/api/storage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId: model.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message);
+        await refreshData();
+      } else {
+        alert(data.error || "Fehler bei der Bereinigung");
+      }
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Optimieren");
+    } finally {
+      setIsCleaningStorage(false);
     }
   };
 
@@ -691,6 +743,81 @@ export function ModelDetailClient({
                 )}
               </Button>
             </div>
+          )}
+
+          {/* 50 GB Server Content-Speicher Widget */}
+          {storageStatus && (
+            <Card className="border border-border/60 bg-gradient-to-br from-card/90 via-card to-background shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-5 flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                      <HardDrive className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-foreground">
+                          {t.modelDetail.storageTitle}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-bold ${
+                            storageStatus.isOverQuota
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/50"
+                              : storageStatus.isNearQuota
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/50"
+                          }`}
+                        >
+                          {storageStatus.usedGb.toFixed(2)} GB / {storageStatus.quotaGb} GB ({storageStatus.usedPercentage.toFixed(1)}%)
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {language === "de"
+                          ? `${storageStatus.freeGb.toFixed(2)} GB frei • ${storageStatus.totalFiles} Mediendateien auf Server (${storageStatus.activeAssetsCount} aktiv, ${storageStatus.usedAssetsCount} verbraucht)`
+                          : `${storageStatus.freeGb.toFixed(2)} GB available • ${storageStatus.totalFiles} media files on server (${storageStatus.activeAssetsCount} active, ${storageStatus.usedAssetsCount} used)`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isCleaningStorage}
+                    onClick={handleCleanupStorage}
+                    className="gap-2 text-xs font-semibold border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 transition-colors shrink-0"
+                    title={language === "de" ? "Bereinigt verbrauchte Dateien von der Festplatte und entfernt Duplikate" : "Delete used content and remove duplicates from disk"}
+                  >
+                    {isCleaningStorage ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                    <span>{isCleaningStorage ? t.modelDetail.storageCleaning : t.modelDetail.storageCleanupButton}</span>
+                  </Button>
+                </div>
+
+                {/* Storage Progress Bar */}
+                <div className="w-full bg-secondary/60 h-2.5 rounded-full overflow-hidden border border-border/40">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      storageStatus.isOverQuota
+                        ? "bg-rose-500"
+                        : storageStatus.isNearQuota
+                        ? "bg-amber-500"
+                        : "bg-gradient-to-r from-indigo-500 to-purple-600"
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(storageStatus.usedPercentage, 0.5))}%` }}
+                  />
+                </div>
+
+                {storageStatus.isNearQuota && (
+                  <p className="text-[11px] text-amber-400 font-medium flex items-center gap-1.5 mt-0.5">
+                    <span>⚠️</span> {t.modelDetail.storageNearQuotaWarning}
+                  </p>
+                )}
+              </div>
+            </Card>
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">

@@ -22,13 +22,16 @@ export function getUploadsDirectory(modelSlug: string): string {
 }
 
 /**
- * Saves a file buffer to disk and returns the public fileUrl and absolute filePath.
+ * Saves a file buffer to disk and returns the public fileUrl, absolute filePath, and content hash.
  */
 export async function saveUploadedBuffer(
   buffer: Buffer,
   originalFilename: string,
   modelSlug: string
-): Promise<{ fileUrl: string; filePath: string; fileName: string; size: number }> {
+): Promise<{ fileUrl: string; filePath: string; fileName: string; size: number; hash: string }> {
+  const crypto = await import("crypto");
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex");
+
   const dir = getUploadsDirectory(modelSlug);
   const ext = path.extname(originalFilename).toLowerCase();
   const baseName = path.basename(originalFilename, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -60,6 +63,7 @@ export async function saveUploadedBuffer(
     filePath,
     fileName: uniqueName,
     size: stat.size,
+    hash,
   };
 }
 
@@ -97,23 +101,42 @@ export function getAssetLocalPath(fileUrl?: string | null): string | null {
 export { getMediaDisplayUrl } from "./utils";
 
 /**
- * Deletes a media file from the local hard drive to avoid duplicates and free storage.
+ * Deletes a media file from the local hard drive across all storage locations
+ * to avoid duplicates and free storage.
  */
 export async function deleteAssetLocalFile(fileUrl?: string | null): Promise<boolean> {
   if (!fileUrl) return false;
 
+  let deletedAny = false;
   try {
-    const localPath = getAssetLocalPath(fileUrl);
-    if (localPath && fs.existsSync(localPath)) {
-      await fs.promises.unlink(localPath);
-      console.log(`[AssetStorage] Successfully deleted consumed file from disk: ${localPath}`);
-      return true;
+    const cleanUrl = fileUrl.replace(/^\/api\/media\//, "/uploads/");
+    if (cleanUrl.startsWith("/uploads/")) {
+      const relativePath = cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl;
+      const candidates = [
+        path.join(process.cwd(), "public", relativePath),
+        path.join(process.cwd(), relativePath),
+        path.join(process.cwd(), ".next", "standalone", "public", relativePath),
+        path.join(process.cwd(), ".next", "standalone", relativePath),
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) {
+          try {
+            await fs.promises.unlink(c);
+            console.log(`[AssetStorage] Successfully deleted consumed file from disk: ${c}`);
+            deletedAny = true;
+          } catch {}
+        }
+      }
+    } else if (path.isAbsolute(fileUrl) && fs.existsSync(fileUrl)) {
+      await fs.promises.unlink(fileUrl);
+      console.log(`[AssetStorage] Successfully deleted absolute file from disk: ${fileUrl}`);
+      deletedAny = true;
     }
   } catch (error) {
     console.error(`[AssetStorage] Failed to delete file from disk: ${fileUrl}`, error);
   }
 
-  return false;
+  return deletedAny;
 }
 
 /**
