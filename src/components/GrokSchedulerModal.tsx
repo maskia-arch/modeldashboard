@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, Calendar, Clock, Star, CheckCircle2, AlertCircle, RefreshCw, Send } from "lucide-react";
+import { Sparkles, Calendar, Clock, Star, CheckCircle2, AlertCircle, RefreshCw, Send, Coffee } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import type { ScheduleItem } from "@/lib/grok";
+import type { ScheduleItem, SchedulingStrategy, ScheduleStats } from "@/lib/grok";
 import { useLanguage } from "@/context/LanguageContext";
 
 interface Asset {
@@ -42,10 +42,13 @@ export function GrokSchedulerModal({
 }: GrokSchedulerModalProps) {
   const { t, language } = useLanguage();
   const [days, setDays] = useState<number>(30);
+  const [strategy, setStrategy] = useState<SchedulingStrategy>("REALISTIC");
+  const [allowPauseDays, setAllowPauseDays] = useState<boolean>(true);
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [tone, setTone] = useState<string>("Alluring, playful, engaging German VIP creator");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleItem[]>([]);
+  const [stats, setStats] = useState<ScheduleStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
 
@@ -61,6 +64,8 @@ export function GrokSchedulerModal({
           modelName,
           channelTitle,
           targetDays: days,
+          strategy,
+          allowPauseDays,
           postsPerDay,
           modelTone: tone,
           availableAssets: availableAssets.map((a) => ({
@@ -75,13 +80,26 @@ export function GrokSchedulerModal({
         }),
       });
 
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(
+          language === "de"
+            ? `Server-Antwort war kein gültiges JSON (${res.status}). Bitte erneut versuchen.`
+            : `Invalid server response (${res.status}). Please try again.`
+        );
+      }
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to generate schedule");
       }
 
-      const data = await res.json();
       setGeneratedSchedule(data.schedule || []);
+      if (data.stats) {
+        setStats(data.stats);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to generate schedule");
     } finally {
@@ -106,6 +124,7 @@ export function GrokSchedulerModal({
 
       onOpenChange(false);
       setGeneratedSchedule([]);
+      setStats(null);
       if (onScheduleCreated) onScheduleCreated();
     } catch (err: any) {
       setError(err.message || "Failed to batch save scheduled posts");
@@ -188,7 +207,51 @@ export function GrokSchedulerModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                    {t.grokScheduler.strategyLabel}
+                  </label>
+                  <select
+                    value={strategy}
+                    onChange={(e) => setStrategy(e.target.value as SchedulingStrategy)}
+                    className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
+                  >
+                    <option value="REALISTIC">{t.grokScheduler.strategyRealistic}</option>
+                    <option value="VARIABLE_1_2">{t.grokScheduler.strategyVariable}</option>
+                    <option value="FIXED_1">{t.grokScheduler.strategyFixed1}</option>
+                    <option value="FIXED_2">{t.grokScheduler.strategyFixed2}</option>
+                    <option value="RELAXED">{t.grokScheduler.strategyRelaxed}</option>
+                  </select>
+                  {strategy === "REALISTIC" && (
+                    <span className="text-[10px] text-muted-foreground mt-1 block">
+                      {t.grokScheduler.strategyRealisticDesc}
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
+                    {t.grokScheduler.availableMediaLabel}
+                  </label>
+                  <div className="h-9 px-3 border rounded-md bg-muted/30 text-xs flex items-center justify-between">
+                    <span className="font-semibold">{availableAssets.length} {language === "de" ? "Medien im Pool" : "Media in Pool"}</span>
+                    <div className="flex gap-1">
+                      <Badge variant="teaser" className="text-[10px] px-1.5 py-0">
+                        {availableAssets.filter((a) => a.explicitLevel === "TEASER").length} Teaser
+                      </Badge>
+                      <Badge variant="soft" className="text-[10px] px-1.5 py-0">
+                        {availableAssets.filter((a) => a.explicitLevel === "SOFT").length} Soft
+                      </Badge>
+                      <Badge variant="ppv" className="text-[10px] px-1.5 py-0">
+                        {availableAssets.filter((a) => a.explicitLevel === "PPV").length} PPV
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">
                     {language === "de" ? "Exakte Tage (1 - 120 Tage)" : "Exact Days (1 - 120 Days)"}
@@ -202,38 +265,23 @@ export function GrokSchedulerModal({
                   />
                 </div>
 
-                <div>
-                  <label className="text-[11px] text-muted-foreground block mb-1">
-                    {t.grokScheduler.postsPerDayLabel}
-                  </label>
-                  <select
-                    value={postsPerDay}
-                    onChange={(e) => setPostsPerDay(parseInt(e.target.value, 10) || 1)}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
-                  >
-                    <option value={1} className="bg-card">{language === "de" ? "1 Post täglich (Fokus Qualität)" : "1 post daily (Quality focus)"}</option>
-                    <option value={2} className="bg-card">{language === "de" ? "2 Posts täglich (Teaser + PPV)" : "2 posts daily (Teaser + PPV)"}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-muted-foreground block mb-1">
-                    {t.grokScheduler.availableMediaLabel}
-                  </label>
-                  <div className="h-9 px-3 border rounded-md bg-muted/30 text-xs flex items-center justify-between">
-                    <span className="font-semibold">{availableAssets.length} {language === "de" ? "Medien" : "Items"}</span>
-                    <div className="flex gap-1">
-                      <Badge variant="teaser" className="text-[10px] px-1 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "TEASER").length} T
-                      </Badge>
-                      <Badge variant="soft" className="text-[10px] px-1 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "SOFT").length} S
-                      </Badge>
-                      <Badge variant="ppv" className="text-[10px] px-1 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "PPV").length} PPV
-                      </Badge>
+                <div className="flex items-center">
+                  <label className="flex items-center gap-2.5 p-2.5 rounded-lg border bg-muted/20 hover:bg-muted/30 transition-colors cursor-pointer w-full mt-3 sm:mt-0">
+                    <input
+                      type="checkbox"
+                      checked={allowPauseDays}
+                      onChange={(e) => setAllowPauseDays(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-medium block text-foreground">
+                        {language === "de" ? "Pausentage erlauben (0 Posts)" : "Allow Pause Days (0 Posts)"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground block">
+                        {language === "de" ? "Natürliche Ruhetage wie bei echten Models" : "Natural rest days like real models"}
+                      </span>
                     </div>
-                  </div>
+                  </label>
                 </div>
               </div>
             </div>
@@ -251,14 +299,58 @@ export function GrokSchedulerModal({
           </div>
         ) : (
           /* Preview Generated Schedule */
-          <div className="space-y-3 py-2 max-h-[50vh] overflow-y-auto pr-1">
+          <div className="space-y-3 py-2 max-h-[55vh] overflow-y-auto pr-1">
+            {/* Stats Summary Overview */}
+            {stats && (
+              <div className="p-3 rounded-lg border bg-card/80 space-y-2.5 border-purple-500/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                    {t.grokScheduler.statsOverview}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] gap-1 text-purple-400 border-purple-500/30">
+                    <Sparkles className="h-3 w-3" />
+                    {stats.totalDays} {language === "de" ? "Tage geplant" : "Days scheduled"}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-2 rounded bg-muted/40 text-center">
+                    <span className="text-base font-bold text-foreground block">{stats.totalPosts}</span>
+                    <span className="text-[10px] text-muted-foreground">{t.grokScheduler.statsPosts}</span>
+                  </div>
+                  <div className="p-2 rounded bg-muted/40 text-center">
+                    <span className="text-base font-bold text-amber-500 block">{stats.pauseDays}</span>
+                    <span className="text-[10px] text-muted-foreground">{t.grokScheduler.statsPauseDays}</span>
+                  </div>
+                  <div className="p-2 rounded bg-muted/40 text-center">
+                    <span className="text-base font-bold text-blue-500 block">{stats.daysWithOnePost}</span>
+                    <span className="text-[10px] text-muted-foreground">{t.grokScheduler.statsOnePost}</span>
+                  </div>
+                  <div className="p-2 rounded bg-muted/40 text-center">
+                    <span className="text-base font-bold text-purple-500 block">{stats.daysWithTwoPosts}</span>
+                    <span className="text-[10px] text-muted-foreground">{t.grokScheduler.statsTwoPosts}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-1.5 border-t text-[11px] text-muted-foreground justify-between">
+                  <span>Content-Mix:</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <Badge variant="teaser" className="text-[10px]">{stats.teaserCount} Teaser (Free)</Badge>
+                    <Badge variant="soft" className="text-[10px]">{stats.softCount} Soft</Badge>
+                    <Badge variant="ppv" className="text-[10px]">{stats.ppvCount} VIP PPV (Stars)</Badge>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{t.grokScheduler.previewTitle} ({generatedSchedule.length} Posts):</span>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-6 text-xs text-purple-400 gap-1"
-                onClick={() => setGeneratedSchedule([])}
+                onClick={() => {
+                  setGeneratedSchedule([]);
+                  setStats(null);
+                }}
               >
                 <RefreshCw className="h-3 w-3" />
                 {language === "de" ? "Zurück / Parameter anpassen" : "Reset / Adjust Parameters"}
@@ -356,7 +448,10 @@ export function GrokSchedulerModal({
             <div className="flex gap-2 w-full justify-end">
               <Button
                 variant="outline"
-                onClick={() => setGeneratedSchedule([])}
+                onClick={() => {
+                  setGeneratedSchedule([]);
+                  setStats(null);
+                }}
                 disabled={isPublishing}
               >
                 {t.common.back}
