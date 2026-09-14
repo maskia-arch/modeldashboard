@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { calculateFinancials } from "@/lib/financial-engine";
 import { getCurrentUser } from "@/lib/auth";
 import { syncStarsForChannel } from "@/lib/telegram-stars";
+import { normalizeTelegramChatId } from "@/lib/telegram-bot";
 
 export async function GET() {
   try {
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       data: {
         name,
         slug,
-        telegramChannelId,
+        telegramChannelId: normalizeTelegramChatId(telegramChannelId),
         channelTitle,
         avatarUrl,
         openInvestBalance: parseFloat(openInvestBalance) || 0.0,

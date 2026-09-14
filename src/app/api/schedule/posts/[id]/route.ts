@@ -30,7 +30,66 @@ export async function PATCH(
 
     const updateData: any = {};
 
-    // 1. Check-off as published (Manual post confirmed by admin)
+    // 1. Direct Publish to Telegram Bot API
+    if (action === "PUBLISH_TELEGRAM") {
+      const fullPost = await prisma.post.findUnique({
+        where: { id },
+        include: { model: true, asset: true },
+      });
+      if (!fullPost) {
+        return NextResponse.json({ error: "Post not found" }, { status: 404 });
+      }
+
+      const effectiveCaption = caption !== undefined ? caption : fullPost.caption;
+      const effectivePrice = starsPrice !== undefined ? Math.max(0, parseInt(starsPrice, 10) || 0) : fullPost.starsPrice;
+
+      const { publishToTelegram } = await import("@/lib/telegram-bot");
+      const result = await publishToTelegram({
+        channelId: fullPost.model.telegramChannelId,
+        fileUrl: fullPost.asset?.fileUrl,
+        type: fullPost.asset?.type || "PHOTO",
+        caption: effectiveCaption,
+        starsPrice: effectivePrice,
+      });
+
+      if (!result.success) {
+        await prisma.post.update({
+          where: { id },
+          data: { status: PostStatus.FAILED },
+        });
+        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 502 });
+      }
+
+      // Mark as PUBLISHED and clean up media from disk
+      const updatedPost = await prisma.post.update({
+        where: { id },
+        data: {
+          status: PostStatus.PUBLISHED,
+          caption: effectiveCaption,
+          starsPrice: effectivePrice,
+          telegramMsgId: result.messageId,
+        },
+        include: {
+          model: {
+            select: { id: true, name: true, slug: true, telegramChannelId: true, channelTitle: true },
+          },
+          asset: true,
+        },
+      });
+
+      if (fullPost.asset) {
+        await prisma.asset.update({
+          where: { id: fullPost.asset.id },
+          data: { isUsed: true },
+        });
+        const { deleteAssetLocalFile } = await import("@/lib/assets");
+        await deleteAssetLocalFile(fullPost.asset.fileUrl);
+      }
+
+      return NextResponse.json(updatedPost);
+    }
+
+    // 2. Offline check-off as published (Manual post marked by admin without Telegram Bot)
     if (action === "COMPLETE" || status === "PUBLISHED") {
       updateData.status = PostStatus.PUBLISHED;
 

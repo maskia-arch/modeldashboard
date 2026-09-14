@@ -31,6 +31,12 @@ export default async function ModelsPage() {
         expenses: true,
         starTransactions: true,
         payouts: true,
+        posts: {
+          where: { status: { in: ["SCHEDULED", "PENDING"] } },
+          select: { id: true, scheduledFor: true },
+          orderBy: { scheduledFor: "desc" },
+          take: 1,
+        },
         _count: {
           select: {
             assets: true,

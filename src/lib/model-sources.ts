@@ -77,7 +77,7 @@ export async function syncMediaFromSourceChannel(
   modelId: string,
   limit: number = 50,
   autoClassifyPhotos: boolean = false
-): Promise<{ success: boolean; importedCount: number; message: string; error?: string }> {
+): Promise<{ success: boolean; importedCount: number; skippedCount?: number; message: string; error?: string }> {
   const model = await prisma.model.findUnique({ where: { id: modelId } });
   if (!model) {
     return { success: false, importedCount: 0, message: "Model not found" };
@@ -108,14 +108,46 @@ export async function syncMediaFromSourceChannel(
       throw new Error(`Quellkanal ${sourceConfig.sourceChannelId} konnte nicht aufgelöst werden.`);
     }
 
-    console.log(`[SourceChannel] Fetching last ${limit} messages from source channel...`);
-    const messages = await client.getMessages(peer, { limit });
+    // Load existing assets for this model to build fast lookup of already imported message IDs
+    const existingAssets = await prisma.asset.findMany({
+      where: { modelId: model.id },
+      select: { id: true, notes: true, fileUrl: true },
+    });
 
+    const existingMsgMap = new Map<number, { id: string; fileUrl: string | null; notes: string | null }>();
+    const msgRegex = /Nachricht #(\d+)/;
+    for (const asset of existingAssets) {
+      if (asset.notes) {
+        const match = asset.notes.match(msgRegex);
+        if (match) {
+          existingMsgMap.set(parseInt(match[1], 10), asset);
+        }
+      }
+    }
+
+    console.log(`[SourceChannel] Found ${existingAssets.length} existing assets (${existingMsgMap.size} mapped to source messages) for ${model.name}.`);
+
+    const isAll = limit === 0;
+    console.log(`[SourceChannel] ${isAll ? "Scanning ALL messages" : `Fetching up to ${limit} messages`} from source channel...`);
+
+    const iterParams = isAll ? {} : { limit };
     let importedCount = 0;
+    let skippedExistingCount = 0;
 
-    for (const msg of messages) {
+    for await (const msg of client.iterMessages(peer, iterParams)) {
       // Only process messages that contain media
       if (!msg.media) continue;
+
+      // Incremental Update Check:
+      // If this message was already imported and the file exists on disk, skip downloading completely!
+      const existing = existingMsgMap.get(msg.id);
+      if (existing) {
+        const localPath = existing.fileUrl ? getAssetLocalPath(existing.fileUrl) : null;
+        if (localPath && fs.existsSync(localPath)) {
+          skippedExistingCount++;
+          continue; // Zero download, zero delay!
+        }
+      }
 
       // Determine extension and media type
       let ext = ".jpg";
@@ -175,6 +207,7 @@ export async function syncMediaFromSourceChannel(
             console.log(`[SourceChannel] Message #${msg.id}: duplicate content detected (matches asset #${duplicate.id}). Skipping to save storage.`);
             const { deleteAssetLocalFile } = await import("@/lib/assets");
             await deleteAssetLocalFile(fileUrl);
+            skippedExistingCount++;
             continue;
           }
 
@@ -189,33 +222,24 @@ export async function syncMediaFromSourceChannel(
 
           // Check if an asset with caption / source message already exists
           const sourceNote = `Aus Quellkanal importiert (Nachricht #${msg.id})`;
-          const existing = await prisma.asset.findFirst({
-            where: {
-              modelId: model.id,
-              notes: { contains: `Nachricht #${msg.id}` },
-            },
-          });
 
           if (existing) {
-            // Check if local file is missing on disk - if so, restore it!
-            const localPath = getAssetLocalPath(existing.fileUrl);
-            if (!localPath || !fs.existsSync(localPath)) {
-              console.log(`[SourceChannel] Restoring missing disk file for existing asset #${existing.id} (msg #${msg.id})...`);
-              const updatedNotes = existing.notes
-                ? existing.notes.includes("[BACKUP_DATA:")
-                  ? existing.notes
-                  : existing.notes + backupTag
-                : backupTag;
+            // Restore missing disk file for existing asset
+            console.log(`[SourceChannel] Restored missing disk file for existing asset #${existing.id} (msg #${msg.id}).`);
+            const updatedNotes = existing.notes
+              ? existing.notes.includes("[BACKUP_DATA:")
+                ? existing.notes
+                : existing.notes + backupTag
+              : backupTag;
 
-              await prisma.asset.update({
-                where: { id: existing.id },
-                data: {
-                  fileUrl,
-                  notes: updatedNotes.includes("[HASH:") ? updatedNotes : `${updatedNotes} | [HASH:${hash}]`,
-                },
-              });
-              importedCount++;
-            }
+            await prisma.asset.update({
+              where: { id: existing.id },
+              data: {
+                fileUrl,
+                notes: updatedNotes.includes("[HASH:") ? updatedNotes : `${updatedNotes} | [HASH:${hash}]`,
+              },
+            });
+            importedCount++;
           } else {
             const rawCaption = msg.message ? String(msg.message).trim() : "";
 
@@ -246,7 +270,7 @@ export async function syncMediaFromSourceChannel(
               }
             }
 
-            await prisma.asset.create({
+            const newAsset = await prisma.asset.create({
               data: {
                 modelId: model.id,
                 title: assetTitle,
@@ -260,6 +284,7 @@ export async function syncMediaFromSourceChannel(
               },
             });
 
+            existingMsgMap.set(msg.id, { id: newAsset.id, fileUrl, notes: assetNotes });
             importedCount++;
           }
         }
@@ -274,11 +299,23 @@ export async function syncMediaFromSourceChannel(
       totalImported: (sourceConfig.totalImported || 0) + importedCount,
     });
 
-    console.log(`[SourceChannel] Successfully imported/restored ${importedCount} media items for ${model.name}`);
+    let message = "";
+    if (importedCount === 0 && skippedExistingCount > 0) {
+      message = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${skippedExistingCount} bereits im Dashboard vorhanden).`;
+    } else if (importedCount > 0 && skippedExistingCount > 0) {
+      message = `${importedCount} neue Medien erfolgreich aus dem Quell-Kanal importiert! (${skippedExistingCount} bereits vorhandene übersprungen)`;
+    } else if (importedCount > 0) {
+      message = `${importedCount} Medien erfolgreich aus dem Quell-Kanal auf die Festplatte geladen!`;
+    } else {
+      message = "Keine Medien im Quell-Kanal gefunden.";
+    }
+
+    console.log(`[SourceChannel] Sync finished for ${model.name}: ${importedCount} imported, ${skippedExistingCount} existing skipped.`);
     return {
       success: true,
       importedCount,
-      message: `${importedCount} Medien erfolgreich aus dem Quell-Kanal auf die Festplatte geladen!`,
+      skippedCount: skippedExistingCount,
+      message,
     };
   } catch (error: any) {
     console.error("[SourceChannel] Error during media sync:", error);

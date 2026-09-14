@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateFinancials } from "@/lib/financial-engine";
 import { getCurrentUser } from "@/lib/auth";
+import { normalizeTelegramChatId } from "@/lib/telegram-bot";
 
 export async function GET(
   req: Request,
@@ -98,6 +99,9 @@ export async function PATCH(
     if (body.name !== undefined) updateData.name = body.name;
     if (body.channelTitle !== undefined) updateData.channelTitle = body.channelTitle;
     if (body.avatarUrl !== undefined) updateData.avatarUrl = body.avatarUrl;
+    if (body.telegramChannelId !== undefined && body.telegramChannelId.trim()) {
+      updateData.telegramChannelId = normalizeTelegramChatId(body.telegramChannelId);
+    }
     if (body.openInvestBalance !== undefined) {
       updateData.openInvestBalance = parseFloat(body.openInvestBalance) || 0.0;
     }

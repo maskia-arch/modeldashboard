@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus, ExplicitLevel } from "@prisma/client";
+import { getGermanDateParts, createGermanDate } from "@/lib/timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,8 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { modelId, startDate, resetExisting } = body;
+    const { modelId, startDate, resetExisting, mode } = body;
+    const shouldReset = mode ? mode === "regenerate" : Boolean(resetExisting);
 
     const modelsToPlan = modelId && modelId !== "ALL"
       ? await prisma.model.findMany({ where: { id: modelId } })
@@ -27,17 +29,35 @@ export async function POST(req: Request) {
     let totalPauseDays = 0;
     const modelReports: any[] = [];
 
-    // Parse starting day
-    const baseStart = startDate ? new Date(startDate) : new Date();
-    // Default start from tomorrow if past 18:00 today
-    if (!startDate && baseStart.getHours() >= 18) {
-      baseStart.setDate(baseStart.getDate() + 1);
+    // Parse starting day in German Time (Europe/Berlin)
+    const nowGerman = getGermanDateParts(new Date());
+    let baseStartGermanYear = nowGerman.year;
+    let baseStartGermanMonth = nowGerman.month;
+    let baseStartGermanDay = nowGerman.day;
+
+    if (startDate) {
+      const [sY, sM, sD] = startDate.split("-").map(Number);
+      if (sY && sM && sD) {
+        baseStartGermanYear = sY;
+        baseStartGermanMonth = sM;
+        baseStartGermanDay = sD;
+      }
+    } else if (nowGerman.hour >= 18) {
+      // If past 18:00 German time today, start scheduling from tomorrow
+      const tomorrowDate = new Date(Date.now() + 86400000);
+      const tomorrowGerman = getGermanDateParts(tomorrowDate);
+      baseStartGermanYear = tomorrowGerman.year;
+      baseStartGermanMonth = tomorrowGerman.month;
+      baseStartGermanDay = tomorrowGerman.day;
     }
-    baseStart.setHours(0, 0, 0, 0);
 
     for (const model of modelsToPlan) {
-      // If resetExisting is requested: Clear prior unposted draft/scheduled posts for this model
-      if (resetExisting) {
+      let modelStartYear = baseStartGermanYear;
+      let modelStartMonth = baseStartGermanMonth;
+      let modelStartDay = baseStartGermanDay;
+
+      // If reset is requested: Clear prior unposted draft/scheduled posts for this model
+      if (shouldReset) {
         const existingUnposted = await prisma.post.findMany({
           where: {
             modelId: model.id,
@@ -62,14 +82,32 @@ export async function POST(req: Request) {
             },
           }),
         ]);
-      }
-
-      // Find unused assets not yet linked to any future post
-      const scheduledAssetIds = (
-        await prisma.post.findMany({
+      } else {
+        // Mode "extend": keep existing scheduled posts and start after the latest scheduled post
+        const lastScheduledPost = await prisma.post.findFirst({
           where: {
             modelId: model.id,
             status: { in: [PostStatus.SCHEDULED, PostStatus.PENDING] },
+          },
+          orderBy: { scheduledFor: "desc" },
+        });
+
+        if (lastScheduledPost && lastScheduledPost.scheduledFor) {
+          const lastGerman = getGermanDateParts(new Date(lastScheduledPost.scheduledFor));
+          const nextDayDate = new Date(createGermanDate(lastGerman.year, lastGerman.month, lastGerman.day, 12, 0).getTime() + 86400000);
+          const nextGerman = getGermanDateParts(nextDayDate);
+          modelStartYear = nextGerman.year;
+          modelStartMonth = nextGerman.month;
+          modelStartDay = nextGerman.day;
+        }
+      }
+
+      // CRITICAL: Consumed / Published content must NEVER be included!
+      // Collect ALL asset IDs referenced by ANY existing post (PUBLISHED, SCHEDULED, or PENDING)
+      const allReferencedAssetIds = (
+        await prisma.post.findMany({
+          where: {
+            modelId: model.id,
             assetId: { not: null },
           },
           select: { assetId: true },
@@ -78,11 +116,12 @@ export async function POST(req: Request) {
         .map((p) => p.assetId)
         .filter(Boolean) as string[];
 
+      // Available assets are strictly unused and not referenced by any post
       const availableAssets = await prisma.asset.findMany({
         where: {
           modelId: model.id,
           isUsed: false,
-          id: { notIn: scheduledAssetIds },
+          id: { notIn: allReferencedAssetIds },
         },
         orderBy: { createdAt: "asc" },
       });
@@ -101,6 +140,7 @@ export async function POST(req: Request) {
       let assetIndex = 0;
       let modelCreated = 0;
       let modelPauses = 0;
+      let lastDayParts = getGermanDateParts(createGermanDate(modelStartYear, modelStartMonth, modelStartDay, 12, 0));
 
       // Determine pacing strategy based on inventory count:
       // - count <= 6: 1 post every 3 days (pause 2 days)
@@ -109,9 +149,10 @@ export async function POST(req: Request) {
       // - count > 20: 1 to 2 posts/day max (1 post on weekdays, 2 on Fri/Sat, Sunday optional pause)
 
       while (assetIndex < count) {
-        const currentDate = new Date(baseStart);
-        currentDate.setDate(currentDate.getDate() + dayOffset);
-        const dayOfWeek = currentDate.getDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+        const currentTargetDate = new Date(createGermanDate(modelStartYear, modelStartMonth, modelStartDay, 12, 0).getTime() + dayOffset * 86400000);
+        const currentDayParts = getGermanDateParts(currentTargetDate);
+        lastDayParts = currentDayParts;
+        const dayOfWeek = currentDayParts.dayOfWeek; // 0 = Sun, 5 = Fri, 6 = Sat
 
         // Decide if this day is a pause day
         let isPauseDay = false;
@@ -141,16 +182,13 @@ export async function POST(req: Request) {
 
         for (let slot = 0; slot < postsToday && assetIndex < count; slot++) {
           const asset = availableAssets[assetIndex];
-          const postDate = new Date(currentDate);
 
-          // Prime times:
-          // Slot 0 (Afternoon): 14:30
-          // Slot 1 (Evening): 20:15
-          if (slot === 0 && postsToday === 2) {
-            postDate.setHours(14, 30, 0, 0);
-          } else {
-            postDate.setHours(20, 15, 0, 0);
-          }
+          // Prime times strictly in German Time (Europe/Berlin):
+          // Slot 0 (Afternoon): 14:30 German time
+          // Slot 1 (Evening): 20:15 German time
+          const postDate = (slot === 0 && postsToday === 2)
+            ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 14, 30)
+            : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 20, 15);
 
           // Generate engaging natural VIP German caption
           let starsPrice = 0;
@@ -184,16 +222,22 @@ export async function POST(req: Request) {
             }
           }
 
-          await prisma.post.create({
-            data: {
-              modelId: model.id,
-              assetId: asset.id,
-              caption,
-              starsPrice,
-              scheduledFor: postDate,
-              status: PostStatus.SCHEDULED,
-            },
-          });
+          await prisma.$transaction([
+            prisma.post.create({
+              data: {
+                modelId: model.id,
+                assetId: asset.id,
+                caption,
+                starsPrice,
+                scheduledFor: postDate,
+                status: PostStatus.SCHEDULED,
+              },
+            }),
+            prisma.asset.update({
+              where: { id: asset.id },
+              data: { isUsed: true },
+            }),
+          ]);
 
           modelCreated++;
           totalCreated++;
@@ -208,16 +252,19 @@ export async function POST(req: Request) {
         modelName: model.name,
         created: modelCreated,
         pauseDays: modelPauses,
-        plannedUntil: new Date(baseStart.getTime() + dayOffset * 86400000).toISOString().split("T")[0],
+        mode: shouldReset ? "regenerate" : "extend",
+        plannedUntil: `${lastDayParts.year}-${String(lastDayParts.month).padStart(2, "0")}-${String(lastDayParts.day).padStart(2, "0")}`,
       });
     }
 
+    const modeLabel = shouldReset ? "komplett neu generiert" : "mit neuem Content erweitert";
     return NextResponse.json({
       success: true,
       totalScheduled: totalCreated,
       totalPauseDays,
+      mode: shouldReset ? "regenerate" : "extend",
       reports: modelReports,
-      message: `Intelligenter Zeitplan erstellt: ${totalCreated} Postings aufgeteilt (max. 1-2 pro Tag mit strategischen Pausentagen).`,
+      message: `Intelligenter Zeitplan ${modeLabel}: ${totalCreated} Postings aufgeteilt (verbrauchte Inhalte ausgeschlossen).`,
     });
   } catch (error: any) {
     console.error("Error generating auto-plan:", error);

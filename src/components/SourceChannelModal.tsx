@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/context/LanguageContext";
+import { cn } from "@/lib/utils";
 
 interface SourceChannelModalProps {
   open: boolean;
@@ -117,7 +118,10 @@ export function SourceChannelModal({
 
       setCurrentSourceId(targetId);
       setCurrentSourceTitle(targetTitle);
-      setStatusMessage({ type: "success", text: t.sourceChannel.saveButton + " ✓" });
+      setStatusMessage({
+        type: "success",
+        text: data.message || (t.sourceChannel.saveButton + " ✓"),
+      });
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message || "Fehler beim Speichern" });
     } finally {
@@ -313,29 +317,66 @@ export function SourceChannelModal({
               placeholder={t.sourceChannel.customChannelPlaceholder}
               className="text-xs h-9 font-mono"
             />
+            {currentSourceId && (customChannelInput.trim() === currentSourceId || selectedChannelId === currentSourceId) && (
+              <p className="text-[11px] text-emerald-400 flex items-center gap-1 pt-1 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                {language === "de"
+                  ? "Kanal bereits aktiv – erneutes Speichern bestätigt den Update-Modus (nur neuer Content wird geladen)."
+                  : "Channel already active – saving confirms update mode (only new content will be imported)."}
+              </p>
+            )}
           </div>
 
           {/* Sync Limit & Action */}
           {currentSourceId && (
             <div className="p-3 rounded-lg border bg-card/80 space-y-3 border-indigo-500/30">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-foreground">
-                  {t.sourceChannel.limitLabel}
-                </label>
-                <div className="flex items-center gap-1.5">
-                  {[20, 50, 100].map((lim) => (
-                    <Button
-                      key={lim}
-                      type="button"
-                      variant={syncLimit === lim ? "default" : "outline"}
-                      size="sm"
-                      className="h-6 text-[11px] px-2"
-                      onClick={() => setSyncLimit(lim)}
-                    >
-                      {lim}
-                    </Button>
-                  ))}
+              <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-start gap-2 text-[11px] text-indigo-300">
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 text-indigo-400 mt-0.5" />
+                <span>
+                  {t.sourceChannel?.updateModeBanner || (language === "de"
+                    ? "🔄 Update-Modus aktiv: Bereits importierte Inhalte werden übersprungen – nur neuer Content wird geladen."
+                    : "🔄 Update Mode active: Existing items will be skipped – only new content is imported.")}
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">
+                    {t.sourceChannel.limitLabel}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {[20, 50, 100, 0].map((lim) => (
+                      <Button
+                        key={lim}
+                        type="button"
+                        variant={syncLimit === lim ? "default" : "outline"}
+                        size="sm"
+                        className={cn(
+                          "h-6 text-[11px] px-2.5 font-bold transition-all",
+                          lim === 0
+                            ? syncLimit === 0
+                              ? "bg-purple-600 hover:bg-purple-500 text-white shadow-sm ring-1 ring-purple-400"
+                              : "border-purple-500/40 text-purple-400 hover:bg-purple-500/10"
+                            : ""
+                        )}
+                        onClick={() => setSyncLimit(lim)}
+                      >
+                        {lim === 0 ? (t.sourceChannel?.limitAll || (language === "de" ? "ALLE" : "ALL")) : lim}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
+
+                {syncLimit === 0 && (
+                  <div className="p-2 rounded bg-purple-950/40 border border-purple-500/30 text-[11px] text-purple-300 flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>
+                      {t.sourceChannel?.scanAllHint || (language === "de"
+                        ? "Scannt den gesamten Kanal und importiert alle noch nicht vorhandenen Medien."
+                        : "Scans the entire channel and imports all new media not yet present.")}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer pt-1 pb-1">
@@ -367,7 +408,9 @@ export function SourceChannelModal({
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    {t.sourceChannel.syncNowButton}
+                    {syncLimit === 0
+                      ? (language === "de" ? "Alle neuen Medien aus Quellkanal ziehen (Update)" : "Pull all new media from source channel (Update)")
+                      : (language === "de" ? "Neue Medien aus Quellkanal ziehen (Update)" : "Pull new media from source channel (Update)")}
                   </>
                 )}
               </Button>

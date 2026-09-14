@@ -66,15 +66,27 @@ export async function POST(
       });
     }
 
+    const targetChannelId = String(sourceChannelId).trim();
+    const existingConfig = getModelSource(model.id);
+    const isSameChannel =
+      existingConfig &&
+      existingConfig.sourceChannelId &&
+      existingConfig.sourceChannelId === targetChannelId;
+
     const saved = saveModelSource(model.id, {
-      sourceChannelId: String(sourceChannelId).trim(),
+      sourceChannelId: targetChannelId,
       sourceChannelTitle: sourceChannelTitle ? String(sourceChannelTitle).trim() : undefined,
     });
+
+    const updateMsg = isSameChannel
+      ? "Quellkanal als Update bestätigt (nur neuer Content wird beim Synchronisieren geladen)."
+      : "Quellkanal erfolgreich gespeichert.";
 
     return NextResponse.json({
       success: true,
       source: saved,
-      message: "Quell-Kanal erfolgreich gespeichert.",
+      isUpdate: Boolean(isSameChannel),
+      message: updateMsg,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

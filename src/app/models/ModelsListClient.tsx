@@ -18,6 +18,7 @@ import {
   Pencil,
   Percent,
   Trash2,
+  CalendarClock,
 } from "lucide-react";
 
 async function safeJson(res: Response) {
@@ -46,7 +47,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { formatUsd } from "@/lib/utils";
+import { formatUsd, cn } from "@/lib/utils";
 import { useLanguage } from "@/context/LanguageContext";
 
 interface TelegramDialog {
@@ -191,6 +192,78 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
       setDeleteError(err.message || "Fehler beim Löschen des Models");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Schedule Management Modal State
+  const [scheduleModel, setScheduleModel] = useState<any | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<"extend" | "regenerate">("extend");
+  const [scheduleStartDate, setScheduleStartDate] = useState<string>("");
+  const [isProcessingSchedule, setIsProcessingSchedule] = useState(false);
+  const [scheduleStatusMessage, setScheduleStatusMessage] = useState<string | null>(null);
+
+  const openScheduleModal = (model: any) => {
+    setScheduleModel(model);
+    setScheduleMode("extend");
+    setScheduleStartDate("");
+    setScheduleStatusMessage(null);
+  };
+
+  const handleClearModelSchedule = async () => {
+    if (!scheduleModel) return;
+    const confirmMsg = language === "de"
+      ? `Möchten Sie wirklich den kompletten Zeitplan für "${scheduleModel.name}" löschen? Alle ungeposteten Beiträge werden entfernt und die Medien wieder als unbenutzt freigegeben. Bereits gepostete Inhalte bleiben geschützt.`
+      : `Are you sure you want to clear the schedule for "${scheduleModel.name}"? All unposted posts will be removed and media released back to inventory. Already published posts remain safe.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setIsProcessingSchedule(true);
+    setScheduleStatusMessage(null);
+    try {
+      const res = await fetch(`/api/schedule/posts?modelId=${scheduleModel.id}`, {
+        method: "DELETE",
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Fehler beim Löschen des Zeitplans");
+
+      setScheduleStatusMessage(data.message || (language === "de" ? "Zeitplan erfolgreich gelöscht." : "Schedule successfully cleared."));
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Löschen des Zeitplans");
+    } finally {
+      setIsProcessingSchedule(false);
+    }
+  };
+
+  const handleAutoPlanForModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleModel) return;
+
+    setIsProcessingSchedule(true);
+    setScheduleStatusMessage(null);
+    try {
+      const res = await fetch("/api/schedule/auto-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelId: scheduleModel.id,
+          mode: scheduleMode,
+          startDate: scheduleMode === "regenerate" && scheduleStartDate ? scheduleStartDate : undefined,
+        }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Fehler bei der Zeitplan-Erstellung");
+
+      setScheduleStatusMessage(data.message || (language === "de" ? "Zeitplan erfolgreich aktualisiert!" : "Schedule successfully updated!"));
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    } catch (err: any) {
+      alert(err.message || "Fehler bei der Zeitplan-Erstellung");
+    } finally {
+      setIsProcessingSchedule(false);
     }
   };
 
@@ -432,22 +505,48 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                         </span>
                       </div>
                     </div>
+
+                    {/* Schedule status on card */}
+                    <div className="pt-2 border-t flex items-center justify-between text-muted-foreground">
+                      <span className="flex items-center gap-1.5 text-[11px]">
+                        <CalendarClock className="h-3.5 w-3.5 text-purple-400" />
+                        {language === "de" ? "Zeitplan:" : "Schedule:"}
+                      </span>
+                      {model.posts?.[0]?.scheduledFor ? (
+                        <span className="text-[11px] font-semibold text-purple-300">
+                          {language === "de" ? "Bis" : "Until"} {new Date(model.posts[0].scheduledFor).toLocaleDateString(language === "de" ? "de-DE" : "en-US")}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] italic text-muted-foreground">
+                          {language === "de" ? "Nicht geplant" : "Not planned"}
+                        </span>
+                      )}
+                    </div>
                   </CardContent>
                 </div>
 
-                <div className="p-4 pt-0 grid grid-cols-6 gap-2">
-                  <Link href={`/models/${model.slug}`} className="col-span-4">
-                    <Button variant="outline" className="w-full text-xs gap-1.5">
+                <div className="p-4 pt-0 grid grid-cols-12 gap-2">
+                  <Link href={`/models/${model.slug}`} className="col-span-6">
+                    <Button variant="outline" className="w-full text-xs gap-1.5 h-8">
                       {t.models.openCenter}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </Link>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openScheduleModal(model)}
+                    title={language === "de" ? "Zeitplan verwalten (Erweitern, neu generieren, löschen)" : "Manage Schedule (Extend, regenerate, clear)"}
+                    className="col-span-2 border-purple-500/30 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 h-8 px-0"
+                  >
+                    <CalendarClock className="h-4 w-4" />
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => openEditModal(model)}
                     title={t.models.editModel}
-                    className="col-span-1 border border-border hover:bg-muted text-muted-foreground hover:text-foreground px-0"
+                    className="col-span-2 border border-border hover:bg-muted text-muted-foreground hover:text-foreground h-8 px-0"
                   >
                     <Sliders className="h-3.5 w-3.5" />
                   </Button>
@@ -456,7 +555,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                     size="sm"
                     onClick={() => openDeleteModal(model)}
                     title={t.models.deleteModel}
-                    className="col-span-1 border border-border hover:bg-rose-500/15 hover:border-rose-500/40 text-muted-foreground hover:text-rose-400 px-0 transition-colors"
+                    className="col-span-2 border border-border hover:bg-rose-500/15 hover:border-rose-500/40 text-muted-foreground hover:text-rose-400 h-8 px-0 transition-colors"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -1033,6 +1132,182 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Model Schedule Management Dialog */}
+      {scheduleModel && (
+        <Dialog open={Boolean(scheduleModel)} onOpenChange={(open) => !open && setScheduleModel(null)}>
+          <DialogContent className="max-w-lg bg-card border-border shadow-2xl" onClose={() => setScheduleModel(null)}>
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0 border border-purple-500/30">
+                  <CalendarClock className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold">
+                    {language === "de"
+                      ? `Zeitplan verwalten: ${scheduleModel.name}`
+                      : `Manage Schedule: ${scheduleModel.name}`}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {language === "de"
+                      ? "Zeitplan erweitern, komplett neu generieren oder unfertige Entwürfe löschen."
+                      : "Extend schedule, regenerate fresh, or clear unposted drafts."}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4 py-1">
+              {/* Status Banner */}
+              <div className="p-3 rounded-lg border bg-muted/20 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{language === "de" ? "Vorhandene Medien im Vault:" : "Vault Media:"}</span>
+                  <span className="font-bold text-foreground">
+                    {scheduleModel._count?.assets || 0} {language === "de" ? "Medien" : "items"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{language === "de" ? "Aktueller Zeitplan:" : "Current Schedule:"}</span>
+                  <span className="font-bold text-purple-400">
+                    {scheduleModel.posts?.[0]?.scheduledFor
+                      ? `${language === "de" ? "Aktiv bis" : "Active until"} ${new Date(scheduleModel.posts[0].scheduledFor).toLocaleDateString(language === "de" ? "de-DE" : "en-US")}`
+                      : (language === "de" ? "Kein aktiver Zeitplan" : "No active schedule")}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted-foreground pt-1.5 border-t border-border/40">
+                  <span className="text-emerald-400 font-medium">✓ {language === "de" ? "Schutz verbrauchter Inhalte:" : "Consumed content protection:"}</span>{" "}
+                  {language === "de"
+                    ? "Bereits in Telegram gepostete Beiträge bleiben dauerhaft erhalten und werden nicht erneut eingeplant."
+                    : "Already published posts remain permanent and are never re-scheduled."}
+                </div>
+              </div>
+
+              {scheduleStatusMessage && (
+                <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>{scheduleStatusMessage}</span>
+                </div>
+              )}
+
+              {/* Mode Selection */}
+              <form onSubmit={handleAutoPlanForModel} className="space-y-4">
+                <div className="space-y-2.5">
+                  <label className="text-xs font-semibold text-foreground block">
+                    {language === "de" ? "Aktion wählen:" : "Choose action:"}
+                  </label>
+
+                  {/* Mode 1: Erweitern */}
+                  <label
+                    onClick={() => setScheduleMode("extend")}
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                      scheduleMode === "extend"
+                        ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/40"
+                        : "border-border hover:bg-muted/30"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="scheduleMode"
+                      checked={scheduleMode === "extend"}
+                      onChange={() => setScheduleMode("extend")}
+                      className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                    />
+                    <div className="text-xs space-y-0.5">
+                      <span className="font-bold text-foreground block">
+                        {language === "de" ? "➕ Zeitplan erweitern (Neuen Content anhängen)" : "➕ Extend Schedule (Append new content)"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground block leading-relaxed">
+                        {language === "de"
+                          ? "Bestehende geplante Postings bleiben unverändert. Neu hinzugefügter, unbenutzter Content wird nahtlos ab dem Ende des aktuellen Zeitplans eingeplant."
+                          : "Existing scheduled posts remain untouched. Newly added unused content is scheduled seamlessly starting after the current schedule ends."}
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Mode 2: Neu generieren */}
+                  <label
+                    onClick={() => setScheduleMode("regenerate")}
+                    className={cn(
+                      "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                      scheduleMode === "regenerate"
+                        ? "border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/40"
+                        : "border-border hover:bg-muted/30"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="scheduleMode"
+                      checked={scheduleMode === "regenerate"}
+                      onChange={() => setScheduleMode("regenerate")}
+                      className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                    />
+                    <div className="text-xs space-y-0.5">
+                      <span className="font-bold text-foreground block">
+                        {language === "de" ? "🔄 Zeitplan komplett neu generieren" : "🔄 Completely Regenerate Schedule"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground block leading-relaxed">
+                        {language === "de"
+                          ? "Löscht bisherige noch nicht gepostete Entwürfe und plant den gesamten unbenutzten Content-Bestand von vorne durch. Verbrauchte (bereits gepostete) Inhalte bleiben geschützt."
+                          : "Clears previous unposted drafts and re-plans the entire unused inventory from scratch. Consumed (published) content remains untouched."}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {scheduleMode === "regenerate" && (
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground block mb-1">
+                      {language === "de" ? "Startdatum für Neuplanung (Optional):" : "Start Date (Optional):"}
+                    </label>
+                    <Input
+                      type="date"
+                      value={scheduleStartDate}
+                      onChange={(e) => setScheduleStartDate(e.target.value)}
+                      className="text-xs h-9"
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-border/50">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isProcessingSchedule}
+                    onClick={handleClearModelSchedule}
+                    className="w-full sm:w-auto border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-1.5 text-xs h-9"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {language === "de" ? "Zeitplan dieses Models löschen" : "Clear this model's schedule"}
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isProcessingSchedule}
+                    className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold gap-1.5 text-xs h-9 shadow-md"
+                  >
+                    {isProcessingSchedule ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        {language === "de" ? "Verarbeite Zeitplan..." : "Processing..."}
+                      </>
+                    ) : (
+                      <>
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {scheduleMode === "extend"
+                          ? (language === "de" ? "Zeitplan jetzt erweitern" : "Extend Schedule Now")
+                          : (language === "de" ? "Neu generieren" : "Regenerate Now")}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </div>
           </DialogContent>
         </Dialog>
       )}

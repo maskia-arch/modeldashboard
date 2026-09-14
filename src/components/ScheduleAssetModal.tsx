@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/context/LanguageContext";
 
+import { formatGermanDateInput, parseGermanDateTime } from "@/lib/timezone";
+
 interface ScheduleAssetModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -38,18 +40,10 @@ export function ScheduleAssetModal({
 
   useEffect(() => {
     if (asset && open) {
-      // Default to tomorrow 18:30
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(18, 30, 0, 0);
-
-      // Local datetime-local input string: YYYY-MM-DDTHH:mm
-      const yyyy = tomorrow.getFullYear();
-      const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
-      const dd = String(tomorrow.getDate()).padStart(2, "0");
-      const hh = String(tomorrow.getHours()).padStart(2, "0");
-      const min = String(tomorrow.getMinutes()).padStart(2, "0");
-      setDateStr(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
+      // Default to tomorrow 18:30 German time
+      const tomorrow = new Date(Date.now() + 86400000);
+      const datePart = formatGermanDateInput(tomorrow);
+      setDateStr(`${datePart}T18:30`);
 
       let initialCaption = "";
       let initialPrice = asset.explicitLevel === "PPV" ? 150 : (asset.explicitLevel === "SOFT" ? 25 : 0);
@@ -78,7 +72,8 @@ export function ScheduleAssetModal({
     setError(null);
 
     try {
-      const scheduledFor = new Date(dateStr).toISOString();
+      const [dPart, tPart] = dateStr.split("T");
+      const scheduledFor = parseGermanDateTime(dPart, tPart || "18:30").toISOString();
 
       const res = await fetch(`/api/assets/${asset.id}/schedule`, {
         method: "POST",

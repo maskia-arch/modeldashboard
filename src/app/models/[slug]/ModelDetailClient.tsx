@@ -64,6 +64,7 @@ import { SourceChannelModal } from "@/components/SourceChannelModal";
 import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
+import { formatGermanDateTime } from "@/lib/timezone";
 import { useLanguage } from "@/context/LanguageContext";
 import { useRouter } from "next/navigation";
 
@@ -818,8 +819,8 @@ export function ModelDetailClient({
                             {post.status === "FAILED" && <Badge variant="destructive">{t.modelDetail.failed}</Badge>}
                             {post.status === "DRAFT" && <Badge variant="outline">{t.modelDetail.draft}</Badge>}
                           </td>
-                          <td className="p-3 whitespace-nowrap font-medium">
-                            {format(new Date(post.scheduledFor), "dd.MM.yyyy HH:mm")}
+                          <td className="p-3 whitespace-nowrap font-medium text-xs">
+                            {formatGermanDateTime(post.scheduledFor, { includeWeekday: false })}
                           </td>
                           <td className="p-3">
                             {post.asset ? (

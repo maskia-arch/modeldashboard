@@ -35,6 +35,12 @@ import { format, formatDistanceToNow, isToday } from "date-fns";
 import { de, enUS } from "date-fns/locale";
 import { useLanguage } from "@/context/LanguageContext";
 import { cn, getMediaDisplayUrl } from "@/lib/utils";
+import {
+  formatGermanDateTime,
+  formatGermanDateInput,
+  formatGermanTimeInput,
+  parseGermanDateTime,
+} from "@/lib/timezone";
 
 interface ScheduleClientProps {
   initialModels: any[];
@@ -80,7 +86,7 @@ export function ScheduleClient({
   // Auto-Plan Form State
   const [planModelId, setPlanModelId] = useState<string>("ALL");
   const [planStartDate, setPlanStartDate] = useState<string>("");
-  const [planResetExisting, setPlanResetExisting] = useState<boolean>(true);
+  const [planMode, setPlanMode] = useState<"extend" | "regenerate">("extend");
   const [isClassifyingFromSchedule, setIsClassifyingFromSchedule] = useState(false);
   const [grokClassifyStatus, setGrokClassifyStatus] = useState<string | null>(null);
 
@@ -98,9 +104,8 @@ export function ScheduleClient({
     setEditingPost(post);
     setEditCaption(post.caption || "");
     setEditStarsPrice(post.starsPrice || 0);
-    const d = new Date(post.scheduledFor);
-    setEditScheduledDate(format(d, "yyyy-MM-dd"));
-    setEditScheduledTime(format(d, "HH:mm"));
+    setEditScheduledDate(formatGermanDateInput(post.scheduledFor));
+    setEditScheduledTime(formatGermanTimeInput(post.scheduledFor));
     setEditStatus(post.status || "SCHEDULED");
   };
 
@@ -109,7 +114,7 @@ export function ScheduleClient({
     if (!editingPost) return;
     setIsSavingEdit(true);
     try {
-      const scheduledDateTime = new Date(`${editScheduledDate}T${editScheduledTime}`);
+      const scheduledDateTime = parseGermanDateTime(editScheduledDate, editScheduledTime);
       const res = await fetch(`/api/schedule/posts/${editingPost.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -259,8 +264,13 @@ export function ScheduleClient({
     });
   }, [posts, selectedModelId, selectedStatus, searchQuery]);
 
-  // Mark Post as Published ("Abhaken")
+  // Mark Post as Published ("Nur manuell im Dashboard abhaken")
   const handleCheckOff = async (postId: string) => {
+    const confirmMsg = language === "de"
+      ? "Möchten Sie diesen Beitrag nur im Dashboard als gepostet abhaken (OHNE an Telegram zu senden)?\n\nNutzen Sie dies, wenn Sie den Beitrag bereits manuell auf Telegram gepostet haben.\n\nUm den Beitrag jetzt direkt per Bot an Telegram zu senden, nutzen Sie stattdessen '🚀 Jetzt auf Telegram posten'."
+      : "Mark this post as completed in dashboard only (WITHOUT sending to Telegram)?";
+    if (!window.confirm(confirmMsg)) return;
+
     try {
       const res = await fetch(`/api/schedule/posts/${postId}`, {
         method: "PATCH",
@@ -270,9 +280,13 @@ export function ScheduleClient({
       if (res.ok) {
         const updated = await res.json();
         setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
+      } else {
+        const err = await res.json();
+        alert(err.error || "Fehler beim Abhaken");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(err.message || "Fehler beim Abhaken");
     }
   };
 
@@ -356,8 +370,9 @@ export function ScheduleClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           modelId: planModelId,
-          startDate: planStartDate || undefined,
-          resetExisting: planResetExisting,
+          startDate: planMode === "regenerate" && planStartDate ? planStartDate : undefined,
+          mode: planMode,
+          resetExisting: planMode === "regenerate",
         }),
       });
 
@@ -748,7 +763,7 @@ export function ScheduleClient({
                       </div>
 
                       <div className="pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
-                        {t.schedule.scheduledAt} {format(targetDate, language === "de" ? "EEEE, dd. MMMM yyyy • HH:mm 'Uhr'" : "EEEE, MMMM dd, yyyy • HH:mm", { locale: dateLocale })}
+                        {t.schedule.scheduledAt} {formatGermanDateTime(targetDate)}
                       </div>
                     </div>
                   </div>
@@ -799,21 +814,17 @@ export function ScheduleClient({
                             className="h-8 text-xs font-bold gap-1.5 text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm"
                           >
                             <Send className="h-3.5 w-3.5" />
-                            {t.schedule?.directPostButton || (language === "de" ? "🚀 Jetzt Posten" : "🚀 Post Now")}
+                            {language === "de" ? "🚀 Jetzt auf Telegram posten" : "🚀 Post to Telegram"}
                           </Button>
                           <Button
-                            variant="default"
+                            variant="outline"
                             size="sm"
                             onClick={() => handleCheckOff(post.id)}
-                            className={cn(
-                              "h-8 text-xs font-bold gap-1.5 text-white shadow-sm",
-                              isPending
-                                ? "bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-500/50"
-                                : "bg-emerald-700 hover:bg-emerald-600"
-                            )}
+                            className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1.5 border-border/70"
+                            title={language === "de" ? "Nur im Dashboard als gepostet abhaken (ohne an Telegram zu senden)" : "Check off in dashboard only (without sending to Telegram)"}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" />
-                            {t.schedule.checkOffButton}
+                            {language === "de" ? "Nur abhaken" : "Check off"}
                           </Button>
                         </>
                       )}
@@ -1036,27 +1047,76 @@ export function ScheduleClient({
               <span className="text-[11px] text-muted-foreground mt-0.5 block">{t.schedule.startDateHint}</span>
             </div>
 
-            {/* Reset / Regenerate Option */}
-            <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10">
-              <input
-                type="checkbox"
-                id="planResetExisting"
-                checked={planResetExisting}
-                onChange={(e) => setPlanResetExisting(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-input bg-card text-primary focus:ring-primary"
-              />
-              <label htmlFor="planResetExisting" className="text-xs text-foreground font-medium cursor-pointer select-none">
-                <span className="font-bold text-amber-300 block">
-                  {language === "de"
-                    ? "Bestehende Entwürfe überschreiben / neu generieren"
-                    : "Reset and regenerate existing unposted drafts"}
-                </span>
-                <span className="text-[11px] text-muted-foreground block mt-0.5 leading-relaxed">
-                  {language === "de"
-                    ? "Löscht vorherige, noch nicht gepostete Zeitplan-Einträge und plant den gesamten Content-Bestand komplett neu. Bereits gepostete Einträge bleiben sicher erhalten."
-                    : "Removes previous unposted schedule entries and re-plans the entire inventory fresh. Already published posts remain safe and untouched."}
-                </span>
+            {/* Mode Selection: Erweitern vs. Neu generieren */}
+            <div className="space-y-2.5">
+              <label className="text-xs font-semibold text-foreground block">
+                {language === "de" ? "Planungs-Modus:" : "Planning Mode:"}
               </label>
+
+              {/* Mode 1: Erweitern */}
+              <label
+                onClick={() => setPlanMode("extend")}
+                className={cn(
+                  "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                  planMode === "extend"
+                    ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/40"
+                    : "border-border hover:bg-muted/30"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="schedulePlanMode"
+                  checked={planMode === "extend"}
+                  onChange={() => setPlanMode("extend")}
+                  className="mt-0.5 text-purple-600 focus:ring-purple-500"
+                />
+                <div className="text-xs space-y-0.5">
+                  <span className="font-bold text-foreground block">
+                    {language === "de" ? "➕ Zeitplan erweitern (Neuen Content anhängen)" : "➕ Extend Schedule (Append new content)"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground block leading-relaxed">
+                    {language === "de"
+                      ? "Bestehende geplante Postings bleiben unverändert. Neu hinzugefügter unbenutzter Content wird nahtlos ab dem Ende des aktuellen Zeitplans eingeplant."
+                      : "Existing scheduled posts remain untouched. Newly added unused content is scheduled seamlessly starting after the current schedule ends."}
+                  </span>
+                </div>
+              </label>
+
+              {/* Mode 2: Neu generieren */}
+              <label
+                onClick={() => setPlanMode("regenerate")}
+                className={cn(
+                  "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all",
+                  planMode === "regenerate"
+                    ? "border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/40"
+                    : "border-border hover:bg-muted/30"
+                )}
+              >
+                <input
+                  type="radio"
+                  name="schedulePlanMode"
+                  checked={planMode === "regenerate"}
+                  onChange={() => setPlanMode("regenerate")}
+                  className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                />
+                <div className="text-xs space-y-0.5">
+                  <span className="font-bold text-foreground block">
+                    {language === "de" ? "🔄 Zeitplan komplett neu generieren" : "🔄 Completely Regenerate Schedule"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground block leading-relaxed">
+                    {language === "de"
+                      ? "Löscht vorherige unfertige Entwürfe und plant den gesamten unbenutzten Content-Bestand von vorne durch. Verbrauchte (bereits gepostete) Inhalte bleiben geschützt."
+                      : "Clears previous unposted drafts and re-plans the entire unused inventory from scratch. Consumed (published) content remains untouched."}
+                  </span>
+                </div>
+              </label>
+
+              <div className="p-2 rounded bg-emerald-950/20 border border-emerald-500/30 text-[11px] text-emerald-300">
+                <span className="font-semibold">✓ {language === "de" ? "Schutz verbrauchter Inhalte:" : "Consumed content protection:"}</span>{" "}
+                {language === "de"
+                  ? "Bereits in Telegram gepostete Beiträge bleiben dauerhaft erhalten und werden nicht erneut eingeplant."
+                  : "Already published posts remain permanent and will never be re-scheduled."}
+              </div>
             </div>
 
             {/* Smart Pacing Rules Box */}

@@ -31,15 +31,15 @@ export async function POST(
     let classifyWithGrok = false;
     try {
       const body = await req.json();
-      if (body.limit && typeof body.limit === "number") {
-        limit = Math.min(Math.max(body.limit, 5), 200);
+      if (typeof body.limit === "number") {
+        limit = body.limit === 0 ? 0 : Math.min(Math.max(body.limit, 5), 5000);
       }
       if (body.classifyWithGrok !== undefined) {
         classifyWithGrok = Boolean(body.classifyWithGrok);
       }
     } catch {}
 
-    console.log(`[SourceSync] Triggering source channel media sync for ${model.name} (limit: ${limit}, grok: ${classifyWithGrok})...`);
+    console.log(`[SourceSync] Triggering source channel media sync for ${model.name} (limit: ${limit === 0 ? "ALL" : limit}, grok: ${classifyWithGrok})...`);
     const result = await syncMediaFromSourceChannel(model.id, limit, classifyWithGrok);
 
     if (!result.success) {
@@ -52,6 +52,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       importedCount: result.importedCount,
+      skippedCount: result.skippedCount || 0,
       message: result.message,
     });
   } catch (error: any) {
