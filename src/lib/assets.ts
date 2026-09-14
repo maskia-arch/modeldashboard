@@ -73,7 +73,7 @@ export async function saveUploadedBuffer(
 export function getAssetLocalPath(fileUrl?: string | null): string | null {
   if (!fileUrl) return null;
 
-  const cleanUrl = fileUrl.replace(/^\/api\/media\//, "/uploads/");
+  const cleanUrl = fileUrl.split("?")[0].split("#")[0].replace(/^\/api\/media\//, "/uploads/");
 
   // Only manage files located under /uploads/
   if (cleanUrl.startsWith("/uploads/")) {
@@ -108,32 +108,27 @@ export async function deleteAssetLocalFile(fileUrl?: string | null): Promise<boo
   if (!fileUrl) return false;
 
   let deletedAny = false;
-  try {
-    const cleanUrl = fileUrl.replace(/^\/api\/media\//, "/uploads/");
-    if (cleanUrl.startsWith("/uploads/")) {
-      const relativePath = cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl;
-      const candidates = [
-        path.join(process.cwd(), "public", relativePath),
-        path.join(process.cwd(), relativePath),
-        path.join(process.cwd(), ".next", "standalone", "public", relativePath),
-        path.join(process.cwd(), ".next", "standalone", relativePath),
-      ];
-      for (const c of candidates) {
-        if (fs.existsSync(c)) {
-          try {
-            await fs.promises.unlink(c);
-            console.log(`[AssetStorage] Successfully deleted consumed file from disk: ${c}`);
-            deletedAny = true;
-          } catch {}
-        }
+  const cleanUrl = fileUrl.split("?")[0].split("#")[0].replace(/^\/api\/media\//, "/uploads/");
+
+  if (!cleanUrl.startsWith("/uploads/")) {
+    return false;
+  }
+
+  const relativePath = cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl;
+  const candidates = [
+    path.join(process.cwd(), "public", relativePath),
+    path.join(process.cwd(), relativePath),
+    path.join(process.cwd(), ".next", "standalone", "public", relativePath),
+    path.join(process.cwd(), ".next", "standalone", relativePath),
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        await fs.promises.unlink(p);
+        deletedAny = true;
       }
-    } else if (path.isAbsolute(fileUrl) && fs.existsSync(fileUrl)) {
-      await fs.promises.unlink(fileUrl);
-      console.log(`[AssetStorage] Successfully deleted absolute file from disk: ${fileUrl}`);
-      deletedAny = true;
-    }
-  } catch (error) {
-    console.error(`[AssetStorage] Failed to delete file from disk: ${fileUrl}`, error);
+    } catch {}
   }
 
   return deletedAny;
@@ -143,8 +138,10 @@ export async function deleteAssetLocalFile(fileUrl?: string | null): Promise<boo
  * Determines whether a file extension belongs to a photo that can be inspected by Grok Vision.
  */
 export function isPhotoExtension(filenameOrUrl: string): boolean {
-  const ext = path.extname(filenameOrUrl).toLowerCase();
-  return [".jpg", ".jpeg", ".png", ".webp"].includes(ext);
+  if (!filenameOrUrl) return false;
+  const clean = filenameOrUrl.split("?")[0].split("#")[0];
+  const ext = path.extname(clean).toLowerCase();
+  return [".jpg", ".jpeg", ".png", ".webp", ".jfif", ".bmp", ".tiff", ".heic"].includes(ext);
 }
 
 /**

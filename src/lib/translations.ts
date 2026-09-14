@@ -220,6 +220,13 @@ export const translations = {
       directSplitDesc: "Für dieses Model werden keine Investitionen/Belege amortisiert. Einnahmen werden sofort gemäß Quote aufgeteilt.",
       expensesDisabledNotice: "Hinweis: Für diesen Kanal sind Investitionsbelege deaktiviert (reine Gewinnbeteiligung).",
       filterChannelsPlaceholder: "Kanäle oder Gruppen filtern...",
+      deleteModel: "Model löschen",
+      deleteModelTitle: "Model & Content endgültig löschen",
+      deleteModelWarning: "Achtung: Diese Aktion kann nicht rückgängig gemacht werden. Sämtliche Fotos und Videos werden unwiderruflich von der Festplatte gelöscht und alle Datenbank-Einträge entfernt.",
+      deleteModelConfirmPrompt: "Tippen Sie zur Bestätigung den Namen des Models ein:",
+      deleteModelButton: "Endgültig löschen",
+      deletingModel: "Lösche Model & Festplatten-Dateien...",
+      deleteModelSuccess: "Model und alle zugehörigen Mediendateien wurden erfolgreich von Festplatte und Datenbank gelöscht.",
     },
 
     // Model Detail Center
@@ -1095,6 +1102,13 @@ export const translations = {
       directSplitDesc: "No investment recoupment applies to this model. Revenues are split immediately based on agreed percentage.",
       expensesDisabledNotice: "Notice: Investment receipts are not factored in for this channel (direct profit split agreement).",
       filterChannelsPlaceholder: "Filter channels or groups...",
+      deleteModel: "Delete Model",
+      deleteModelTitle: "Permanently Delete Model & Content",
+      deleteModelWarning: "Warning: This action cannot be undone. All photos and videos will be permanently deleted from disk and all database records removed.",
+      deleteModelConfirmPrompt: "Type the model name to confirm deletion:",
+      deleteModelButton: "Permanently Delete",
+      deletingModel: "Deleting model & files from disk...",
+      deleteModelSuccess: "Model and all associated media files were successfully deleted from disk and database.",
     },
 
     // Model Detail Center

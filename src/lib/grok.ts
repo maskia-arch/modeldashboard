@@ -518,28 +518,30 @@ export async function classifyImageWithGrokVision(params: {
 
   const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
 
-  const systemPrompt = `You are Grok 4.1 Vision, the master VIP Creator Content Auditor and NSFW Visual Analyst for OnlyFans and Telegram Stars VIP Channels.
+  const systemPrompt = `You are Grok 4.20 Vision, the expert VIP Content Auditor for OnlyFans and Telegram Stars VIP Channels.
 Analyze the provided photo of creator "${params.modelName || "Creator"}".
 
-HAUPT-KLASSIFIZIERUNG NACH EXPOSITIONSGRAD (TIERS):
-- Tier 0: "SFW / Lifestyle" -> Vollständig bekleidet, keine Reizwäsche, keine anzügliche Ausrichtung. (Streetwear, Porträts, Casual Selfies, Alltagskleidung, Hoodies, normale Kleider). Stars: 0.
-- Tier 1: "Suggestive / Bademode" -> Knappe Kleidung, aber gesellschaftlich öffentlich akzeptiert. Keine Unterwäsche. (Bikini, Badeanzug, knappe Sportkleidung, tiefer Ausschnitt). Stars: 0-25.
-- Tier 2: "Lingerie / Unterwäsche" -> Typische Reizwäsche oder Unterwäsche. Intimbereich und Brustwarzen sind bedeckt oder maximal semi-transparent. (BH & Slip, Corsagen, Bodysuits, Strapsen, Boudoir-Shootings). Stars: 25-75.
+PRÄZISE DEFINITIONEN NACH EXPOSITIONSGRAD (TIERS):
+- Tier 0: "SFW / Lifestyle" -> Vollständig bekleidet in normaler Alltagskleidung. Trägt z.B. T-Shirt, Band-Shirt, Top, Pullover, Hoodie, Jacke, Hose, Rock oder normales Kleid. WICHTIG: Auch wenn ein Bett, Schlafzimmer, Spiegel oder Sofa im Hintergrund zu sehen ist: Sobald normale Kleidung getragen wird, ist es ZWINGEND Tier 0! Stars: 0.
+- Tier 1: "Suggestive / Bademode" -> Knappe Kleidung, aber gesellschaftlich öffentlich akzeptiert. Keine Unterwäsche. (Bikini, Badeanzug, knappe Sportkleidung, tiefer Ausschnitt, bauchfrei). Stars: 0-25.
+- Tier 2: "Lingerie / Unterwäsche" -> Echte Reizwäsche oder Unterwäsche sichtbar direkt am Körper. (BH & Slip, Corsagen, Bodysuits, Strapsen, Boudoir). WICHTIG: Ein normales T-Shirt oder Streetwear ist NIEMALS Tier 2, auch nicht vor einem Bett! Stars: 25-75.
 - Tier 3: "Teilakt (Partial Nude)" -> Gezielte Entblößung ohne direkte Genitalansicht. (Oben-ohne / Topless, unbedeckter Po / Rückansicht, verdeckter Akt mit Händen/Schatten). Stars: 100-250.
 - Tier 4: "Vollakt (Full Nude)" -> Vollständige Nacktheit mit sichtbarem Genitalbereich. (Frontalakt, intime Close-ups, gespreizte Posen). Stars: 250-450.
-- Tier 5: "Explizit / Interaktion" -> Direkte sexuelle Handlungen, Masturbation, Toys im Einsatz oder Partner-Content. (Sexuelle Akte, Penetration, intensive BDSM-/Fetisch-Aktionen). Stars: 450-800+.
+- Tier 5: "Explizit / Interaktion" -> Direkte sexuelle Handlungen, Masturbation, Toys im Einsatz oder Partner-Content. Stars: 450-800+.
 
-SEKUNDÄRE MERKMALE (ZUSATZ-TAGS FÜR FILTER & SUCHE):
-- face_visible: boolean (true wenn das Gesicht erkennbar ist, false wenn abgeschnitten oder verdeckt)
-- perspective: "Selfie" | "Mirror-Selfie" | "POV" | "Close-up" | "Full-Body" | "Third-Person"
-- setting: "Bedroom" | "Bathroom" | "Outdoor" | "Studio" | "Car" | "Living Room" | "Other"
-- body_writing: boolean (true wenn Beschriftungen auf der Haut vorhanden sind wie Custom-Namen oder Sprüche)
-- body_writing_text: string or null (der erkannte Text auf der Haut)
-- fetish_tags: array of strings (z.B. "Feet", "BDSM", "Costume/Cosplay", "Latex/Leder", "Dom/Sub", "Tattoo", "Piercing")
-- quality: { score: number (1.0-10.0 basierend auf Belichtung, Bildschärfe und Komposition), lighting: string, sharpness: string }
+⛔ ABSOLUTE REGELN:
+1. Bestimme ZUERST in "visual_audit.clothing_detected" objektiv die tatsächlich getragene Kleidung (z.B. "T-Shirt mit Print", "Hoodie", "BH & Slip", "Bikini", "Oben-Ohne").
+2. Wenn die Person ein normales T-Shirt, einen Pullover, Hoodie oder Alltagskleidung trägt, MUSS das Tier zwingend "Tier 0" sein!
+3. Ein Bett, Kissen oder Spiegel im Hintergrund macht ein Bild NIEMALS zu Lingerie oder Reizwäsche! Lingerie existiert NUR, wenn echte Unterwäsche sichtbar getragen wird.
+4. Titel und Bildunterschrift müssen wahrheitsgetreu zum Bild passen: Ein T-Shirt-Spiegelselfie darf NIEMALS "Dessous" oder "Lingerie" genannt werden!
 
 STRICT JSON OUTPUT FORMAT:
 {
+  "visual_audit": {
+    "clothing_detected": "z.B. T-Shirt mit Aufdruck",
+    "is_fully_clothed": true,
+    "is_underwear_actually_worn": false
+  },
   "classification": {
     "tier": "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5",
     "category": "SFW / Lifestyle" | "Suggestive / Bademode" | "Lingerie / Unterwäsche" | "Teilakt (Partial Nude)" | "Vollakt (Full Nude)" | "Explizit / Interaktion",
@@ -549,72 +551,199 @@ STRICT JSON OUTPUT FORMAT:
     "face_visible": true,
     "body_writing": false,
     "body_writing_text": null,
-    "perspective": "Mirror-Selfie",
-    "setting": "Bedroom",
-    "fetish_tags": ["Tattoo"]
+    "perspective": "Mirror-Selfie" | "Selfie" | "POV" | "Close-up" | "Full-Body" | "Third-Person",
+    "setting": "Bedroom" | "Bathroom" | "Outdoor" | "Studio" | "Car" | "Living Room" | "Other",
+    "fetish_tags": []
   },
-  "tags": ["Topless", "Selfie", "Tattoo", "Mirror"],
+  "tags": ["Selfie", "Mirror", "Streetwear", "Lifestyle"],
   "quality": {
     "score": 7.5,
     "lighting": "Warm / Indoor",
     "sharpness": "Hoch"
   },
-  "title": "Kurzer aussagekräftiger deutscher Titel",
-  "suggestedCaption": "Authentische, verführerische deutsche Bildunterschrift abgestimmt auf dieses Bild",
-  "suggestedStarsPrice": 150
+  "title": "Passender deutscher Titel zum echten Inhalt",
+  "suggestedCaption": "Authentische deutsche Bildunterschrift",
+  "suggestedStarsPrice": 0
 }`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 35000);
+  let response: Response | null = null;
+  let lastErrorText = "";
 
-  let response: Response;
-  try {
-    response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: visionModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Auditiere das Creator-Bild exakt nach dem Tier 0-5 System. Gib striktes JSON zurück.",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: base64Data,
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+    try {
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: visionModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Auditiere das Bild objektiv: 1. Beschreibe in visual_audit.clothing_detected die sichtbare Kleidung genau. 2. Wenn normale Oberbekleidung wie T-Shirt, Shirt, Hoodie getragen wird, MUSS es Tier 0 (SFW) sein, auch wenn im Hintergrund ein Bett steht. Erfinde niemals Lingerie/Dessous. Gib striktes JSON zurück.",
                 },
-              },
-            ],
-          },
-        ],
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-      }),
-    });
-  } finally {
-    clearTimeout(timeoutId);
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: base64Data,
+                  },
+                },
+              ],
+            },
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (res.ok) {
+        response = res;
+        break;
+      }
+
+      lastErrorText = await res.text();
+      console.warn(`[GrokVision] Attempt ${attempt}/3 failed (HTTP ${res.status}): ${lastErrorText.slice(0, 160)}`);
+
+      // If it's a permanent error (not 429 or 5xx), break immediately to let refusal/fallback handle it
+      if (res.status !== 429 && res.status < 500) {
+        response = res;
+        break;
+      }
+
+      // If rate limited or transient server error, wait before retry
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      }
+    } catch (fetchErr: any) {
+      console.warn(`[GrokVision] Attempt ${attempt}/3 fetch exception: ${fetchErr.message}`);
+      if (attempt >= 3) throw fetchErr;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error(`Grok Vision API error (HTTP ${response.status}): ${errText}`);
-    throw new Error(`xAI Grok Vision API Fehler (${response.status}): ${errText.slice(0, 180)}`);
+  if (!response || !response.ok) {
+    const errText = lastErrorText;
+    console.error(`Grok Vision API error: ${errText}`);
+
+    // Check if xAI refused due to explicit content or safety filter
+    const isNsfwOrSafetyRefusal =
+      errText.toLowerCase().includes("safety") ||
+      errText.toLowerCase().includes("content") ||
+      errText.toLowerCase().includes("policy") ||
+      errText.toLowerCase().includes("moderation") ||
+      errText.toLowerCase().includes("refusal") ||
+      errText.toLowerCase().includes("inappropriate") ||
+      errText.toLowerCase().includes("nsfw");
+
+    if (isNsfwOrSafetyRefusal) {
+      console.log(`[GrokVision] Image triggered xAI content filter/refusal -> automatically classifying as Tier 4 / PPV.`);
+      return {
+        explicitLevel: "PPV",
+        title: `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
+        theme: "Vollakt / Explicit",
+        tags: ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
+        notes: "Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI NSFW-Filter ausgelöst",
+        suggestedCaption: "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
+        suggestedStarsPrice: 350,
+        classification: {
+          tier: "Tier 4",
+          category: "Vollakt (Full Nude)",
+          confidence: 0.99,
+        },
+        attributes: {
+          face_visible: true,
+          body_writing: false,
+          body_writing_text: null,
+          perspective: "POV",
+          setting: "Bedroom",
+          fetish_tags: [],
+        },
+        quality: {
+          score: 8.0,
+          lighting: "Indoor",
+          sharpness: "Hoch",
+        },
+        visibleFeatures: ["nude", "vollakt", "ppv"],
+      };
+    }
+
+    const statusCode = response ? response.status : "Offline";
+    throw new Error(`xAI Grok Vision API Fehler (${statusCode}): ${errText.slice(0, 180)}`);
   }
 
-  const data = await response.json();
-  const rawJson = data.choices?.[0]?.message?.content;
-  if (!rawJson) throw new Error("Keine Antwort von Grok Vision erhalten.");
+  const activeResponse = response as Response;
+  const data = await activeResponse.json();
+  const choice = data.choices?.[0];
+  const refusal = choice?.message?.refusal;
+  const rawJson = choice?.message?.content;
 
-  const parsed = JSON.parse(rawJson);
+  if (refusal) {
+    console.log(`[GrokVision] Model refused with: "${refusal}" -> classifying as Tier 4 / PPV.`);
+    return {
+      explicitLevel: "PPV",
+      title: `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
+      theme: "Vollakt / Explicit",
+      tags: ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
+      notes: `Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI Refusal: ${refusal}`,
+      suggestedCaption: "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
+      suggestedStarsPrice: 350,
+      classification: {
+        tier: "Tier 4",
+        category: "Vollakt (Full Nude)",
+        confidence: 0.99,
+      },
+      attributes: {
+        face_visible: true,
+        body_writing: false,
+        body_writing_text: null,
+        perspective: "POV",
+        setting: "Bedroom",
+        fetish_tags: [],
+      },
+      quality: {
+        score: 8.0,
+        lighting: "Indoor",
+        sharpness: "Hoch",
+      },
+      visibleFeatures: ["nude", "vollakt", "ppv"],
+    };
+  }
+
+  if (!rawJson) {
+    console.warn("Empty response from Grok Vision, using fallback classification.");
+    return generateFallbackClassification(params.localFilePath, params.modelName);
+  }
+
+  // Robust JSON extraction removing markdown fences, leading/trailing text
+  let cleanJson = rawJson.trim();
+  cleanJson = cleanJson.replace(/^```[a-zA-Z]*\s*/, "").replace(/\s*```$/, "").trim();
+  const firstBrace = cleanJson.indexOf("{");
+  const lastBrace = cleanJson.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    cleanJson = cleanJson.substring(firstBrace, lastBrace + 1);
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleanJson);
+  } catch (parseErr) {
+    console.warn("[GrokVision] JSON parse failed on raw output, using fallback parser:", rawJson);
+    return generateFallbackClassification(params.localFilePath, params.modelName);
+  }
+
   const classification = parsed.classification || {
     tier: "Tier 0",
     category: "SFW / Lifestyle",
@@ -634,7 +763,22 @@ STRICT JSON OUTPUT FORMAT:
     sharpness: "Hoch",
   };
 
-  const rawTier = String(classification.tier || "Tier 0").trim();
+  const visualAudit = parsed.visual_audit || {};
+  const clothingDetected = String(visualAudit.clothing_detected || "").toLowerCase();
+  const isFullyClothed = visualAudit.is_fully_clothed === true || visualAudit.is_fully_clothed === "true";
+  const isUnderwearWorn = visualAudit.is_underwear_actually_worn === true || visualAudit.is_underwear_actually_worn === "true";
+
+  let rawTier = String(classification.tier || "Tier 0").trim();
+
+  // Guardrail: If model detected normal outerwear / t-shirt / hoodie / fully clothed,
+  // but classified as Tier 1 or Tier 2 without actual underwear being worn:
+  const hasOuterwear = /t-?shirt|shirt|hoodie|pullover|pulli|sweater|streetwear|alltagskleidung|jacke|jeans|hose/i.test(clothingDetected);
+  if ((isFullyClothed || hasOuterwear) && !isUnderwearWorn && (rawTier === "Tier 1" || rawTier === "Tier 2")) {
+    console.log(`[GrokVision] Guardrail triggered: outer clothing detected ("${clothingDetected}"), overriding ${rawTier} -> Tier 0`);
+    rawTier = "Tier 0";
+    classification.category = "SFW / Lifestyle";
+  }
+
   const normalizedTier: "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5" =
     ["Tier 0", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5"].includes(rawTier)
       ? (rawTier as any)
@@ -695,7 +839,7 @@ STRICT JSON OUTPUT FORMAT:
     attributes.body_writing ? "body-writing" : "",
   ].filter(Boolean);
 
-  const combinedTags = Array.from(
+  let combinedTags = Array.from(
     new Set([
       ...systemGeneratedTags,
       ...fetishTags.map((t: string) => t.toLowerCase()),
@@ -703,16 +847,38 @@ STRICT JSON OUTPUT FORMAT:
     ])
   );
 
+  let title = String(parsed.title || `${normalizedTier} - ${classification.category}`).trim();
+  let suggestedCaption = String(parsed.suggestedCaption || "Kleiner Einblick für meine treuen VIPs 💕").trim();
+
+  // Tier 0 Cleanup: purge hallucinated lingerie/erotic terms
+  if (normalizedTier === "Tier 0") {
+    const forbiddenTier0Tags = new Set([
+      "lingerie", "dessous", "reizwäsche", "ass", "booty", "soft", "ppv",
+      "bh", "slip", "panties", "thong", "g-string", "erotik", "intimate", "nude", "topless"
+    ]);
+    combinedTags = combinedTags.filter((t) => !forbiddenTier0Tags.has(t));
+
+    if (/dessous|lingerie|reizwäsche|spitzen|bh\b|slip\b|panties|erotik/i.test(title)) {
+      title = attributes.perspective?.toLowerCase().includes("selfie")
+        ? "Casual Spiegelselfie"
+        : "Casual Lifestyle Porträt";
+    }
+
+    if (/dessous|lingerie|reizwäsche|spitzen|bh\b|slip\b|ausziehen|sexy|intim/i.test(suggestedCaption)) {
+      suggestedCaption = "Schönen Tag euch allen! Kleiner Schnappschuss für zwischendurch 💕✨";
+    }
+  }
+
   const structuredNotes = `[${normalizedTier}: ${classification.category} | Score: ${quality.score}/10 | ${attributes.perspective} | ${attributes.setting} | Face: ${attributes.face_visible ? "Ja" : "Nein"}]`;
 
   return {
-    title: parsed.title || `${normalizedTier} - ${classification.category}`,
+    title,
     theme: classification.category,
     explicitLevel,
     suggestedStarsPrice,
     tags: combinedTags,
     notes: structuredNotes,
-    suggestedCaption: parsed.suggestedCaption || "Kleiner Einblick für meine treuen VIPs 💕",
+    suggestedCaption,
     classification: {
       tier: normalizedTier,
       category: classification.category,
@@ -738,7 +904,7 @@ STRICT JSON OUTPUT FORMAT:
 /**
  * Smart local fallback classifier when Grok API key is unconfigured or offline.
  */
-function generateFallbackClassification(
+export function generateFallbackClassification(
   filePath: string,
   modelName?: string
 ): GrokImageClassification {

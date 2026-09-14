@@ -17,7 +17,22 @@ import {
   Sliders,
   Pencil,
   Percent,
+  Trash2,
 } from "lucide-react";
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (!res.ok) {
+      if (res.status === 504) throw new Error("Gateway Timeout (504)");
+      if (res.status === 502) throw new Error("Bad Gateway (502)");
+      throw new Error(`Serverfehler (${res.status}): ${res.statusText || "Ungültige Antwort"}`);
+    }
+    throw new Error("Ungültige Antwort vom Server erhalten.");
+  }
+}
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -131,6 +146,51 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
       setUpdateError(err.message || "Fehler beim Aktualisieren des Models");
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  // Delete Model State
+  const [deletingModel, setDeletingModel] = useState<any | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const openDeleteModal = (m: any) => {
+    setDeletingModel(m);
+    setDeleteConfirmInput("");
+    setDeleteError(null);
+  };
+
+  const handleDeleteModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletingModel) return;
+    if (deleteConfirmInput.trim().toLowerCase() !== deletingModel.name.trim().toLowerCase()) {
+      setDeleteError(
+        language === "de"
+          ? `Bitte tippen Sie "${deletingModel.name}" zur Bestätigung ein.`
+          : `Please type "${deletingModel.name}" to confirm.`
+      );
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/models/${deletingModel.slug}`, {
+        method: "DELETE",
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Fehler beim Löschen des Models");
+
+      // Remove model from state
+      setModels((prev) => prev.filter((m) => m.id !== deletingModel.id));
+      alert(data.message);
+      setDeletingModel(null);
+    } catch (err: any) {
+      setDeleteError(err.message || "Fehler beim Löschen des Models");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -375,7 +435,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                   </CardContent>
                 </div>
 
-                <div className="p-4 pt-0 grid grid-cols-5 gap-2">
+                <div className="p-4 pt-0 grid grid-cols-6 gap-2">
                   <Link href={`/models/${model.slug}`} className="col-span-4">
                     <Button variant="outline" className="w-full text-xs gap-1.5">
                       {t.models.openCenter}
@@ -390,6 +450,15 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                     className="col-span-1 border border-border hover:bg-muted text-muted-foreground hover:text-foreground px-0"
                   >
                     <Sliders className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openDeleteModal(model)}
+                    title={t.models.deleteModel}
+                    className="col-span-1 border border-border hover:bg-rose-500/15 hover:border-rose-500/40 text-muted-foreground hover:text-rose-400 px-0 transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </Card>
@@ -855,6 +924,118 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Model Safety Confirmation Dialog */}
+      {deletingModel && (
+        <Dialog
+          open={Boolean(deletingModel)}
+          onOpenChange={(open) => !open && setDeletingModel(null)}
+        >
+          <DialogContent className="max-w-md bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-rose-400">
+                    {t.models.deleteModelTitle}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {deletingModel.name} ({deletingModel.channelTitle || deletingModel.telegramChannelId})
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <form onSubmit={handleDeleteModel} className="space-y-4 py-2">
+              <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-800/40 text-rose-300 text-xs space-y-1.5">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  {t.models.deleteModelWarning}
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-300/80 pt-1">
+                  <li>
+                    {deletingModel._count?.assets || 0}{" "}
+                    {language === "de"
+                      ? "Mediendateien werden von Festplatte gelöscht"
+                      : "media files will be deleted from disk"}
+                  </li>
+                  <li>
+                    {deletingModel._count?.posts || 0}{" "}
+                    {language === "de"
+                      ? "geplante & gepostete Beiträge"
+                      : "scheduled & published posts"}
+                  </li>
+                  <li>
+                    {language === "de"
+                      ? "Alle Ausgaben, Einnahmen- & Payout-Einträge"
+                      : "All expenses, revenue & payout records"}
+                  </li>
+                </ul>
+              </div>
+
+              {deleteError && (
+                <div className="p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground block">
+                  {t.models.deleteModelConfirmPrompt}{" "}
+                  <span className="font-mono text-rose-400 font-bold select-all bg-rose-950/40 px-1 py-0.5 rounded border border-rose-800/40">
+                    {deletingModel.name}
+                  </span>
+                </label>
+                <Input
+                  type="text"
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={deletingModel.name}
+                  autoFocus
+                  className="font-mono text-xs border-rose-500/30 focus-visible:ring-rose-500"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeletingModel(null)}
+                  disabled={isDeleting}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  disabled={
+                    isDeleting ||
+                    deleteConfirmInput.trim().toLowerCase() !== deletingModel.name.trim().toLowerCase()
+                  }
+                  className="gap-2 font-bold"
+                >
+                  {isDeleting ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>{t.models.deletingModel}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>{t.models.deleteModelButton}</span>
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

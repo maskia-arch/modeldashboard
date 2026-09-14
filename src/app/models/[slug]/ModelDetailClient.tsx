@@ -1,6 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (!res.ok) {
+      if (res.status === 504) {
+        throw new Error("Gateway Timeout (504): Die Server-Verbindung hat das Zeitlimit überschritten.");
+      }
+      if (res.status === 502) {
+        throw new Error("Bad Gateway (502): Der Server konnte die Anfrage nicht verarbeiten.");
+      }
+      throw new Error(`Serverfehler (${res.status}): ${res.statusText || "Ungültige Serverantwort"}`);
+    }
+    throw new Error("Ungültige Antwort vom Server erhalten.");
+  }
+}
 import {
   Sparkles,
   Wallet,
@@ -44,6 +62,7 @@ import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl } from "@/l
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
 import { useLanguage } from "@/context/LanguageContext";
+import { useRouter } from "next/navigation";
 
 interface InvestorItem {
   id: string;
@@ -112,6 +131,41 @@ export function ModelDetailClient({
   const [assignEnableExpenseRecoupment, setAssignEnableExpenseRecoupment] = useState<boolean>(model.enableExpenseRecoupment !== false);
   const [isSavingAssign, setIsSavingAssign] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  const router = useRouter();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [isDeletingModel, setIsDeletingModel] = useState(false);
+  const [deleteModelError, setDeleteModelError] = useState<string | null>(null);
+
+  const handleDeleteModel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (deleteConfirmName.trim().toLowerCase() !== model.name.trim().toLowerCase()) {
+      setDeleteModelError(
+        language === "de"
+          ? `Bitte tippen Sie "${model.name}" zur Bestätigung ein.`
+          : `Please type "${model.name}" to confirm.`
+      );
+      return;
+    }
+
+    setIsDeletingModel(true);
+    setDeleteModelError(null);
+
+    try {
+      const res = await fetch(`/api/models/${model.slug}`, {
+        method: "DELETE",
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Fehler beim Löschen des Models");
+
+      alert(data.message);
+      router.push("/models");
+    } catch (err: any) {
+      setDeleteModelError(err.message || "Fehler beim Löschen des Models");
+      setIsDeletingModel(false);
+    }
+  };
 
   const handleSaveAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,7 +272,7 @@ export function ModelDetailClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelId: model.id }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         alert(data.message);
         await refreshData();
@@ -234,6 +288,19 @@ export function ModelDetailClient({
 
   const [classifyingAssetId, setClassifyingAssetId] = useState<string | null>(null);
   const [isBatchClassifying, setIsBatchClassifying] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{
+    isOpen: boolean;
+    total: number;
+    current: number;
+    currentTitle: string;
+    successCount: number;
+    skippedCount: number;
+    errorCount: number;
+    isFinished: boolean;
+    isCancelled: boolean;
+    logs: string[];
+  } | null>(null);
+  const cancelBatchRef = useRef(false);
 
   const handleQuickGrokClassify = async (assetId: string) => {
     setClassifyingAssetId(assetId);
@@ -241,7 +308,7 @@ export function ModelDetailClient({
       const res = await fetch(`/api/assets/${assetId}/classify`, {
         method: "POST",
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || "Grok Klassifizierung fehlgeschlagen");
       await refreshData();
     } catch (err: any) {
@@ -252,21 +319,124 @@ export function ModelDetailClient({
   };
 
   const handleBatchGrokClassify = async (force: boolean = false) => {
-    setIsBatchClassifying(true);
-    try {
-      const res = await fetch(`/api/models/${model.slug}/classify-all`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Batch-Klassifizierung fehlgeschlagen");
-      await refreshData();
-    } catch (err: any) {
-      alert(err.message || "Fehler bei der Batch-Klassifizierung");
-    } finally {
-      setIsBatchClassifying(false);
+    // Collect eligible photo assets
+    const eligiblePhotos = (model.assets || []).filter((a: any) => {
+      if (a.type !== "PHOTO" || !a.fileUrl) return false;
+      if (force) return true;
+      const isUnclassifiedTag = a.tags?.includes("unclassified");
+      const isQuelleGeneric =
+        a.tags?.includes("quelle") &&
+        (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
+      return isUnclassifiedTag || isQuelleGeneric;
+    });
+
+    if (eligiblePhotos.length === 0) {
+      alert(
+        language === "de"
+          ? "Keine passenden Fotos zur Klassifizierung vorhanden."
+          : "No matching photos found to classify."
+      );
+      return;
     }
+
+    cancelBatchRef.current = false;
+    setIsBatchClassifying(true);
+    setBatchProgress({
+      isOpen: true,
+      total: eligiblePhotos.length,
+      current: 0,
+      currentTitle: eligiblePhotos[0]?.title || "Initialisiere...",
+      successCount: 0,
+      skippedCount: 0,
+      errorCount: 0,
+      isFinished: false,
+      isCancelled: false,
+      logs: [],
+    });
+
+    let successes = 0;
+    let skipped = 0;
+    let errors = 0;
+    const logs: string[] = [];
+
+    for (let i = 0; i < eligiblePhotos.length; i++) {
+      if (cancelBatchRef.current) {
+        logs.unshift(language === "de" ? "⏹️ Vorgang durch Benutzer abgebrochen." : "⏹️ Process cancelled by user.");
+        setBatchProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                isCancelled: true,
+                isFinished: true,
+                logs: [...logs],
+              }
+            : null
+        );
+        break;
+      }
+
+      const asset = eligiblePhotos[i];
+      const assetLabel = asset.title || `Foto #${i + 1}`;
+
+      setBatchProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              current: i + 1,
+              currentTitle: assetLabel,
+            }
+          : null
+      );
+
+      try {
+        const res = await fetch(`/api/assets/${asset.id}/classify`, {
+          method: "POST",
+        });
+        const data = await safeJson(res);
+
+        if (res.ok && data.success) {
+          successes++;
+          const tier =
+            data.classification?.classification?.tier ||
+            data.classification?.explicitLevel ||
+            "Klassifiziert";
+          const cat = data.classification?.classification?.category || "";
+          const stars = data.classification?.suggestedStarsPrice ?? 0;
+          logs.unshift(`✅ ${assetLabel}: ${tier}${cat ? ` (${cat})` : ""} • ${stars} ⭐`);
+        } else {
+          if (
+            res.status === 404 ||
+            data.error?.includes("Festplatte") ||
+            data.error?.includes("nicht gefunden")
+          ) {
+            skipped++;
+            logs.unshift(`⚠️ ${assetLabel}: Datei nicht auf Server-Festplatte (übersprungen)`);
+          } else {
+            errors++;
+            logs.unshift(`❌ ${assetLabel}: ${data.error || "Fehler"}`);
+          }
+        }
+      } catch (err: any) {
+        errors++;
+        logs.unshift(`❌ ${assetLabel}: ${err.message}`);
+      }
+
+      setBatchProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              successCount: successes,
+              skippedCount: skipped,
+              errorCount: errors,
+              logs: [...logs],
+            }
+          : null
+      );
+    }
+
+    setBatchProgress((prev) => (prev ? { ...prev, isFinished: true } : null));
+    setIsBatchClassifying(false);
+    await refreshData();
   };
 
   const handleCreateAsset = async (e: React.FormEvent) => {
@@ -458,6 +628,23 @@ export function ModelDetailClient({
             <Wallet className="h-4 w-4" />
             {t.modelDetail.logPayoutButton} ({formatUsd(financials.partnerAvailablePayoutUsd)})
           </Button>
+
+          {isMasterAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteConfirmName("");
+                setDeleteModelError(null);
+                setIsDeleteModalOpen(true);
+              }}
+              className="gap-1.5 text-xs font-semibold border-rose-500/30 text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 hover:border-rose-500/50 shadow-sm"
+              title={t.models.deleteModel}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{t.models.deleteModel}</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1726,6 +1913,319 @@ export function ModelDetailClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Batch Grok Vision Classification Modal with Real-time Progress */}
+      {batchProgress?.isOpen && (
+        <Dialog
+          open={batchProgress.isOpen}
+          onOpenChange={(open) => {
+            if (!open && !batchProgress.isFinished) {
+              if (
+                confirm(
+                  language === "de"
+                    ? "Batch-Klassifizierung wirklich anhalten?"
+                    : "Pause/Stop batch classification?"
+                )
+              ) {
+                cancelBatchRef.current = true;
+                setBatchProgress((prev) =>
+                  prev ? { ...prev, isCancelled: true, isFinished: true } : null
+                );
+                refreshData();
+              }
+            } else if (!open) {
+              setBatchProgress(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-xl bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-md">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold flex items-center gap-2">
+                    <span>
+                      {language === "de"
+                        ? "🤖 Grok 4.20 Vision Batch-Klassifizierung"
+                        : "🤖 Grok 4.20 Vision Batch Classifier"}
+                    </span>
+                    {batchProgress.isFinished ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]"
+                      >
+                        {language === "de" ? "Abgeschlossen" : "Completed"}
+                      </Badge>
+                    ) : batchProgress.isCancelled ? (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px]"
+                      >
+                        {language === "de" ? "Angehalten" : "Stopped"}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-[10px] animate-pulse"
+                      >
+                        {language === "de" ? "Aktiv..." : "Running..."}
+                      </Badge>
+                    )}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {model.name} • {batchProgress.current} von {batchProgress.total} Fotos bearbeitet
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* Progress bar & Percent */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="text-muted-foreground">
+                    {language === "de" ? "Gesamtfortschritt" : "Overall Progress"}
+                  </span>
+                  <span className="text-primary font-mono font-bold">
+                    {Math.round(
+                      (batchProgress.current / Math.max(1, batchProgress.total)) * 100
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="w-full bg-secondary/80 h-3 rounded-full overflow-hidden border border-border/60">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 via-purple-500 to-indigo-500 transition-all duration-300 rounded-full"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.max(
+                          2,
+                          (batchProgress.current / Math.max(1, batchProgress.total)) * 100
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Status Counters */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-center">
+                  <div className="text-lg font-bold text-emerald-300 font-mono">
+                    {batchProgress.successCount}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Klassifiziert" : "Classified"}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-center">
+                  <div className="text-lg font-bold text-amber-300 font-mono">
+                    {batchProgress.skippedCount}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Nicht auf Server" : "Missing from Disk"}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-center">
+                  <div className="text-lg font-bold text-rose-300 font-mono">
+                    {batchProgress.errorCount}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Fehler" : "Errors"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Asset Processing Preview */}
+              {!batchProgress.isFinished && batchProgress.currentTitle && (
+                <div className="flex items-center gap-3 p-2.5 rounded-lg border border-purple-500/30 bg-purple-950/20 text-xs">
+                  <RefreshCw className="h-4 w-4 text-purple-400 animate-spin shrink-0" />
+                  <span className="text-muted-foreground shrink-0">
+                    {language === "de" ? "Aktuell in Analyse:" : "Currently analyzing:"}
+                  </span>
+                  <span className="font-semibold text-foreground truncate">
+                    {batchProgress.currentTitle}
+                  </span>
+                </div>
+              )}
+
+              {/* Live Log Box */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-muted-foreground">
+                  {language === "de" ? "Live-Aktivitätsprotokoll:" : "Live Activity Log:"}
+                </span>
+                <div className="h-44 overflow-y-auto rounded-lg border border-border/60 bg-background/80 p-2.5 font-mono text-[11px] space-y-1">
+                  {batchProgress.logs.length === 0 ? (
+                    <span className="text-muted-foreground italic">
+                      {language === "de"
+                        ? "Initialisiere xAI Grok 4.20 Vision..."
+                        : "Initializing xAI Grok 4.20 Vision..."}
+                    </span>
+                  ) : (
+                    batchProgress.logs.map((log, idx) => (
+                      <div
+                        key={idx}
+                        className="leading-tight py-0.5 border-b border-border/20 last:border-0"
+                      >
+                        {log}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              {!batchProgress.isFinished ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    cancelBatchRef.current = true;
+                    setBatchProgress((prev) =>
+                      prev ? { ...prev, isCancelled: true, isFinished: true } : null
+                    );
+                    refreshData();
+                  }}
+                  className="w-full sm:w-auto text-xs font-semibold"
+                >
+                  {language === "de" ? "Analyse stoppen" : "Stop Analysis"}
+                </Button>
+              ) : (
+                <Button
+                  variant="gradient"
+                  size="sm"
+                  onClick={() => {
+                    setBatchProgress(null);
+                    refreshData();
+                  }}
+                  className="w-full sm:w-auto text-xs font-bold"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  {language === "de"
+                    ? "Schließen & Vault aktualisieren"
+                    : "Close & Refresh Vault"}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete Model Safety Confirmation Dialog */}
+      {isDeleteModalOpen && (
+        <Dialog
+          open={isDeleteModalOpen}
+          onOpenChange={(open) => !open && setIsDeleteModalOpen(false)}
+        >
+          <DialogContent className="max-w-md bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-rose-400">
+                    {t.models.deleteModelTitle}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {model.name} ({model.channelTitle || model.telegramChannelId})
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <form onSubmit={handleDeleteModel} className="space-y-4 py-2">
+              <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-800/40 text-rose-300 text-xs space-y-1.5">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  {t.models.deleteModelWarning}
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-300/80 pt-1">
+                  <li>
+                    {model.assets?.length || 0}{" "}
+                    {language === "de"
+                      ? "Mediendateien werden von Festplatte gelöscht"
+                      : "media files will be deleted from disk"}
+                  </li>
+                  <li>
+                    {model.posts?.length || 0}{" "}
+                    {language === "de"
+                      ? "geplante & gepostete Beiträge"
+                      : "scheduled & published posts"}
+                  </li>
+                  <li>
+                    {language === "de"
+                      ? "Alle Ausgaben, Einnahmen- & Payout-Einträge"
+                      : "All expenses, revenue & payout records"}
+                  </li>
+                </ul>
+              </div>
+
+              {deleteModelError && (
+                <div className="p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{deleteModelError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground block">
+                  {t.models.deleteModelConfirmPrompt}{" "}
+                  <span className="font-mono text-rose-400 font-bold select-all bg-rose-950/40 px-1 py-0.5 rounded border border-rose-800/40">
+                    {model.name}
+                  </span>
+                </label>
+                <Input
+                  type="text"
+                  value={deleteConfirmName}
+                  onChange={(e) => setDeleteConfirmName(e.target.value)}
+                  placeholder={model.name}
+                  autoFocus
+                  className="font-mono text-xs border-rose-500/30 focus-visible:ring-rose-500"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  disabled={isDeletingModel}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  disabled={
+                    isDeletingModel ||
+                    deleteConfirmName.trim().toLowerCase() !== model.name.trim().toLowerCase()
+                  }
+                  className="gap-2 font-bold"
+                >
+                  {isDeletingModel ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>{t.models.deletingModel}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>{t.models.deleteModelButton}</span>
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

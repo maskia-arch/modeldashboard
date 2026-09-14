@@ -118,3 +118,98 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { slug: string } }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json(
+        { error: "Unauthorized. Nur Master Administratoren dürfen Models löschen." },
+        { status: 403 }
+      );
+    }
+
+    const { slug } = params;
+    const model = await prisma.model.findUnique({
+      where: { slug },
+      include: {
+        assets: true,
+        expenses: true,
+      },
+    });
+
+    if (!model) {
+      return NextResponse.json({ error: "Model nicht gefunden." }, { status: 404 });
+    }
+
+    // 1. Physische Mediendateien des Models von der Festplatte löschen
+    const { deleteAssetLocalFile } = await import("@/lib/assets");
+    let deletedFilesCount = 0;
+
+    for (const asset of model.assets) {
+      if (asset.fileUrl) {
+        try {
+          const removed = await deleteAssetLocalFile(asset.fileUrl);
+          if (removed) deletedFilesCount++;
+        } catch (e) {
+          console.warn(`[DeleteModel] Fehler beim Löschen der Datei für Asset ${asset.id}:`, e);
+        }
+      }
+    }
+
+    // 2. Lokale Belege & Avatare löschen, falls vorhanden
+    for (const expense of model.expenses) {
+      if (expense.receiptUrl && expense.receiptUrl.startsWith("/uploads/")) {
+        try {
+          await deleteAssetLocalFile(expense.receiptUrl);
+        } catch {}
+      }
+    }
+
+    if (model.avatarUrl && model.avatarUrl.startsWith("/uploads/")) {
+      try {
+        await deleteAssetLocalFile(model.avatarUrl);
+      } catch {}
+    }
+
+    // 3. Kaskadierendes Löschen aller Datenbankeinträge in einer Transaktion
+    await prisma.$transaction([
+      prisma.post.deleteMany({ where: { modelId: model.id } }),
+      prisma.asset.deleteMany({ where: { modelId: model.id } }),
+      prisma.expense.deleteMany({ where: { modelId: model.id } }),
+      prisma.starTransaction.deleteMany({ where: { modelId: model.id } }),
+      prisma.payout.deleteMany({ where: { modelId: model.id } }),
+      prisma.model.delete({ where: { id: model.id } }),
+    ]);
+
+    // 4. Audit-Log erstellen
+    try {
+      await prisma.userActivityLog.create({
+        data: {
+          userId: user.id,
+          action: `DELETE_MODEL:${model.name}`,
+          ipAddress: req.headers.get("x-forwarded-for") || undefined,
+          userAgent: req.headers.get("user-agent") || undefined,
+        },
+      });
+    } catch {}
+
+    console.log(`[DeleteModel] Model "${model.name}" (${model.id}) and ${deletedFilesCount} disk files successfully deleted.`);
+
+    return NextResponse.json({
+      success: true,
+      deletedFilesCount,
+      message: `Model "${model.name}" und ${deletedFilesCount} Mediendateien wurden vollständig von der Festplatte und Datenbank gelöscht.`,
+    });
+  } catch (error: any) {
+    console.error("Error deleting model:", error);
+    return NextResponse.json(
+      { error: error.message || "Fehler beim Löschen des Models." },
+      { status: 500 }
+    );
+  }
+}
+

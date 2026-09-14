@@ -97,8 +97,11 @@ export function ScheduleClient({
           method: "POST",
         });
         if (res.ok) {
-          const data = await res.json();
-          totalClassified += data.classifiedCount || 0;
+          try {
+            const text = await res.text();
+            const data = JSON.parse(text);
+            totalClassified += data.classifiedCount || 0;
+          } catch {}
         }
       }
 

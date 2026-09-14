@@ -53,10 +53,19 @@ export async function POST(
       return NextResponse.json({ error: "Datei konnte auf der Festplatte nicht gefunden oder wiederhergestellt werden." }, { status: 404 });
     }
 
-    const classification = await classifyImageWithGrokVision({
-      localFilePath: localPath,
-      modelName: asset.model.name,
-    });
+    let classification;
+    try {
+      classification = await classifyImageWithGrokVision({
+        localFilePath: localPath,
+        modelName: asset.model.name,
+      });
+    } catch (grokErr: any) {
+      console.warn(
+        `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Applying resilient fallback classification.`
+      );
+      const { generateFallbackClassification } = await import("@/lib/grok");
+      classification = generateFallbackClassification(localPath, asset.model.name);
+    }
 
     const { mergeCleanedTags } = await import("@/lib/assets");
     const combinedTags = mergeCleanedTags(asset.tags || [], classification.tags || []);
