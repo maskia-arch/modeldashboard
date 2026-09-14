@@ -22,6 +22,8 @@ import {
   Sliders,
   Percent,
   Users,
+  UploadCloud,
+  Radio,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { PipelineOverview } from "@/components/PipelineOverview";
 import { GrokSchedulerModal } from "@/components/GrokSchedulerModal";
 import { PayoutModal } from "@/components/PayoutModal";
+import { ContentUploadModal } from "@/components/ContentUploadModal";
+import { DirectPublishModal } from "@/components/DirectPublishModal";
+import { ManualClassifyModal } from "@/components/ManualClassifyModal";
+import { ScheduleAssetModal } from "@/components/ScheduleAssetModal";
+import { SourceChannelModal } from "@/components/SourceChannelModal";
 import { formatUsd, formatStars, truncateAddress } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
@@ -64,6 +71,15 @@ export function ModelDetailClient({
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBatchAssetModalOpen, setIsBatchAssetModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isContentUploadOpen, setIsContentUploadOpen] = useState(false);
+  const [isDirectPublishOpen, setIsDirectPublishOpen] = useState(false);
+  const [isManualClassifyOpen, setIsManualClassifyOpen] = useState(false);
+  const [isScheduleAssetOpen, setIsScheduleAssetOpen] = useState(false);
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [selectedAssetForPublish, setSelectedAssetForPublish] = useState<any>(null);
+  const [selectedPostForPublish, setSelectedPostForPublish] = useState<any>(null);
+  const [selectedAssetForClassify, setSelectedAssetForClassify] = useState<any>(null);
+  const [selectedAssetForSchedule, setSelectedAssetForSchedule] = useState<any>(null);
 
   // Assign / Profit Split Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -456,13 +472,10 @@ export function ModelDetailClient({
                               <Button
                                 variant="default"
                                 size="sm"
-                                onClick={async () => {
-                                  try {
-                                    const res = await fetch(`/api/posts/${post.id}/publish`, { method: "POST" });
-                                    if (res.ok) await refreshData();
-                                  } catch (e) {
-                                    console.error(e);
-                                  }
+                                onClick={() => {
+                                  setSelectedPostForPublish(post);
+                                  setSelectedAssetForPublish(null);
+                                  setIsDirectPublishOpen(true);
                                 }}
                                 className="h-7 text-xs bg-indigo-600 hover:bg-indigo-500 gap-1 font-semibold"
                               >
@@ -494,7 +507,25 @@ export function ModelDetailClient({
             </div>
             <div className="flex items-center gap-2">
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSourceModalOpen(true)}
+                className="gap-1.5 text-xs font-semibold border-indigo-500/40 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/30 shadow-sm"
+              >
+                <Radio className="h-3.5 w-3.5" />
+                {t.sourceChannel?.button || (language === "de" ? "Quell-Kanal" : "Source Channel")}
+              </Button>
+              <Button
                 variant="gradient"
+                size="sm"
+                onClick={() => setIsContentUploadOpen(true)}
+                className="gap-1.5 text-xs font-bold shadow-sm"
+              >
+                <UploadCloud className="h-3.5 w-3.5" />
+                {t.modelDetail.uploadContentButton}
+              </Button>
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setIsBatchAssetModalOpen(true)}
                 className="gap-1.5 text-xs font-semibold"
@@ -516,69 +547,127 @@ export function ModelDetailClient({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {model.assets.map((asset: any) => (
-              <Card key={asset.id} className="overflow-hidden border group bg-card/60">
-                <div className="relative aspect-square bg-muted flex flex-col items-center justify-center p-3 text-center border-b">
-                  {asset.fileUrl ? (
-                    <img
-                      src={asset.fileUrl}
-                      alt="Vault asset"
-                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
-                    />
-                  ) : (
-                    <div className="space-y-1">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center font-bold text-xs uppercase">
-                        {asset.type === "VIDEO" ? "🎬 VID" : "📷 PIC"}
-                      </div>
-                      <span className="text-xs font-bold block text-foreground truncate max-w-[130px]">
-                        {asset.title || `${asset.type} #${asset.id.slice(0, 4)}`}
-                      </span>
-                      {asset.theme && (
-                        <span className="text-[10px] text-muted-foreground block truncate">
-                          {asset.theme}
+              <Card key={asset.id} className="overflow-hidden border group bg-card/60 flex flex-col justify-between">
+                <div>
+                  <div className="relative aspect-square bg-muted flex flex-col items-center justify-center p-3 text-center border-b">
+                    {asset.fileUrl ? (
+                      asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
+                        <video
+                          src={asset.fileUrl}
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          muted
+                        />
+                      ) : (
+                        <img
+                          src={asset.fileUrl}
+                          alt="Vault asset"
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        />
+                      )
+                    ) : (
+                      <div className="space-y-1">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 text-primary mx-auto flex items-center justify-center font-bold text-xs uppercase">
+                          {asset.type === "VIDEO" ? "🎬 VID" : "📷 PIC"}
+                        </div>
+                        <span className="text-xs font-bold block text-foreground truncate max-w-[130px]">
+                          {asset.title || `${asset.type} #${asset.id.slice(0, 4)}`}
                         </span>
+                        {asset.theme && (
+                          <span className="text-[10px] text-muted-foreground block truncate">
+                            {asset.theme}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="absolute top-2 left-2 flex gap-1">
+                      {asset.explicitLevel === "PPV" && <Badge variant="ppv">PPV</Badge>}
+                      {asset.explicitLevel === "SOFT" && <Badge variant="soft">SOFT</Badge>}
+                      {asset.explicitLevel === "TEASER" && <Badge variant="teaser">TEASER</Badge>}
+                    </div>
+
+                    <div className="absolute bottom-2 right-2 flex flex-col gap-1 items-end">
+                      {asset.fileUrl?.startsWith("/uploads/") && (
+                        <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
+                          📁 Festplatte
+                        </Badge>
+                      )}
+                      {asset.isUsed && (
+                        <Badge variant="outline" className="bg-black/70 text-[10px] text-emerald-400 border-emerald-500/40">
+                          {t.modelDetail.inScheduleBadge}
+                        </Badge>
                       )}
                     </div>
-                  )}
-
-                  <div className="absolute top-2 left-2 flex gap-1">
-                    {asset.explicitLevel === "PPV" && <Badge variant="ppv">PPV</Badge>}
-                    {asset.explicitLevel === "SOFT" && <Badge variant="soft">SOFT</Badge>}
-                    {asset.explicitLevel === "TEASER" && <Badge variant="teaser">TEASER</Badge>}
                   </div>
 
-                  {asset.isUsed && (
-                    <div className="absolute bottom-2 right-2">
-                      <Badge variant="outline" className="bg-black/70 text-[10px] text-emerald-400 border-emerald-500/40">
-                        {t.modelDetail.inScheduleBadge}
+                  <CardContent className="p-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-foreground truncate" title={asset.title}>
+                        {asset.title || "Content-Eintrag"}
+                      </span>
+                      <Badge variant="outline" className="text-[9px] py-0 h-4">
+                        {asset.type}
                       </Badge>
                     </div>
-                  )}
+
+                    {asset.notes && (
+                      <p className="text-[10px] text-muted-foreground italic line-clamp-1" title={asset.notes}>
+                        "{asset.notes}"
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {asset.tags?.map((tag: string, i: number) => (
+                        <span key={i} className="text-[9px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </CardContent>
                 </div>
 
-                <CardContent className="p-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-foreground truncate" title={asset.title}>
-                      {asset.title || "Content-Eintrag"}
-                    </span>
-                    <Badge variant="outline" className="text-[9px] py-0 h-4">
-                      {asset.type}
-                    </Badge>
+                {/* Card Action Buttons (Direct Publish, Classify, Schedule) */}
+                {!asset.isUsed && (
+                  <div className="p-2.5 pt-0 border-t border-border/40 mt-1 flex items-center justify-between gap-1 flex-wrap">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-6 text-[10px] px-2 bg-indigo-600 hover:bg-indigo-500 font-bold gap-1"
+                      onClick={() => {
+                        setSelectedAssetForPublish(asset);
+                        setSelectedPostForPublish(null);
+                        setIsDirectPublishOpen(true);
+                      }}
+                    >
+                      <Send className="h-2.5 w-2.5" />
+                      {t.modelDetail.directPostButton}
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-1.5"
+                        onClick={() => {
+                          setSelectedAssetForClassify(asset);
+                          setIsManualClassifyOpen(true);
+                        }}
+                      >
+                        {t.modelDetail.classifyButton}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-1.5"
+                        onClick={() => {
+                          setSelectedAssetForSchedule(asset);
+                          setIsScheduleAssetOpen(true);
+                        }}
+                      >
+                        {t.modelDetail.scheduleAssetButton}
+                      </Button>
+                    </div>
                   </div>
-
-                  {asset.notes && (
-                    <p className="text-[10px] text-muted-foreground italic line-clamp-1" title={asset.notes}>
-                      "{asset.notes}"
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {asset.tags?.map((tag: string, i: number) => (
-                      <span key={i} className="text-[9px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
+                )}
               </Card>
             ))}
           </div>
@@ -771,6 +860,53 @@ export function ModelDetailClient({
         defaultRecipient={model.investor?.tonAddress || null}
         maxAvailableUsd={financials.partnerAvailablePayoutUsd}
         onPayoutLogged={refreshData}
+      />
+
+      {/* Content Upload Modal */}
+      <ContentUploadModal
+        open={isContentUploadOpen}
+        onOpenChange={setIsContentUploadOpen}
+        modelId={model.id}
+        modelName={model.name}
+        onUploaded={refreshData}
+      />
+
+      {/* Direct Publish ("Jetzt Posten") Modal */}
+      <DirectPublishModal
+        open={isDirectPublishOpen}
+        onOpenChange={setIsDirectPublishOpen}
+        modelId={model.id}
+        channelTitle={model.channelTitle}
+        telegramChannelId={model.telegramChannelId}
+        asset={selectedAssetForPublish}
+        post={selectedPostForPublish}
+        onPublished={refreshData}
+      />
+
+      {/* Manual Classify Modal */}
+      <ManualClassifyModal
+        open={isManualClassifyOpen}
+        onOpenChange={setIsManualClassifyOpen}
+        asset={selectedAssetForClassify}
+        onClassified={refreshData}
+      />
+
+      {/* Schedule Asset Modal */}
+      <ScheduleAssetModal
+        open={isScheduleAssetOpen}
+        onOpenChange={setIsScheduleAssetOpen}
+        asset={selectedAssetForSchedule}
+        onScheduled={refreshData}
+      />
+
+      {/* Source Channel Modal (GramJS Telegram Media Import) */}
+      <SourceChannelModal
+        open={isSourceModalOpen}
+        onOpenChange={setIsSourceModalOpen}
+        modelId={model.id}
+        modelSlug={model.slug}
+        modelName={model.name}
+        onSyncCompleted={refreshData}
       />
 
       {/* Add Single Asset Modal (Metadata-First) */}

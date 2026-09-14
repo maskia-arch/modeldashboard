@@ -161,6 +161,11 @@ function startManualPostingWorker(): Worker | null {
             where: { id: post.assetId },
             data: { isUsed: true },
           });
+
+          if (post.asset?.fileUrl) {
+            const { deleteAssetLocalFile } = await import("../lib/assets");
+            await deleteAssetLocalFile(post.asset.fileUrl);
+          }
         }
         console.log(`[Worker] Successfully published post ${post.id}, msgId: ${result.messageId}`);
       } else {

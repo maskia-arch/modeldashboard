@@ -20,12 +20,16 @@ import {
   RefreshCw,
   Eye,
   Undo2,
+  Send,
+  UploadCloud,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { DirectPublishModal } from "@/components/DirectPublishModal";
+import { ContentUploadModal } from "@/components/ContentUploadModal";
 import { format, formatDistanceToNow, isToday } from "date-fns";
 import { de, enUS } from "date-fns/locale";
 import { useLanguage } from "@/context/LanguageContext";
@@ -57,6 +61,9 @@ export function ScheduleClient({
   // Modals
   const [isAddContentOpen, setIsAddContentOpen] = useState(false);
   const [isAutoPlanOpen, setIsAutoPlanOpen] = useState(false);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isDirectPublishOpen, setIsDirectPublishOpen] = useState(false);
+  const [selectedPostForPublish, setSelectedPostForPublish] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Add Content Form State
@@ -270,6 +277,15 @@ export function ScheduleClient({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => setIsUploadOpen(true)}
+            variant="gradient"
+            className="gap-1.5 text-xs h-9 font-bold shadow-md"
+          >
+            <UploadCloud className="h-4 w-4" />
+            {t.modelDetail.uploadContentButton}
+          </Button>
+
           <Button
             onClick={() => setIsAddContentOpen(true)}
             variant="outline"
@@ -553,6 +569,13 @@ export function ScheduleClient({
                             <div className="font-bold text-foreground">{post.asset.title || (language === "de" ? "Foto/Video" : "Photo/Video")}</div>
                             <div className="text-[11px] text-muted-foreground">{language === "de" ? "Thema" : "Theme"}: {post.asset.theme || (language === "de" ? "Allgemein" : "General")}</div>
                             <div className="text-[11px] text-muted-foreground">Level: {post.asset.explicitLevel}</div>
+                            {post.asset.fileUrl?.startsWith("/uploads/") && (
+                              <div className="mt-1">
+                                <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
+                                  📁 Auf Festplatte
+                                </Badge>
+                              </div>
+                            )}
                             {post.asset.fileUrl && (
                               <a
                                 href={post.asset.fileUrl}
@@ -600,20 +623,34 @@ export function ScheduleClient({
                           {t.schedule.undoButton}
                         </Button>
                       ) : (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={() => handleCheckOff(post.id)}
-                          className={cn(
-                            "h-8 text-xs font-bold gap-1.5 text-white shadow-sm",
-                            isPending
-                              ? "bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-500/50"
-                              : "bg-emerald-700 hover:bg-emerald-600"
-                          )}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {t.schedule.checkOffButton}
-                        </Button>
+                        <>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedPostForPublish(post);
+                              setIsDirectPublishOpen(true);
+                            }}
+                            className="h-8 text-xs font-bold gap-1.5 text-white bg-indigo-600 hover:bg-indigo-500 shadow-sm"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            {t.modelDetail.directPostButton}
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleCheckOff(post.id)}
+                            className={cn(
+                              "h-8 text-xs font-bold gap-1.5 text-white shadow-sm",
+                              isPending
+                                ? "bg-emerald-600 hover:bg-emerald-500 ring-2 ring-emerald-500/50"
+                                : "bg-emerald-700 hover:bg-emerald-600"
+                            )}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            {t.schedule.checkOffButton}
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -824,6 +861,42 @@ export function ScheduleClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Upload Content Modal */}
+      {models.length > 0 && (
+        <ContentUploadModal
+          open={isUploadOpen}
+          onOpenChange={setIsUploadOpen}
+          modelId={selectedModelId !== "ALL" ? selectedModelId : models[0]?.id}
+          modelName={
+            selectedModelId !== "ALL"
+              ? models.find((m) => m.id === selectedModelId)?.name || models[0]?.name
+              : models[0]?.name
+          }
+          onUploaded={() => {
+            window.location.reload();
+          }}
+        />
+      )}
+
+      {/* Direct Publish ("Jetzt Posten") Modal */}
+      {selectedPostForPublish && (
+        <DirectPublishModal
+          open={isDirectPublishOpen}
+          onOpenChange={setIsDirectPublishOpen}
+          modelId={selectedPostForPublish.modelId}
+          channelTitle={selectedPostForPublish.model?.channelTitle}
+          telegramChannelId={selectedPostForPublish.model?.telegramChannelId}
+          post={selectedPostForPublish}
+          onPublished={() => {
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.id === selectedPostForPublish.id ? { ...p, status: "PUBLISHED" } : p
+              )
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

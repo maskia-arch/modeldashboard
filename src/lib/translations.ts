@@ -333,6 +333,85 @@ export const translations = {
       assignRecoupmentDesc: "Wenn deaktiviert, greift eine reine Gewinnbeteiligung ab dem ersten Dollar. Investitionsbelege/Ausgaben werden nicht zur vorrangigen Tilgung herangezogen.",
       saveAssignButton: "Zuweisung speichern",
       savingAssignButton: "Speichere...",
+      uploadContentButton: "📁 Medien hochladen",
+      sourceChannelButton: "📡 Quell-Kanal",
+      directPostButton: "🚀 Jetzt Posten",
+      classifyButton: "🏷️ Klassifizieren",
+      scheduleAssetButton: "📅 Verplanen",
+    },
+
+    // Content Upload & Management
+    contentUpload: {
+      modalTitle: "Content hochladen",
+      modalDesc: "Laden Sie Fotos, Videos oder GIFs direkt auf die Festplatte des Dashboards hoch.",
+      dragDropText: "Dateien hierher ziehen oder durchsuchen",
+      dragDropSubtext: "Unterstützt JPG, PNG, WEBP (Fotos), MP4, MOV (Videos) und GIF",
+      autoClassifyNotice: "Fotos werden automatisch von Grok 4.1 Vision klassifiziert (Thema, Level, Caption, Sterne).",
+      videoNotice: "Videos & GIFs werden NICHT an Grok gesendet und können nach dem Upload manuell klassifiziert werden.",
+      uploadButton: "Dateien hochladen & speichern",
+      uploadingButton: "Lade hoch und verarbeite...",
+      selectFiles: "Dateien auswählen",
+      filesSelected: "Dateien ausgewählt",
+      successNotice: "Dateien erfolgreich hochgeladen und auf der Festplatte gespeichert!",
+    },
+
+    // Direct Publish ("Jetzt Posten")
+    directPublish: {
+      modalTitle: "Jetzt sofort auf Telegram posten",
+      modalDesc: "Veröffentlichen Sie dieses Medium sofort auf dem Kanal. Nach dem erfolgreichen Post wird die Datei von der Festplatte gelöscht.",
+      captionLabel: "Exakter Text / Telegram-Caption",
+      captionPlaceholder: "Verführerischer Begleittext...",
+      starsPriceLabel: "Telegram Stars Preis (Paywall)",
+      starsPriceHint: "0 = Kostenlos (Teaser), 15-500 = Bezahlter Paywall-Beitrag (sendPaidMedia)",
+      starsFree: "0 ⭐ (Kostenlos für alle Abonnenten)",
+      publishButton: "🚀 Jetzt auf Telegram veröffentlichen",
+      publishingButton: "Sende an Telegram Bot...",
+      deleteNotice: "⚠️ Die Datei wird nach dem Absenden automatisch von der Festplatte gelöscht, um Doppelungen zu vermeiden.",
+      publishedSuccess: "Erfolgreich auf Telegram veröffentlicht und Festplatte bereinigt!",
+    },
+
+    // Manual Classification (for Videos/GIFs)
+    manualClassify: {
+      modalTitle: "Medium klassifizieren (Manuell)",
+      modalDesc: "Legen Sie Metadaten, Einstufung und Vorab-Details für Videos, GIFs oder Fotos fest.",
+      titleLabel: "Titel",
+      themeLabel: "Thema / Setting",
+      levelLabel: "Content-Level",
+      tagsLabel: "Tags (Kommagetrennt)",
+      notesLabel: "Notizen / Regie",
+      suggestedCaptionLabel: "Vorgefertigte Caption (optional)",
+      saveButton: "Klassifizierung speichern",
+      savingButton: "Speichere...",
+    },
+
+    // Schedule Single Asset
+    scheduleAsset: {
+      modalTitle: "Medium verplanen",
+      modalDesc: "Terminieren Sie diesen Content für die automatische Veröffentlichung im Kanal.",
+      dateLabel: "Veröffentlichungs-Datum & Uhrzeit",
+      captionLabel: "Caption / Text",
+      starsLabel: "Telegram Stars",
+      scheduleButton: "Beitrag terminieren",
+      schedulingButton: "Plane Beitrag...",
+      successNotice: "Beitrag erfolgreich im Zeitplan hinterlegt!",
+    },
+
+    // Source Channel Integration (GramJS Userbot Content Pull)
+    sourceChannel: {
+      button: "Quell-Kanal",
+      modalTitle: "Telegram Quell-Kanal verknüpfen",
+      modalDesc: "Automatischer Medienabzug aus einem internen Telegram-Channel für",
+      currentSource: "Aktuell verknüpfter Quellkanal",
+      noSourceConfigured: "Kein Quellkanal hinterlegt. Wählen Sie unten einen Kanal aus.",
+      lastSynced: "Zuletzt synchronisiert:",
+      selectLabel: "Kanal aus Dialogen des Userbots auswählen:",
+      customChannelLabel: "Oder Kanal-ID / Username manuell eingeben:",
+      customChannelPlaceholder: "-100... oder @channel_username",
+      limitLabel: "Anzahl Nachrichten abrufen:",
+      syncNowButton: "Medien aus Quellkanal ziehen",
+      syncingButton: "Lade Medien herunter...",
+      saveButton: "Quellkanal speichern",
+      savingButton: "Speichere Quellkanal...",
     },
 
     // Content Schedule
@@ -1111,6 +1190,85 @@ export const translations = {
       assignRecoupmentDesc: "If disabled, direct profit splitting applies from dollar one. Expenses are not prioritized for recoupment.",
       saveAssignButton: "Save Assignment",
       savingAssignButton: "Saving...",
+      uploadContentButton: "📁 Upload Media",
+      sourceChannelButton: "📡 Source Channel",
+      directPostButton: "🚀 Post Now",
+      classifyButton: "🏷️ Classify",
+      scheduleAssetButton: "📅 Schedule",
+    },
+
+    // Content Upload & Management
+    contentUpload: {
+      modalTitle: "Upload Content",
+      modalDesc: "Upload photos, videos, or GIFs directly to the dashboard hard drive.",
+      dragDropText: "Drag and drop files here or browse",
+      dragDropSubtext: "Supports JPG, PNG, WEBP (Photos), MP4, MOV (Videos) and GIF",
+      autoClassifyNotice: "Photos are automatically analyzed and classified by Grok 4.1 Vision (theme, level, caption, stars).",
+      videoNotice: "Videos & GIFs are NOT sent to Grok and can be classified manually after uploading.",
+      uploadButton: "Upload & Save Files",
+      uploadingButton: "Uploading and processing...",
+      selectFiles: "Select Files",
+      filesSelected: "files selected",
+      successNotice: "Files successfully uploaded and saved to disk!",
+    },
+
+    // Direct Publish ("Jetzt Posten")
+    directPublish: {
+      modalTitle: "Post to Telegram Immediately",
+      modalDesc: "Publish this media item directly to the channel. After successful delivery, the file will be deleted from the disk.",
+      captionLabel: "Exact Telegram Caption",
+      captionPlaceholder: "Alluring caption text...",
+      starsPriceLabel: "Telegram Stars Price (Paywall)",
+      starsPriceHint: "0 = Free (Teaser), 15-500 = Paid paywall post (sendPaidMedia)",
+      starsFree: "0 ⭐ (Free for all subscribers)",
+      publishButton: "🚀 Publish to Telegram Now",
+      publishingButton: "Sending to Telegram Bot...",
+      deleteNotice: "⚠️ The file will be automatically deleted from disk upon delivery to prevent duplicate posts.",
+      publishedSuccess: "Successfully published to Telegram and cleaned up from disk!",
+    },
+
+    // Manual Classification (for Videos/GIFs)
+    manualClassify: {
+      modalTitle: "Classify Media Item (Manual)",
+      modalDesc: "Set metadata, explicit level, and notes for videos, GIFs, or photos.",
+      titleLabel: "Title",
+      themeLabel: "Theme / Setting",
+      levelLabel: "Content Level",
+      tagsLabel: "Tags (Comma-separated)",
+      notesLabel: "Creative Notes",
+      suggestedCaptionLabel: "Prefabricated Caption (optional)",
+      saveButton: "Save Classification",
+      savingButton: "Saving...",
+    },
+
+    // Schedule Single Asset
+    scheduleAsset: {
+      modalTitle: "Schedule Media Item",
+      modalDesc: "Schedule this media piece for automated publication in the channel.",
+      dateLabel: "Publication Date & Time",
+      captionLabel: "Caption / Text",
+      starsLabel: "Telegram Stars",
+      scheduleButton: "Schedule Post",
+      schedulingButton: "Scheduling Post...",
+      successNotice: "Post successfully scheduled!",
+    },
+
+    // Source Channel Integration (GramJS Userbot Content Pull)
+    sourceChannel: {
+      button: "Source Channel",
+      modalTitle: "Link Telegram Source Channel",
+      modalDesc: "Automatic media pull from an internal Telegram channel for",
+      currentSource: "Currently linked source channel",
+      noSourceConfigured: "No source channel configured. Select a channel below.",
+      lastSynced: "Last synced:",
+      selectLabel: "Select channel from userbot dialogs:",
+      customChannelLabel: "Or enter channel ID / username manually:",
+      customChannelPlaceholder: "-100... or @channel_username",
+      limitLabel: "Number of messages to scan:",
+      syncNowButton: "Pull Media from Source Channel",
+      syncingButton: "Downloading media...",
+      saveButton: "Save Source Channel",
+      savingButton: "Saving source channel...",
     },
 
     // Content Schedule

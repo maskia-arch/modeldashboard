@@ -48,6 +48,11 @@ export async function POST(
           where: { id: post.assetId },
           data: { isUsed: true },
         });
+
+        if (post.asset?.fileUrl) {
+          const { deleteAssetLocalFile } = await import("@/lib/assets");
+          await deleteAssetLocalFile(post.asset.fileUrl);
+        }
       }
 
       return NextResponse.json({

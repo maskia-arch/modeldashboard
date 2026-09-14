@@ -438,3 +438,181 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
 
 export const generateMockSchedule = generateRealisticSchedule;
 
+export interface GrokImageClassification {
+  title: string;
+  theme: string;
+  explicitLevel: "TEASER" | "SOFT" | "PPV";
+  suggestedStarsPrice: number;
+  tags: string[];
+  notes: string;
+  suggestedCaption: string;
+}
+
+/**
+ * Evaluates and classifies a photo using xAI Grok Vision.
+ * Videos and GIFs are explicitly prohibited from being passed to this function.
+ */
+export async function classifyImageWithGrokVision(params: {
+  localFilePath: string;
+  modelName?: string;
+  modelTone?: string;
+}): Promise<GrokImageClassification> {
+  const fs = await import("fs");
+  const path = await import("path");
+
+  const ext = path.extname(params.localFilePath).toLowerCase();
+  if ([".mp4", ".mov", ".mkv", ".avi", ".gif"].includes(ext)) {
+    throw new Error("Videos and GIFs are excluded from Grok Vision. They must be classified manually.");
+  }
+
+  if (!fs.existsSync(params.localFilePath)) {
+    throw new Error(`File not found on disk: ${params.localFilePath}`);
+  }
+
+  const apiKey = process.env.XAI_API_KEY;
+  const visionModel = process.env.XAI_VISION_MODEL || "grok-2-vision-1212";
+
+  // Fallback if no valid API key is set
+  if (!apiKey || apiKey === "demo_xai_key") {
+    return generateFallbackClassification(params.localFilePath, params.modelName);
+  }
+
+  try {
+    const fileBuffer = await fs.promises.readFile(params.localFilePath);
+    let mimeType = "image/jpeg";
+    if (ext === ".png") mimeType = "image/png";
+    else if (ext === ".webp") mimeType = "image/webp";
+
+    const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+
+    const systemPrompt = `You are Grok 4.1 Vision, an elite Telegram Content Strategist for adult and glamour creator channels.
+Analyze the provided photo of creator "${params.modelName || "Creator"}".
+Evaluate the allure, explicit level, setting, outfit, and monetization potential.
+Tone: ${params.modelTone || "Playful, alluring, authentic German VIP creator"}.
+
+You MUST return STRICT JSON with the exact following schema:
+{
+  "title": "Short descriptive German title (e.g., 'Spiegelselfie im Seidenkleid')",
+  "theme": "Core theme (e.g., 'Beach & Sun', 'Boudoir / Lingerie', 'Casual / Lifestyle', 'Late Night Glamour', 'Gym / Fitness')",
+  "explicitLevel": "TEASER" | "SOFT" | "PPV",
+  "suggestedStarsPrice": number (0 for TEASER, 15-35 for SOFT, 100-350 for PPV),
+  "tags": ["array", "of", "german", "or", "english", "keywords"],
+  "notes": "Concise visual evaluation: lighting, outfit, mood, allure rating",
+  "suggestedCaption": "Alluring, conversational German caption with fitting emojis, enticing fans to like or unlock"
+}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: visionModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Analyze and classify this creator image. Return STRICT JSON.",
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: base64Data,
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0.6,
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn(`Grok Vision API returned status ${response.status}. Falling back to smart local classifier.`);
+      return generateFallbackClassification(params.localFilePath, params.modelName);
+    }
+
+    const data = await response.json();
+    const rawJson = data.choices?.[0]?.message?.content;
+    if (!rawJson) throw new Error("Empty response from Grok Vision");
+
+    const parsed = JSON.parse(rawJson);
+    return {
+      title: parsed.title || "Neuer Schnappschuss",
+      theme: parsed.theme || "Lifestyle & Allure",
+      explicitLevel: ["TEASER", "SOFT", "PPV"].includes(parsed.explicitLevel) ? parsed.explicitLevel : "TEASER",
+      suggestedStarsPrice: typeof parsed.suggestedStarsPrice === "number" ? parsed.suggestedStarsPrice : 0,
+      tags: Array.isArray(parsed.tags) ? parsed.tags : ["vip", "exclusive"],
+      notes: parsed.notes || "Grok 4.1 Vision klassifiziert",
+      suggestedCaption: parsed.suggestedCaption || "Kleiner Gruß für euch 💕 Wie gefällt euch das Bild?",
+    };
+  } catch (error) {
+    console.warn("Grok Vision analysis failed, using smart local fallback:", error);
+    return generateFallbackClassification(params.localFilePath, params.modelName);
+  }
+}
+
+/**
+ * Deterministic local fallback classifier when Grok API is unconfigured or offline.
+ */
+function generateFallbackClassification(
+  filePath: string,
+  modelName?: string
+): GrokImageClassification {
+  const path = require("path");
+  const fileName = path.basename(filePath).toLowerCase();
+
+  let explicitLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
+  let theme = "Casual & Lifestyle";
+  let suggestedStarsPrice = 0;
+  let title = "Exklusives Foto";
+  let suggestedCaption = "Guten Morgen meine Lieben! 💕 Kleiner Schnappschuss für euren Tag ✨";
+
+  if (fileName.includes("bikini") || fileName.includes("beach") || fileName.includes("strand")) {
+    theme = "Beach & Sun";
+    title = "Sonniger Strandmoment";
+    explicitLevel = "TEASER";
+    suggestedCaption = "Sonne auf der Haut und Meeresrauschen ☀️🌴 Was macht ihr heute Schönes?";
+  } else if (fileName.includes("lingerie") || fileName.includes("dessous") || fileName.includes("boudoir")) {
+    theme = "Boudoir & Lingerie";
+    title = "Elegantes Lingerie Set";
+    explicitLevel = "PPV";
+    suggestedStarsPrice = 180;
+    suggestedCaption = "Nur für meine VIPs... 🤫 Schaltet das unzensierte Set unten frei mit Telegram Stars! 🌟";
+  } else if (fileName.includes("vip") || fileName.includes("exclusive") || fileName.includes("night")) {
+    theme = "VIP Exclusive";
+    title = "Late Night Special";
+    explicitLevel = "PPV";
+    suggestedStarsPrice = 250;
+    suggestedCaption = "Late Night Einblick nur für euch 🔥 Klickt unten auf den Stern um das Set freizuschalten! 🌟";
+  } else if (fileName.includes("soft") || fileName.includes("teaser")) {
+    theme = "Glamour & Allure";
+    title = "Sinnlicher Sneak-Peek";
+    explicitLevel = "SOFT";
+    suggestedStarsPrice = 25;
+    suggestedCaption = "Ein kleiner Vorgeschmack auf das, was diese Woche noch kommt... Gefällt es euch? 😉💕";
+  }
+
+  return {
+    title,
+    theme,
+    explicitLevel,
+    suggestedStarsPrice,
+    tags: ["creator", "telegram", theme.toLowerCase().replace(/[^a-z0-9]/g, "")],
+    notes: `Automatisch klassifiziert (${modelName || "Model"})`,
+    suggestedCaption,
+  };
+}
+
+
