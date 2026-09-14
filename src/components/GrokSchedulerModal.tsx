@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import type { ScheduleItem } from "@/lib/grok";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Asset {
   id: string;
@@ -39,6 +40,7 @@ export function GrokSchedulerModal({
   availableAssets,
   onScheduleCreated,
 }: GrokSchedulerModalProps) {
+  const { t, language } = useLanguage();
   const [days, setDays] = useState<number>(30);
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [tone, setTone] = useState<string>("Alluring, playful, engaging German VIP creator");
@@ -123,9 +125,9 @@ export function GrokSchedulerModal({
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle>xAI Grok Content & Posting Scheduler</DialogTitle>
+              <DialogTitle>{t.grokScheduler.title}</DialogTitle>
               <DialogDescription>
-                AI-driven content timetable, captions & Stars monetization pricing for {modelName}
+                {t.grokScheduler.desc} ({modelName})
               </DialogDescription>
             </div>
           </div>
@@ -144,7 +146,7 @@ export function GrokSchedulerModal({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-muted-foreground block">
-                  Planungszeitraum (Dauer in Tagen)
+                  {t.grokScheduler.daysLabel}
                 </label>
                 <div className="flex items-center gap-1.5">
                   <Button
@@ -154,7 +156,7 @@ export function GrokSchedulerModal({
                     className="h-6 text-[11px] px-2"
                     onClick={() => setDays(14)}
                   >
-                    14 Tage
+                    14 {language === "de" ? "Tage" : "Days"}
                   </Button>
                   <Button
                     type="button"
@@ -163,7 +165,7 @@ export function GrokSchedulerModal({
                     className="h-6 text-[11px] px-2 font-bold"
                     onClick={() => setDays(30)}
                   >
-                    1 Monat (30 Tage)
+                    30 {language === "de" ? "Tage" : "Days"}
                   </Button>
                   <Button
                     type="button"
@@ -172,7 +174,7 @@ export function GrokSchedulerModal({
                     className="h-6 text-[11px] px-2 font-bold"
                     onClick={() => setDays(60)}
                   >
-                    2 Monate (60 Tage)
+                    60 {language === "de" ? "Tage" : "Days"}
                   </Button>
                   <Button
                     type="button"
@@ -181,7 +183,7 @@ export function GrokSchedulerModal({
                     className="h-6 text-[11px] px-2"
                     onClick={() => setDays(90)}
                   >
-                    3 Monate (90 Tage)
+                    90 {language === "de" ? "Tage" : "Days"}
                   </Button>
                 </div>
               </div>
@@ -189,7 +191,7 @@ export function GrokSchedulerModal({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">
-                    Exakte Tage (1 - 120 Tage)
+                    {language === "de" ? "Exakte Tage (1 - 120 Tage)" : "Exact Days (1 - 120 Days)"}
                   </label>
                   <Input
                     type="number"
@@ -202,24 +204,24 @@ export function GrokSchedulerModal({
 
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">
-                    Posting-Frequenz
+                    {t.grokScheduler.postsPerDayLabel}
                   </label>
                   <select
                     value={postsPerDay}
                     onChange={(e) => setPostsPerDay(parseInt(e.target.value, 10) || 1)}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm focus-visible:outline-none"
                   >
-                    <option value={1} className="bg-card">1 Post täglich (Fokus Qualität)</option>
-                    <option value={2} className="bg-card">2 Posts täglich (Teaser + PPV)</option>
+                    <option value={1} className="bg-card">{language === "de" ? "1 Post täglich (Fokus Qualität)" : "1 post daily (Quality focus)"}</option>
+                    <option value={2} className="bg-card">{language === "de" ? "2 Posts täglich (Teaser + PPV)" : "2 posts daily (Teaser + PPV)"}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">
-                    Verfügbarer Content-Bestand
+                    {t.grokScheduler.availableMediaLabel}
                   </label>
                   <div className="h-9 px-3 border rounded-md bg-muted/30 text-xs flex items-center justify-between">
-                    <span className="font-semibold">{availableAssets.length} Medien</span>
+                    <span className="font-semibold">{availableAssets.length} {language === "de" ? "Medien" : "Items"}</span>
                     <div className="flex gap-1">
                       <Badge variant="teaser" className="text-[10px] px-1 py-0">
                         {availableAssets.filter((a) => a.explicitLevel === "TEASER").length} T
@@ -234,23 +236,11 @@ export function GrokSchedulerModal({
                   </div>
                 </div>
               </div>
-
-              {/* Runway Calculation Bar */}
-              <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-xs flex items-center justify-between">
-                <span className="text-purple-300">
-                  🎯 Content-Reichweite: <strong>{availableAssets.length} Unikate</strong> reichen bei <strong>{postsPerDay} Post(s)/Tag</strong> für ca. <strong>{Math.ceil(availableAssets.length / postsPerDay)} Tage</strong> autarken Betrieb ohne Upload.
-                </span>
-                {Math.ceil(availableAssets.length / postsPerDay) < days && (
-                  <Badge variant="outline" className="border-amber-500/40 text-amber-400 text-[10px]">
-                    Smart Rotation aktiv
-                  </Badge>
-                )}
-              </div>
             </div>
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Model Tone & Content Directives
+                {t.grokScheduler.toneLabel}
               </label>
               <Input
                 value={tone}
@@ -258,19 +248,12 @@ export function GrokSchedulerModal({
                 placeholder="e.g. Flirty, natural, seductive German influencer"
               />
             </div>
-
-            <div className="p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground space-y-1">
-              <p className="font-semibold text-foreground">Langzeit-Strategie & Monetarisierungs-Regeln:</p>
-              <p>• TEASER (Free / 0 Stars): Tägliche Bindung und Interaktion in den Stories/Posts.</p>
-              <p>• PPV (Stars Paywall): Dynamische Taktung von 50 bis 500 Stars für exklusive Sets & Videos.</p>
-              <p>• Zeitplan reicht über {days} Tage ({Math.round(days / 30 * 10) / 10} Monate) für stabilen, langfristigen Kanalbetrieb.</p>
-            </div>
           </div>
         ) : (
           /* Preview Generated Schedule */
           <div className="space-y-3 py-2 max-h-[50vh] overflow-y-auto pr-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Generated {generatedSchedule.length} posts for schedule:</span>
+              <span>{t.grokScheduler.previewTitle} ({generatedSchedule.length} Posts):</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -278,7 +261,7 @@ export function GrokSchedulerModal({
                 onClick={() => setGeneratedSchedule([])}
               >
                 <RefreshCw className="h-3 w-3" />
-                Reset / Adjust Parameters
+                {language === "de" ? "Zurück / Parameter anpassen" : "Reset / Adjust Parameters"}
               </Button>
             </div>
 
@@ -289,7 +272,6 @@ export function GrokSchedulerModal({
                   key={idx}
                   className="p-3 rounded-lg border bg-card/60 flex items-start gap-3 hover:border-purple-500/40 transition-colors"
                 >
-                  {/* Asset thumbnail or Metadata Badge */}
                   <div className="h-16 w-16 rounded-md bg-muted overflow-hidden shrink-0 border flex flex-col items-center justify-center p-1 text-center">
                     {asset?.fileUrl ? (
                       <img
@@ -323,7 +305,7 @@ export function GrokSchedulerModal({
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
                         <Calendar className="h-3 w-3" />
-                        Day +{item.timeOffsetDays}
+                        {language === "de" ? "Tag" : "Day"} +{item.timeOffsetDays}
                       </span>
                       <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
                         <Clock className="h-3 w-3" />
@@ -332,16 +314,11 @@ export function GrokSchedulerModal({
                       {item.starsPrice > 0 ? (
                         <Badge variant="ppv" className="text-[10px] gap-0.5">
                           <Star className="h-2.5 w-2.5 fill-current" />
-                          {item.starsPrice} Stars Paywall
+                          {item.starsPrice} Stars
                         </Badge>
                       ) : (
                         <Badge variant="teaser" className="text-[10px]">
-                          Free Post
-                        </Badge>
-                      )}
-                      {asset?.explicitLevel && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {asset.explicitLevel}
+                          {t.modelDetail.freeBadge}
                         </Badge>
                       )}
                     </div>
@@ -366,12 +343,12 @@ export function GrokSchedulerModal({
               {isGenerating ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  Generating Posting Strategy via Grok...
+                  {t.grokScheduler.generatingButton}
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  Generate Schedule via xAI Grok
+                  {t.grokScheduler.generateButton}
                 </>
               )}
             </Button>
@@ -382,7 +359,7 @@ export function GrokSchedulerModal({
                 onClick={() => setGeneratedSchedule([])}
                 disabled={isPublishing}
               >
-                Back
+                {t.common.back}
               </Button>
               <Button
                 variant="gradient"
@@ -393,12 +370,12 @@ export function GrokSchedulerModal({
                 {isPublishing ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Enqueuing into BullMQ...
+                    {t.grokScheduler.savingButton}
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Confirm & Enqueue {generatedSchedule.length} Posts
+                    {t.grokScheduler.saveButton} ({generatedSchedule.length} Posts)
                   </>
                 )}
               </Button>

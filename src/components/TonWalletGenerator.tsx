@@ -7,6 +7,7 @@ import { KeyRound, Copy, Check, ShieldAlert, Sparkles, Wallet, ExternalLink, Ref
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface TonWalletGeneratorProps {
   currentAddress?: string | null;
@@ -14,6 +15,7 @@ interface TonWalletGeneratorProps {
 }
 
 export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWalletGeneratorProps) {
+  const { t, language } = useLanguage();
   const [mnemonic, setMnemonic] = useState<string[]>([]);
   const [generatedAddress, setGeneratedAddress] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -69,7 +71,10 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       const res = await fetch("/api/user/ton-address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tonAddress: generatedAddress }),
+        body: JSON.stringify({
+          tonAddress: generatedAddress,
+          mnemonic: mnemonic.length === 24 ? mnemonic : undefined,
+        }),
       });
       if (res.ok) {
         setSaveSuccess(true);
@@ -99,15 +104,15 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <CardTitle className="text-lg">Client-Side TON Wallet Engine</CardTitle>
+              <CardTitle className="text-lg">{t.walletGenerator.title}</CardTitle>
               <CardDescription className="text-xs">
-                Zero-knowledge, non-custodial wallet generation via @ton/crypto
+                {t.walletGenerator.desc}
               </CardDescription>
             </div>
           </div>
           {effectiveAddress && (
             <Badge variant="success" className="text-xs">
-              Wallet Configured
+              {t.wallet.walletConfigured}
             </Badge>
           )}
         </div>
@@ -117,7 +122,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
         {effectiveAddress && !generatedAddress && (
           <div className="p-3.5 rounded-lg bg-muted/40 border text-sm flex items-center justify-between">
             <div>
-              <span className="text-xs text-muted-foreground block">Active Receiving Address</span>
+              <span className="text-xs text-muted-foreground block">{t.walletGenerator.activeAddressLabel}</span>
               <span className="font-mono text-xs font-semibold break-all">{effectiveAddress}</span>
             </div>
             <Button
@@ -135,10 +140,10 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
           <div className="space-y-1">
             <h4 className="text-sm font-semibold flex items-center gap-1.5">
               <KeyRound className="h-4 w-4 text-[#0098EA]" />
-              Generate New 24-Word Mnemonic
+              {t.walletGenerator.generateButton}
             </h4>
             <p className="text-xs text-muted-foreground">
-              Keys are generated strictly in your browser memory and never transmitted to any server.
+              {t.walletGenerator.desc}
             </p>
           </div>
           <Button
@@ -150,12 +155,12 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
             {isGenerating ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Generating...
+                {t.walletGenerator.generatingButton}
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4" />
-                Generate Wallet
+                {t.walletGenerator.generateButton}
               </>
             )}
           </Button>
@@ -167,13 +172,13 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
             <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
               <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
-                <strong>Important Security Warning:</strong> Write down these 24 words on physical paper. If you lose your recovery phrase, all funds will be permanently unrecoverable.
+                <strong>{t.walletGenerator.warningTitle}:</strong> {t.walletGenerator.warningDesc}
               </div>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                24-Word Recovery Secret (Mnemonic)
+                {t.wallet.backupModalTitle}
               </span>
               <Button
                 variant="outline"
@@ -184,12 +189,12 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
                 {isCopiedMnemonic ? (
                   <>
                     <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    Copied!
+                    {t.common.copied}
                   </>
                 ) : (
                   <>
                     <Copy className="h-3.5 w-3.5" />
-                    Copy Words
+                    {t.walletGenerator.copyMnemonic}
                   </>
                 )}
               </Button>
@@ -211,7 +216,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
             <div className="p-3.5 rounded-lg bg-card border space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-muted-foreground">
-                  Derived V4R2 TON Public Address:
+                  {t.wallet.recipientLabel}:
                 </span>
                 <Button
                   variant="ghost"
@@ -229,7 +234,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs text-muted-foreground">
-                Apply this address to your partner account for direct 50/50 profit distributions:
+                {t.wallet.externalDesc}
               </span>
               <Button
                 onClick={handleSaveToProfile}
@@ -241,10 +246,10 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
                 {saveSuccess ? (
                   <>
                     <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    Address Saved!
+                    {t.walletGenerator.savedSuccess}
                   </>
                 ) : (
-                  <>Set as Payout Address</>
+                  <>{t.walletGenerator.saveToProfile}</>
                 )}
               </Button>
             </div>

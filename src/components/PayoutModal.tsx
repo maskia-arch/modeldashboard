@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatUsd } from "@/lib/utils";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface PayoutModalProps {
   open: boolean;
@@ -26,9 +27,10 @@ export function PayoutModal({
   maxAvailableUsd,
   onPayoutLogged,
 }: PayoutModalProps) {
+  const { t } = useLanguage();
   const [recipient, setRecipient] = useState<string>(defaultRecipient || "");
   const [amountUsd, setAmountUsd] = useState<number>(maxAvailableUsd > 0 ? maxAvailableUsd : 100);
-  const [amountTon, setAmountTon] = useState<number>(15.5); // Approx TON rate or user input
+  const [amountTon, setAmountTon] = useState<number>(15.5);
   const [txHash, setTxHash] = useState<string>("");
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +91,9 @@ export function PayoutModal({
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <DialogTitle>Log TON Blockchain Payout</DialogTitle>
+              <DialogTitle>{t.payoutModal.title}</DialogTitle>
               <DialogDescription>
-                Record & verify partner payout on the TON ledger for {modelName}
+                {t.payoutModal.desc} {modelName}
               </DialogDescription>
             </div>
           </div>
@@ -109,27 +111,24 @@ export function PayoutModal({
             <div className="h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
               <CheckCircle2 className="h-6 w-6" />
             </div>
-            <h4 className="text-base font-semibold">TON Transaction Verified & Logged!</h4>
-            <p className="text-xs text-muted-foreground">
-              Ledger updated. Available partner payout balance adjusted.
-            </p>
+            <h4 className="text-base font-semibold">{t.payoutModal.successNotice}</h4>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3.5 py-1">
             <div className="p-3 rounded-lg bg-muted/40 text-xs flex justify-between">
-              <span className="text-muted-foreground">Available Liquid Profit:</span>
+              <span className="text-muted-foreground">{t.pipeline.availablePayoutLabel}</span>
               <span className="font-bold text-emerald-400">{formatUsd(maxAvailableUsd)}</span>
             </div>
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Recipient TON Address
+                {t.payoutModal.recipientLabel}
               </label>
               <Input
                 required
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="EQ... or UQ... address"
+                placeholder="EQ... or UQ..."
                 className="font-mono text-xs"
               />
             </div>
@@ -137,7 +136,7 @@ export function PayoutModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Payout Amount ($ USD)
+                  {t.payoutModal.amountUsdLabel}
                 </label>
                 <Input
                   required
@@ -151,7 +150,7 @@ export function PayoutModal({
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Amount in TON (💎)
+                  {t.payoutModal.amountTonLabel}
                 </label>
                 <Input
                   required
@@ -165,17 +164,17 @@ export function PayoutModal({
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                On-Chain TON Transaction Hash
+                {t.payoutModal.txHashLabel}
               </label>
               <Input
                 required
                 value={txHash}
                 onChange={(e) => setTxHash(e.target.value)}
-                placeholder="e.g. 3a7f8b9c... or test_tx_hash"
+                placeholder={t.payoutModal.txHashPlaceholder}
                 className="font-mono text-xs"
               />
               <span className="text-[10px] text-muted-foreground mt-1 block">
-                The transaction will be verified on the TON blockchain RPC.
+                {t.payoutModal.explorerNotice}
               </span>
             </div>
 
@@ -189,12 +188,12 @@ export function PayoutModal({
                 {isVerifying ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Verifying on TON Blockchain...
+                    {t.payoutModal.submittingButton}
                   </>
                 ) : (
                   <>
                     <ShieldCheck className="h-4 w-4" />
-                    Verify & Book to Ledger
+                    {t.payoutModal.submitButton}
                   </>
                 )}
               </Button>

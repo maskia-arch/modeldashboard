@@ -32,7 +32,7 @@ interface UsersClientProps {
 }
 
 export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [users, setUsers] = useState(initialUsers);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedUserLogs, setSelectedUserLogs] = useState<any | null>(null);
@@ -199,7 +199,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                           {user.name || (isMaster ? "Master Admin" : (user.isRegistered ? "Investor" : "Investor (ausstehend)"))}
                         </div>
                         <div className="text-[11px] text-muted-foreground font-mono">
-                          {user.email || <span className="italic text-muted-foreground/60">Wird bei Registrierung gewählt</span>}
+                          {user.email || <span className="italic text-muted-foreground/60">{language === "de" ? "Wird bei Registrierung gewählt" : "Set during registration"}</span>}
                         </div>
                       </td>
 
@@ -224,7 +224,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
                       <td className="p-3">
                         {isMaster ? (
-                          <span className="text-muted-foreground italic">All Channels (Master)</span>
+                          <span className="text-muted-foreground italic">{language === "de" ? "Alle Kanäle (Master)" : "All Channels (Master)"}</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {user.assignedModels?.length > 0 ? (
@@ -234,7 +234,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                                 </Badge>
                               ))
                             ) : (
-                              <span className="text-muted-foreground italic">None assigned</span>
+                              <span className="text-muted-foreground italic">{language === "de" ? "Keine zugeordnet" : "None assigned"}</span>
                             )}
                           </div>
                         )}
@@ -263,14 +263,14 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                               )}
                             </Button>
                             <Badge variant="outline" className="text-[9px] border-emerald-500/40 text-emerald-400 py-0 h-4">
-                              Wallet Bereit
+                              {language === "de" ? "Wallet Bereit" : "Wallet Ready"}
                             </Badge>
                           </div>
                         ) : isMaster ? (
                           <span className="text-muted-foreground text-[11px]">-</span>
                         ) : (
                           <Badge variant="secondary" className="text-[10px] text-amber-400/80 bg-amber-950/20 border border-amber-900/30">
-                            Wallet Ausstehend
+                            {language === "de" ? "Wallet Ausstehend" : "Wallet Pending"}
                           </Badge>
                         )}
                       </td>
@@ -299,11 +299,11 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
                       <td className="p-3">
                         {!user.isActive ? (
-                          <Badge variant="destructive">Suspended</Badge>
+                          <Badge variant="destructive">{language === "de" ? "Gesperrt" : "Suspended"}</Badge>
                         ) : user.isRegistered ? (
-                          <Badge variant="success">Active</Badge>
+                          <Badge variant="success">{language === "de" ? "Aktiv" : "Active"}</Badge>
                         ) : (
-                          <Badge variant="warning">Invite Pending</Badge>
+                          <Badge variant="warning">{language === "de" ? "Einladung offen" : "Invite Pending"}</Badge>
                         )}
                       </td>
 
@@ -327,7 +327,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                               className="h-7 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/10"
                             >
                               <Radio className="h-3 w-3" />
-                              Kanäle ({user.assignedModels?.length || 0})
+                              {language === "de" ? "Kanäle" : "Channels"} ({user.assignedModels?.length || 0})
                             </Button>
                           )}
 
@@ -354,12 +354,12 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                               {user.isActive ? (
                                 <>
                                   <UserX className="h-3 w-3" />
-                                  Suspend
+                                  {language === "de" ? "Sperren" : "Suspend"}
                                 </>
                               ) : (
                                 <>
                                   <UserCheck className="h-3 w-3" />
-                                  Activate
+                                  {language === "de" ? "Aktivieren" : "Activate"}
                                 </>
                               )}
                             </Button>
@@ -392,7 +392,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             <div className="space-y-4 py-3">
               <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 text-center space-y-2">
                 <span className="text-xs uppercase tracking-wider text-purple-400 font-semibold block">
-                  Generated Registration Key
+                  {language === "de" ? "Generierter Registrierungsschlüssel" : "Generated Registration Key"}
                 </span>
                 <div className="font-mono text-xl font-black text-foreground tracking-widest">
                   {generatedInvite.key}
@@ -400,7 +400,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
               </div>
 
               <div className="space-y-1">
-                <span className="text-xs text-muted-foreground block font-semibold">Direct Invite Link:</span>
+                <span className="text-xs text-muted-foreground block font-semibold">{language === "de" ? "Direkter Einladungslink:" : "Direct Invite Link:"}</span>
                 <div className="p-2.5 rounded-lg bg-muted/50 border font-mono text-xs break-all flex items-center justify-between">
                   <span className="truncate mr-2">{generatedInvite.url}</span>
                   <Button
@@ -415,12 +415,14 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
               </div>
 
               <p className="text-xs text-muted-foreground">
-                Send this key or invite link to the investor. They will be required to input this key during registration.
+                {language === "de"
+                  ? "Sende diesen Schlüssel oder Einladungslink an den Investor. Er muss diesen Schlüssel bei der Registrierung angeben."
+                  : "Send this key or invite link to the investor. They will be required to input this key during registration."}
               </p>
 
               <DialogFooter>
                 <Button onClick={() => setIsInviteModalOpen(false)} className="w-full">
-                  Done
+                  {language === "de" ? "Fertig" : "Done"}
                 </Button>
               </DialogFooter>
             </div>
@@ -429,7 +431,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
               <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg text-xs space-y-1 text-muted-foreground">
                 <div className="font-semibold text-purple-300 flex items-center gap-1.5">
                   <Info className="h-3.5 w-3.5 shrink-0" />
-                  E-Mail & Name sind rein optional
+                  {language === "de" ? "E-Mail & Name sind rein optional" : "Email & name are purely optional"}
                 </div>
                 <p className="text-[11px] leading-relaxed">
                   {t.adminUsers.prefillHint}
@@ -508,7 +510,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
               {inviteRole === "INVESTOR" ? (
                 <div>
                   <label className="text-xs font-semibold text-muted-foreground block mb-1.5">
-                    Assign Channel Portfolios (Investments will be channel-bound)
+                    {language === "de" ? "Kanal-Portfolios zuweisen (Investitionen sind kanalgebunden)" : "Assign Channel Portfolios (Investments will be channel-bound)"}
                   </label>
                   <div className="space-y-2 max-h-40 overflow-y-auto p-2 border rounded-lg bg-muted/20">
                     {allModels.map((m) => {
@@ -532,10 +534,12 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                 <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-300 space-y-1">
                   <span className="font-semibold block flex items-center gap-1.5 text-purple-200">
                     <Shield className="h-3.5 w-3.5" />
-                    Voller Master Administrator Zugriff
+                    {language === "de" ? "Voller Master Administrator Zugriff" : "Full Master Administrator Access"}
                   </span>
                   <p className="text-muted-foreground text-[11px]">
-                    Master Admins haben automatischen Zugriff auf alle Creator Models, das gesamte Finanz-Hauptbuch, Beleggenehmigungen und Systemeinstellungen.
+                    {language === "de"
+                      ? "Master Admins haben automatischen Zugriff auf alle Creator Models, das gesamte Finanz-Hauptbuch, Beleggenehmigungen und Systemeinstellungen."
+                      : "Master Admins have automatic access to all Creator Models, the complete financial ledger, expense reviews, and system settings."}
                   </p>
                 </div>
               )}
@@ -545,12 +549,12 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                   {isSubmitting ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Generating Key...
+                      {language === "de" ? "Erzeuge Schlüssel..." : "Generating Key..."}
                     </>
                   ) : (
                     <>
                       <KeyRound className="h-4 w-4" />
-                      Generate Registration Key & Invite
+                      {language === "de" ? "Registrierungsschlüssel erzeugen" : "Generate Registration Key & Invite"}
                     </>
                   )}
                 </Button>
@@ -570,14 +574,14 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                 <DialogTitle>Audit & Activity Logs: {selectedUserLogs.name || selectedUserLogs.email}</DialogTitle>
               </div>
               <DialogDescription>
-                Recorded sessions, IP addresses, and login timestamps
+                {language === "de" ? "Protokollierte Sitzungen, IP-Adressen und Anmelde-Zeitstempel" : "Recorded sessions, IP addresses, and login timestamps"}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
               {selectedUserLogs.activityLogs?.length === 0 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
-                  No activity recorded yet for this user.
+                  {language === "de" ? "Noch keine Aktivitäten für diesen Benutzer protokolliert." : "No activity recorded yet for this user."}
                 </div>
               ) : (
                 selectedUserLogs.activityLogs?.map((log: any) => (
@@ -599,7 +603,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
             <DialogFooter>
               <Button onClick={() => setSelectedUserLogs(null)} variant="outline">
-                Close
+                {t.common.close}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -613,17 +617,19 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
             <DialogHeader>
               <div className="flex items-center gap-2">
                 <Radio className="h-5 w-5 text-indigo-400" />
-                <DialogTitle>Kanal-Zuweisung für {editingUserChannels.name || editingUserChannels.email}</DialogTitle>
+                <DialogTitle>{language === "de" ? "Kanal-Zuweisung für" : "Channel Assignment for"} {editingUserChannels.name || editingUserChannels.email}</DialogTitle>
               </div>
               <DialogDescription>
-                Wähle die Creator-Kanäle aus, deren Statistiken und Einnahmen dieser Investor im Dashboard einsehen darf.
+                {language === "de"
+                  ? "Wähle die Creator-Kanäle aus, deren Statistiken und Einnahmen dieser Investor im Dashboard einsehen darf."
+                  : "Select the creator channels whose statistics and revenues this investor is allowed to view in the dashboard."}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               {allModels.length === 0 ? (
                 <div className="p-4 text-center text-xs text-muted-foreground">
-                  Keine Creator-Kanäle im System angelegt.
+                  {language === "de" ? "Keine Creator-Kanäle im System angelegt." : "No creator channels registered in system."}
                 </div>
               ) : (
                 allModels.map((model) => {
@@ -649,7 +655,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                         <div className="text-[11px] font-mono text-muted-foreground">{model.channelTitle || model.telegramChannelId}</div>
                       </div>
                       <Badge variant={isAssigned ? "default" : "outline"}>
-                        {isAssigned ? "Sichtbar" : "Gesperrt"}
+                        {isAssigned ? (language === "de" ? "Sichtbar" : "Visible") : (language === "de" ? "Gesperrt" : "Locked")}
                       </Badge>
                     </div>
                   );
@@ -659,11 +665,11 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
 
             <DialogFooter className="gap-2">
               <Button onClick={() => setEditingUserChannels(null)} variant="outline" size="sm">
-                Abbrechen
+                {t.common.cancel}
               </Button>
               <Button onClick={handleSaveChannels} disabled={isSavingChannels} size="sm" className="gap-1.5">
                 {isSavingChannels ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                Zuweisung speichern
+                {language === "de" ? "Zuweisung speichern" : "Save Assignment"}
               </Button>
             </DialogFooter>
           </DialogContent>

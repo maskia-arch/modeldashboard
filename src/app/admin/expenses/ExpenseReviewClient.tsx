@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { formatUsd } from "@/lib/utils";
 import { format } from "date-fns";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ExpenseReviewClientProps {
   initialExpenses: any[];
 }
 
 export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProps) {
+  const { t } = useLanguage();
   const [expenses, setExpenses] = useState(initialExpenses);
   const [filter, setFilter] = useState<"ALL" | "PENDING_REVIEW" | "APPROVED" | "REJECTED">("ALL");
   const [reviewingExpense, setReviewingExpense] = useState<any | null>(null);
@@ -71,16 +73,16 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Expense Legitimation Queue</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">{t.adminExpenses.title}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Review investor submissions. Approved expenses enter the channel's 100% recoupment ledger.
+            {t.adminExpenses.subtitle}
           </p>
         </div>
 
         {pendingCount > 0 && (
           <Badge variant="warning" className="gap-1.5 text-xs py-1 px-3">
             <Clock className="h-3.5 w-3.5" />
-            {pendingCount} Pending Review
+            {pendingCount} {t.adminExpenses.pendingBadge}
           </Badge>
         )}
       </div>
@@ -95,10 +97,10 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
             onClick={() => setFilter(f)}
             className="text-xs"
           >
-            {f === "ALL" && "All Expenses"}
-            {f === "PENDING_REVIEW" && `Pending (${pendingCount})`}
-            {f === "APPROVED" && "Approved"}
-            {f === "REJECTED" && "Rejected"}
+            {f === "ALL" && t.adminExpenses.tabAll}
+            {f === "PENDING_REVIEW" && `${t.adminExpenses.tabPending} (${pendingCount})`}
+            {f === "APPROVED" && t.adminExpenses.tabApproved}
+            {f === "REJECTED" && t.adminExpenses.tabRejected}
           </Button>
         ))}
       </div>
@@ -110,30 +112,30 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Channel / Model</th>
-                  <th className="p-3">Submitted By</th>
-                  <th className="p-3">Description</th>
-                  <th className="p-3">Amount</th>
-                  <th className="p-3">Receipt</th>
-                  <th className="p-3 text-right">Action</th>
+                  <th className="p-3">{t.adminExpenses.colStatus}</th>
+                  <th className="p-3">{t.adminExpenses.colDate}</th>
+                  <th className="p-3">{t.adminExpenses.colChannel}</th>
+                  <th className="p-3">{t.adminExpenses.colSubmittedBy}</th>
+                  <th className="p-3">{t.adminExpenses.colDescription}</th>
+                  <th className="p-3">{t.adminExpenses.colAmount}</th>
+                  <th className="p-3">{t.adminExpenses.colReceipt}</th>
+                  <th className="p-3 text-right">{t.adminExpenses.colAction}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filteredExpenses.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                      No expenses found matching filter.
+                      {t.adminExpenses.noExpensesFound}
                     </td>
                   </tr>
                 ) : (
                   filteredExpenses.map((exp) => (
                     <tr key={exp.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3">
-                        {exp.status === "APPROVED" && <Badge variant="success">Approved (Recouping)</Badge>}
-                        {exp.status === "PENDING_REVIEW" && <Badge variant="warning">Pending Review</Badge>}
-                        {exp.status === "REJECTED" && <Badge variant="destructive">Rejected</Badge>}
+                        {exp.status === "APPROVED" && <Badge variant="success">{t.adminExpenses.tabApproved}</Badge>}
+                        {exp.status === "PENDING_REVIEW" && <Badge variant="warning">{t.adminExpenses.tabPending}</Badge>}
+                        {exp.status === "REJECTED" && <Badge variant="destructive">{t.adminExpenses.tabRejected}</Badge>}
                       </td>
 
                       <td className="p-3 whitespace-nowrap text-muted-foreground">
@@ -164,7 +166,7 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
                             rel="noreferrer"
                             className="text-primary hover:underline flex items-center gap-1 font-mono"
                           >
-                            Receipt <ExternalLink className="h-3 w-3" />
+                            {t.adminExpenses.colReceipt} <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : (
                           <span className="text-muted-foreground">-</span>
@@ -181,7 +183,7 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
                               className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 gap-1"
                             >
                               <CheckCircle2 className="h-3 w-3" />
-                              Approve
+                              {t.adminExpenses.approveButton}
                             </Button>
                             <Button
                               variant="outline"
@@ -190,12 +192,12 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
                               className="h-7 text-xs text-destructive hover:bg-destructive/10 gap-1"
                             >
                               <XCircle className="h-3 w-3" />
-                              Reject
+                              {t.adminExpenses.rejectButton}
                             </Button>
                           </div>
                         ) : (
                           <span className="text-[11px] text-muted-foreground italic">
-                            Reviewed
+                            {t.adminExpenses.reviewedLabel}
                           </span>
                         )}
                       </td>
@@ -214,39 +216,39 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
           <DialogContent onClose={() => setReviewingExpense(null)}>
             <DialogHeader>
               <DialogTitle>
-                {reviewAction === "APPROVED" ? "Approve Expense & Add to Channel Recoupment" : "Reject Expense"}
+                {reviewAction === "APPROVED" ? t.adminExpenses.dialogApproveTitle : t.adminExpenses.dialogRejectTitle}
               </DialogTitle>
               <DialogDescription>
                 {reviewAction === "APPROVED"
-                  ? `Confirm ${formatUsd(reviewingExpense.amountUsd)} for channel "${reviewingExpense.model?.name}". The investor will receive 100% of channel revenues until this is repaid.`
-                  : "State reason for rejecting this submitted expense."}
+                  ? `${formatUsd(reviewingExpense.amountUsd)} - ${reviewingExpense.model?.name}`
+                  : t.adminExpenses.dialogRejectDesc}
               </DialogDescription>
             </DialogHeader>
 
             <form onSubmit={handleConfirmReview} className="space-y-4">
               <div className="p-3 rounded-lg bg-muted/40 border text-xs space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Channel:</span>
+                  <span className="text-muted-foreground">{t.adminExpenses.colChannel}:</span>
                   <span className="font-bold">{reviewingExpense.model?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Submitted Amount:</span>
+                  <span className="text-muted-foreground">{t.adminExpenses.colAmount}:</span>
                   <span className="font-bold text-foreground">{formatUsd(reviewingExpense.amountUsd)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Description:</span>
+                  <span className="text-muted-foreground">{t.adminExpenses.colDescription}:</span>
                   <span className="truncate max-w-xs">{reviewingExpense.description}</span>
                 </div>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Reviewer Note / Justification
+                  {t.adminExpenses.dialogNoteLabel}
                 </label>
                 <Input
                   value={reviewNote}
                   onChange={(e) => setReviewNote(e.target.value)}
-                  placeholder="e.g. Verified Telegram Ads invoice."
+                  placeholder={t.adminExpenses.dialogNotePlaceholder}
                 />
               </div>
 
@@ -257,10 +259,10 @@ export function ExpenseReviewClient({ initialExpenses }: ExpenseReviewClientProp
                   className={`w-full ${reviewAction === "APPROVED" ? "bg-emerald-600 hover:bg-emerald-500" : "bg-destructive"}`}
                 >
                   {isSubmitting
-                    ? "Submitting Review..."
+                    ? t.adminExpenses.submittingReview
                     : reviewAction === "APPROVED"
-                    ? "Confirm Legitimacy & Recoupment"
-                    : "Confirm Rejection"}
+                    ? t.adminExpenses.confirmApproveButton
+                    : t.adminExpenses.confirmRejectButton}
                 </Button>
               </DialogFooter>
             </form>

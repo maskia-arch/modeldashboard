@@ -54,7 +54,7 @@ export function Navbar() {
     }
   };
 
-  const isMaster = user?.role === "MASTER_ADMIN";
+  const isMaster = user?.role ? user.role === "MASTER_ADMIN" : !pathname.startsWith("/investor");
 
   return (
     <header className="h-16 border-b border-border bg-card/40 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30">

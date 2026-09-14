@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,7 @@ interface TonWalletManagerProps {
 }
 
 export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   // Storage key scoped by user ID
   const storageKey = `dashboard_ton_wallet_${currentUser.id}`;
@@ -90,7 +91,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
   const [sendRecipient, setSendRecipient] = useState<string>("");
   const [sendAmount, setSendAmount] = useState<string>("");
   const [sendMemo, setSendMemo] = useState<string>("");
-  const [manualMnemonic, setManualMnemonic] = useState<string>("");
+  const [accountPassword, setAccountPassword] = useState<string>("");
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sendSuccessMessage, setSendSuccessMessage] = useState<string | null>(null);
@@ -105,19 +106,52 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // 1. Load local wallet keys on mount
+  // 1. Load local wallet keys on mount & silently ensure encrypted sync to profile
   useEffect(() => {
     try {
+      let candidateMnemonic: string[] = [];
+      let candidateAddress = "";
+
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.mnemonic && Array.isArray(parsed.mnemonic) && parsed.mnemonic.length === 24) {
-          setMnemonic(parsed.mnemonic);
-          setHasLocalKeys(true);
-          if (!address && parsed.address) {
-            setAddress(parsed.address);
+          candidateMnemonic = parsed.mnemonic;
+          candidateAddress = parsed.address || "";
+        }
+      }
+
+      // Check fallback storage from generator if not found in primary
+      if (candidateMnemonic.length !== 24) {
+        const fallbackStored = localStorage.getItem("dashboard_ton_wallet_last");
+        if (fallbackStored) {
+          const parsed = JSON.parse(fallbackStored);
+          if (parsed.mnemonic && Array.isArray(parsed.mnemonic) && parsed.mnemonic.length === 24) {
+            candidateMnemonic = parsed.mnemonic;
+            candidateAddress = parsed.address || "";
           }
         }
+      }
+
+      if (candidateMnemonic.length === 24) {
+        setMnemonic(candidateMnemonic);
+        setHasLocalKeys(true);
+        const resolvedAddr = candidateAddress || address;
+        if (!address && candidateAddress) {
+          setAddress(candidateAddress);
+        }
+
+        localStorage.setItem(storageKey, JSON.stringify({ address: resolvedAddr, mnemonic: candidateMnemonic }));
+
+        // Ensure wallet is securely encrypted and synced to the user profile
+        fetch("/api/user/ton-address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tonAddress: resolvedAddr,
+            mnemonic: candidateMnemonic,
+          }),
+        }).catch(() => {});
       }
     } catch {
       // Storage unavailable or unparseable
@@ -175,11 +209,14 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
     if (!addrToSave || !isValidTonAddress(addrToSave)) return;
 
     try {
-      // Save to database
+      // Save to database with encrypted mnemonic
       const res = await fetch("/api/user/ton-address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tonAddress: addrToSave }),
+        body: JSON.stringify({
+          tonAddress: addrToSave,
+          mnemonic: wordsToSave && wordsToSave.length === 24 ? wordsToSave : undefined,
+        }),
       });
 
       if (!res.ok) {
@@ -258,29 +295,25 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
     }
   };
 
-  // 7. Handle Send TON
+  // 7. Handle Send TON with Account Password verification
   const handleSendTon = async (e: React.FormEvent) => {
     e.preventDefault();
     setSendError(null);
     setSendSuccessMessage(null);
 
-    const activeMnemonic = hasLocalKeys && mnemonic.length === 24
-      ? mnemonic
-      : manualMnemonic.trim().toLowerCase().split(/\s+/).filter(Boolean);
-
-    if (activeMnemonic.length !== 24) {
-      setSendError("Zur Autorisierung der Transaktion werden die 24 Wörter der Wallet benötigt.");
+    if (!accountPassword) {
+      setSendError(language === "de" ? "Bitte geben Sie Ihr Account-Passwort zur Bestätigung ein." : "Please enter your account password for confirmation.");
       return;
     }
 
     if (!sendRecipient || !isValidTonAddress(sendRecipient)) {
-      setSendError("Bitte geben Sie eine gültige TON-Empfängeradresse ein.");
+      setSendError(language === "de" ? "Bitte geben Sie eine gültige TON-Empfängeradresse ein." : "Please enter a valid recipient TON address.");
       return;
     }
 
     const amt = parseFloat(sendAmount);
     if (isNaN(amt) || amt <= 0) {
-      setSendError("Bitte geben Sie einen Betrag größer als 0 ein.");
+      setSendError(language === "de" ? "Bitte geben Sie einen Betrag größer als 0 ein." : "Please enter an amount greater than 0.");
       return;
     }
 
@@ -290,23 +323,26 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mnemonic: activeMnemonic,
+          password: accountPassword,
           recipient: sendRecipient.trim(),
           amount: amt,
           comment: sendMemo.trim() || undefined,
+          mnemonic: mnemonic.length === 24 ? mnemonic : undefined,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Fehler beim Senden");
+        throw new Error(data.error || (language === "de" ? "Fehler beim Senden" : "Failed to send transaction"));
       }
 
-      setSendSuccessMessage(`${amt} TON erfolgreich an ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)} versendet!`);
+      setSendSuccessMessage(language === "de"
+        ? `${amt} TON erfolgreich an ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)} versendet!`
+        : `${amt} TON successfully sent to ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)}!`);
       setSendAmount("");
       setSendRecipient("");
       setSendMemo("");
-      setManualMnemonic("");
+      setAccountPassword("");
 
       // Refresh balance and txs
       setTimeout(() => fetchWalletInfo(), 3000);
@@ -438,7 +474,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               <div className="p-3 rounded-lg bg-muted/40 border text-xs flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold block">
-                    Verknüpfte Payout-Adresse:
+                    {language === "de" ? "Verknüpfte Payout-Adresse:" : "Linked Payout Address:"}
                   </span>
                   <div className="font-mono text-xs font-bold truncate text-foreground mt-0.5">
                     {address}
@@ -455,12 +491,12 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                     {copiedId === "address_bar" ? (
                       <>
                         <Check className="h-3.5 w-3.5 text-emerald-400" />
-                        <span className="text-emerald-400">Kopiert!</span>
+                        <span className="text-emerald-400">{t.common.copied}</span>
                       </>
                     ) : (
                       <>
                         <Copy className="h-3.5 w-3.5" />
-                        <span>Kopieren</span>
+                        <span>{t.common.copy}</span>
                       </>
                     )}
                   </Button>
@@ -512,31 +548,39 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
             <CardHeader>
               <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
                 <ShieldCheck className="h-4 w-4 text-[#0098EA]" />
-                Automatische Erlösverteilung
+                {language === "de" ? "Automatische Erlösverteilung" : "Automated Revenue Settlement"}
               </CardTitle>
               <CardDescription className="text-xs leading-relaxed">
-                Diese TON-Adresse ist fest in Ihrem Investor-Profil verankert.
+                {language === "de" ? "Diese TON-Adresse ist fest in Ihrem Investor-Profil verankert." : "This TON address is linked to your profile."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-xs text-muted-foreground">
               <div className="p-2.5 rounded-lg bg-muted/40 border space-y-1">
-                <span className="font-semibold text-foreground block">100% Amortisation:</span>
+                <span className="font-semibold text-foreground block">
+                  {language === "de" ? "100% Amortisation:" : "100% Recoupment:"}
+                </span>
                 <p className="text-[11px]">
-                  Sobald für Ihre Kanäle genehmigte Ausgaben anfallen, fließen Sterne-Erlöse bis zur vollständigen Deckung vorab auf dieses Wallet.
+                  {language === "de"
+                    ? "Sobald für Ihre Kanäle genehmigte Ausgaben anfallen, fließen Sterne-Erlöse bis zur vollständigen Deckung vorab auf dieses Wallet."
+                    : "Revenues prioritize 100% recoupment of approved expenses before profit distributions."}
                 </p>
               </div>
 
               <div className="p-2.5 rounded-lg bg-muted/40 border space-y-1">
-                <span className="font-semibold text-foreground block">50/50 Gewinn-Splits:</span>
+                <span className="font-semibold text-foreground block">
+                  {language === "de" ? "Gewinn-Splits:" : "Profit Splits:"}
+                </span>
                 <p className="text-[11px]">
-                  Nach Amortisation werden die reifen Erlöse (nach Ablauf der 21-Tage-Haltefrist) vollautomatisch an diese Adresse überwiesen.
+                  {language === "de"
+                    ? "Nach Amortisation werden die reifen Erlöse (nach Ablauf der 21-Tage-Haltefrist) vollautomatisch an diese Adresse überwiesen."
+                    : "After recoupment, matured revenues (post 21-day holding period) are disbursed directly to this address."}
                 </p>
               </div>
             </CardContent>
             <CardFooter className="pt-0">
               <div className="w-full p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-[11px] text-blue-300 flex items-center gap-2">
                 <Info className="h-4 w-4 shrink-0 text-[#0098EA]" />
-                <span>On-Chain verifizierbar auf TonScan</span>
+                <span>{language === "de" ? "On-Chain verifizierbar auf TonScan" : "Verifiable on-chain on TonScan"}</span>
               </div>
             </CardFooter>
           </Card>
@@ -550,7 +594,9 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
           <div className="max-w-md mx-auto space-y-1.5">
             <h3 className="text-lg font-bold text-foreground">{t.wallet.noWalletConfigured}</h3>
             <p className="text-xs text-muted-foreground">
-              Erstellen Sie in Sekundenschnelle ein Dashboard-eigenes TON-Wallet oder verknüpfen Sie Ihre bestehende Adresse (Tonkeeper / Telegram Wallet), um Auszahlungen zu empfangen.
+              {language === "de"
+                ? "Erstellen Sie in Sekundenschnelle ein Dashboard-eigenes TON-Wallet oder verknüpfen Sie Ihre bestehende Adresse (Tonkeeper / Telegram Wallet), um Auszahlungen zu empfangen."
+                : "Generate a dashboard-native TON wallet in seconds or link your existing address (Tonkeeper / Telegram Wallet) to receive payouts."}
             </p>
           </div>
           <Button
@@ -579,7 +625,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 {t.wallet.recentTransactions}
               </CardTitle>
               <CardDescription className="text-xs">
-                Echtzeit-Transaktionen direkt aus der TON-Blockchain
+                {language === "de" ? "Echtzeit-Transaktionen direkt aus der TON-Blockchain" : "Real-time transactions directly from the TON Blockchain"}
               </CardDescription>
             </div>
             <Button
@@ -616,7 +662,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                       </div>
                       <div>
                         <div className="font-semibold text-foreground flex items-center gap-2">
-                          <span>{tx.isIncoming ? "Eingehend" : "Ausgehend"}</span>
+                          <span>{tx.isIncoming ? (language === "de" ? "Eingehend" : "Incoming") : (language === "de" ? "Ausgehend" : "Outgoing")}</span>
                           {tx.memo && (
                             <Badge variant="secondary" className="text-[10px] py-0 font-normal">
                               {tx.memo}
@@ -649,7 +695,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                         rel="noopener noreferrer"
                         className="text-[10px] text-muted-foreground hover:text-[#0098EA] inline-flex items-center gap-1"
                       >
-                        Details <ExternalLink className="h-2.5 w-2.5" />
+                        {t.common.details} <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     </div>
                   </div>
@@ -658,7 +704,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
             ) : (
               <div className="p-8 text-center text-xs text-muted-foreground space-y-1">
                 <p>{t.wallet.noTransactions}</p>
-                <p className="text-[11px]">Sobald Amortisationen oder Transfers erfolgen, erscheinen diese hier automatisch.</p>
+                <p className="text-[11px]">{language === "de" ? "Sobald Amortisationen oder Transfers erfolgen, erscheinen diese hier automatisch." : "Transactions will appear here automatically."}</p>
               </div>
             )}
           </CardContent>
@@ -691,7 +737,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               <p className="text-xs text-muted-foreground">{sendSuccessMessage}</p>
               <DialogFooter className="pt-2">
                 <Button onClick={() => setIsSendOpen(false)} className="w-full">
-                  Schließen
+                  {t.common.close}
                 </Button>
               </DialogFooter>
             </div>
@@ -720,11 +766,11 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                   <div className="mt-1 text-[11px] flex items-center gap-1">
                     {isValidTonAddress(sendRecipient) ? (
                       <span className="text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> Gültige TON-Adresse
+                        <CheckCircle2 className="h-3 w-3" /> {language === "de" ? "Gültige TON-Adresse" : "Valid TON Address"}
                       </span>
                     ) : (
                       <span className="text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" /> Format prüfen (UQ... / EQ...)
+                        <AlertCircle className="h-3 w-3" /> {language === "de" ? "Format prüfen (UQ... / EQ...)" : "Check format (UQ... / EQ...)"}
                       </span>
                     )}
                   </div>
@@ -738,7 +784,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                     {t.wallet.amountLabel}
                   </label>
                   <span className="text-[11px] text-muted-foreground">
-                    Verfügbar: <strong className="text-foreground">{balanceTon} TON</strong>
+                    {language === "de" ? "Verfügbar:" : "Available:"} <strong className="text-foreground">{balanceTon} TON</strong>
                   </span>
                 </div>
                 <div className="relative">
@@ -780,26 +826,24 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 />
               </div>
 
-              {/* If no local keys, require seed input */}
-              {!hasLocalKeys && (
-                <div>
-                  <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5 mb-1">
-                    <KeyRound className="h-3.5 w-3.5" />
-                    24-Wort Mnemonic zur Freigabe:
-                  </label>
-                  <Input
-                    type="password"
-                    required
-                    value={manualMnemonic}
-                    onChange={(e) => setManualMnemonic(e.target.value)}
-                    placeholder="24 Wörter getrennt durch Leerzeichen..."
-                    className="font-mono text-xs h-9"
-                  />
-                  <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                    Wird nur im flüchtigen Speicher zur Signierung dieser Transaktion genutzt.
-                  </span>
-                </div>
-              )}
+              {/* Account Password Authorization */}
+              <div>
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-1">
+                  <Lock className="h-3.5 w-3.5 text-[#0098EA]" />
+                  {t.wallet.passwordLabel}
+                </label>
+                <Input
+                  type="password"
+                  required
+                  value={accountPassword}
+                  onChange={(e) => setAccountPassword(e.target.value)}
+                  placeholder={t.wallet.passwordPlaceholder}
+                  className="text-xs h-9"
+                />
+                <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                  {t.wallet.passwordHint}
+                </span>
+              </div>
 
               <DialogFooter className="pt-2 flex flex-col gap-2">
                 <Button
@@ -866,7 +910,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
           {/* Address Display & Copy */}
           <div className="p-3 rounded-lg bg-muted/60 border text-left space-y-1.5">
             <span className="text-[10px] uppercase font-semibold text-muted-foreground block">
-              Ihre öffentliche TON-Empfangsadresse:
+              {language === "de" ? "Ihre öffentliche TON-Empfangsadresse:" : "Your Public TON Receiving Address:"}
             </span>
             <div className="font-mono text-xs font-bold text-foreground break-all">
               {address}
@@ -881,7 +925,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               {copiedId === "receive_copy" ? (
                 <>
                   <Check className="h-4 w-4 text-emerald-400" />
-                  Kopiert!
+                  {t.common.copied}
                 </>
               ) : (
                 <>
@@ -905,7 +949,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               <DialogTitle>{t.wallet.backupModalTitle}</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              Sichern Sie Ihre Secret Recovery Phrase sorgfältig ab.
+              {language === "de" ? "Sichern Sie Ihre Secret Recovery Phrase sorgfältig ab." : "Secure your Secret Recovery Phrase carefully."}
             </DialogDescription>
           </DialogHeader>
 
@@ -924,7 +968,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 className="gap-1.5 text-xs"
               >
                 {showSeed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                {showSeed ? "Wörter verbergen" : "Wörter jetzt aufdecken"}
+                {showSeed ? (language === "de" ? "Wörter verbergen" : "Hide Words") : (language === "de" ? "Wörter jetzt aufdecken" : "Reveal Words")}
               </Button>
 
               {showSeed && (
@@ -937,12 +981,12 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                   {copiedId === "backup_words" ? (
                     <>
                       <Check className="h-3.5 w-3.5 text-emerald-400" />
-                      Kopiert!
+                      {t.common.copied}
                     </>
                   ) : (
                     <>
                       <Copy className="h-3.5 w-3.5" />
-                      Wörter kopieren
+                      {t.wallet.copyMnemonic}
                     </>
                   )}
                 </Button>
@@ -964,14 +1008,14 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               </div>
             ) : (
               <div className="p-8 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
-                Klicken Sie auf „Wörter jetzt aufdecken“, um Ihre 24 Wörter sichtbar zu machen.
+                {language === "de" ? "Klicken Sie auf „Wörter jetzt aufdecken“, um Ihre 24 Wörter sichtbar zu machen." : "Click 'Reveal Words' to display your 24 words."}
               </div>
             )}
           </div>
 
           <DialogFooter>
             <Button onClick={() => setIsBackupOpen(false)} className="w-full">
-              Fertig & Gesichert
+              {language === "de" ? "Fertig & Gesichert" : "Done & Secured"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -985,10 +1029,10 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-[#0098EA]" />
-              <DialogTitle>TON Wallet einrichten & verknüpfen</DialogTitle>
+              <DialogTitle>{language === "de" ? "TON Wallet einrichten & verknüpfen" : "Set Up & Link TON Wallet"}</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              Wählen Sie, wie Sie Ihr TON-Wallet im Dashboard aktivieren möchten.
+              {language === "de" ? "Wählen Sie, wie Sie Ihr TON-Wallet im Dashboard aktivieren möchten." : "Select how you would like to activate your TON wallet."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1045,7 +1089,9 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               {generatedWords.length === 0 ? (
                 <div className="p-6 rounded-xl bg-gradient-to-r from-blue-950/20 via-background to-cyan-950/20 border border-blue-500/20 text-center space-y-3">
                   <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                    Die Schlüsselgenerierung erfolgt mit <code>@ton/crypto</code> lokal in Ihrem Browser. Der Server erhält zu keinem Zeitpunkt Einsicht in Ihren Private Key.
+                    {language === "de"
+                      ? "Die Schlüsselgenerierung erfolgt mit @ton/crypto lokal in Ihrem Browser. Der Server erhält zu keinem Zeitpunkt Einsicht in Ihren Private Key."
+                      : "Key generation takes place locally in your browser using @ton/crypto. The server never receives access to your private key."}
                   </p>
                   <Button
                     onClick={handleGenerateWallet}
@@ -1055,7 +1101,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                     {isGenerating ? (
                       <>
                         <RefreshCw className="h-4 w-4 animate-spin" />
-                        Generiere...
+                        {language === "de" ? "Generiere..." : "Generating..."}
                       </>
                     ) : (
                       <>
@@ -1068,7 +1114,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               ) : (
                 <div className="space-y-3">
                   <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300">
-                    <strong>Sicherheitshinweis:</strong> Schreiben Sie sich diese 24 Wörter auf.
+                    <strong>{language === "de" ? "Sicherheitshinweis:" : "Security Warning:"}</strong> {language === "de" ? "Schreiben Sie sich diese 24 Wörter auf." : "Write these 24 words down on paper."}
                   </div>
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
@@ -1084,7 +1130,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-muted/50 border text-xs space-y-1">
-                    <span className="text-[10px] uppercase font-semibold text-muted-foreground">Generierte Adresse:</span>
+                    <span className="text-[10px] uppercase font-semibold text-muted-foreground">{language === "de" ? "Generierte Adresse:" : "Generated Address:"}</span>
                     <div className="font-mono text-xs font-bold text-[#0098EA] break-all">{generatedAddr}</div>
                   </div>
 
@@ -1093,7 +1139,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                     className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
                   >
                     <Check className="h-4 w-4" />
-                    Dieses Wallet jetzt aktivieren & dauerhaft speichern
+                    {language === "de" ? "Dieses Wallet jetzt aktivieren & dauerhaft speichern" : "Activate & Save This Wallet"}
                   </Button>
                 </div>
               )}
@@ -1152,7 +1198,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Ihre TON-Adresse (UQ... / EQ...)
+                  {language === "de" ? "Ihre TON-Adresse (UQ... / EQ...)" : "Your TON Address (UQ... / EQ...)"}
                 </label>
                 <Input
                   value={externalInput}

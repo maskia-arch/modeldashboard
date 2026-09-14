@@ -276,7 +276,7 @@ export function ScheduleClient({
             className="gap-1.5 text-xs h-9"
           >
             <Plus className="h-4 w-4" />
-            {t.schedule.addContent} (mit Menge)
+            {t.schedule.addContent}
           </Button>
 
           <Button
@@ -300,18 +300,18 @@ export function ScheduleClient({
             <div>
               <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                 <AlertCircle className={cn("h-3.5 w-3.5", stats.pending > 0 ? "text-amber-400 animate-pulse" : "text-muted-foreground")} />
-                Fällig (Pending)
+                {t.schedule.duePendingCard}
               </div>
               <div className="text-2xl font-black mt-1 text-foreground">
                 {stats.pending}
               </div>
               <div className="text-[11px] text-muted-foreground">
-                Aktion erforderlich
+                {t.schedule.actionRequired}
               </div>
             </div>
             {stats.pending > 0 && (
               <Badge variant="warning" className="animate-pulse">
-                {stats.pending} fällig
+                {stats.pending} {language === "de" ? "fällig" : "due"}
               </Badge>
             )}
           </CardContent>
@@ -323,13 +323,13 @@ export function ScheduleClient({
             <div>
               <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5 text-blue-400" />
-                Geplant (Zukunft)
+                {t.schedule.scheduledFutureCard}
               </div>
               <div className="text-2xl font-black mt-1 text-foreground">
                 {stats.scheduled}
               </div>
               <div className="text-[11px] text-muted-foreground">
-                In Warteschlange
+                {t.schedule.inQueue}
               </div>
             </div>
           </CardContent>
@@ -341,7 +341,7 @@ export function ScheduleClient({
             <div>
               <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                {selectedModelId === "ALL" ? "Heute gepostet (Gesamt)" : t.schedule.todayPostings}
+                {selectedModelId === "ALL" ? t.schedule.todayPostedTotal : t.schedule.todayPostings}
               </div>
               <div className="text-2xl font-black mt-1 text-foreground">
                 {stats.publishedToday}
@@ -352,7 +352,7 @@ export function ScheduleClient({
               <div className="text-[11px] text-muted-foreground">
                 {selectedModelId === "ALL"
                   ? t.schedule.dailyCapNotice
-                  : "Max. 1–2 Posts pro Tag für diesen Kanal"}
+                  : t.schedule.dailyCapForChannel}
               </div>
             </div>
           </CardContent>
@@ -364,13 +364,13 @@ export function ScheduleClient({
             <div>
               <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-purple-400" />
-                Content-Vorrat
+                {t.schedule.contentPoolCard}
               </div>
               <div className="text-2xl font-black mt-1 text-foreground">
                 {unusedCount}
               </div>
               <div className="text-[11px] text-muted-foreground">
-                Unbenutzte Medien
+                {t.schedule.unusedMediaUnits}
               </div>
             </div>
           </CardContent>
@@ -424,7 +424,7 @@ export function ScheduleClient({
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Caption oder Model suchen..."
+              placeholder={t.schedule.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-9 pl-9 text-xs"
@@ -446,7 +446,7 @@ export function ScheduleClient({
             <CardContent className="p-12 text-center text-muted-foreground">
               <CalendarClock className="h-10 w-10 mx-auto mb-2 text-muted-foreground/40" />
               <p className="font-semibold text-sm">{t.schedule.noPostsFound}</p>
-              <p className="text-xs mt-1">Erstellen Sie neuen Content oder nutzen Sie den automatischen Zeitplaner.</p>
+              <p className="text-xs mt-1">{t.schedule.noPostsDesc}</p>
             </CardContent>
           </Card>
         ) : (
@@ -485,7 +485,7 @@ export function ScheduleClient({
                       {isPending ? (
                         <Badge variant="warning" className="gap-1 animate-pulse font-bold text-xs py-1 px-2.5">
                           <AlertCircle className="h-3.5 w-3.5" />
-                          {t.schedule.dueBadge} (Seit {formatDistanceToNow(targetDate, { locale: dateLocale })})
+                          {t.schedule.dueBadge} ({language === "de" ? "Seit" : "Since"} {formatDistanceToNow(targetDate, { locale: dateLocale })})
                         </Badge>
                       ) : isPublished ? (
                         <Badge variant="success" className="gap-1 text-xs py-1 px-2.5">
@@ -495,17 +495,19 @@ export function ScheduleClient({
                       ) : (
                         <Badge variant="secondary" className="gap-1 text-xs py-1 px-2.5">
                           <Clock className="h-3.5 w-3.5 text-blue-400" />
-                          Geplant für {format(targetDate, "dd.MM.yyyy HH:mm", { locale: dateLocale })} Uhr
+                          {language === "de"
+                            ? `Geplant für ${format(targetDate, "dd.MM.yyyy HH:mm", { locale: dateLocale })} Uhr`
+                            : `Scheduled for ${format(targetDate, "yyyy-MM-dd HH:mm", { locale: dateLocale })}`}
                         </Badge>
                       )}
 
                       {post.starsPrice > 0 ? (
                         <Badge variant="default" className="bg-amber-600 text-[10px]">
-                          ⭐ {post.starsPrice} Stars Paywall
+                          ⭐ {post.starsPrice} {t.schedule.starsPaywall}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[10px]">
-                          Free Teaser
+                          {t.schedule.freeTeaser}
                         </Badge>
                       )}
                     </div>
@@ -545,11 +547,11 @@ export function ScheduleClient({
                     {/* Media Reference / Meta Info (1 column) */}
                     <div className="p-3 rounded-lg bg-muted/20 border space-y-2 text-xs flex flex-col justify-between">
                       <div className="space-y-1">
-                        <span className="font-semibold text-muted-foreground block">Zugeordnetes Medium:</span>
+                        <span className="font-semibold text-muted-foreground block">{t.schedule.assignedMedia}</span>
                         {post.asset ? (
                           <>
-                            <div className="font-bold text-foreground">{post.asset.title || "Foto/Video"}</div>
-                            <div className="text-[11px] text-muted-foreground">Thema: {post.asset.theme || "Allgemein"}</div>
+                            <div className="font-bold text-foreground">{post.asset.title || (language === "de" ? "Foto/Video" : "Photo/Video")}</div>
+                            <div className="text-[11px] text-muted-foreground">{language === "de" ? "Thema" : "Theme"}: {post.asset.theme || (language === "de" ? "Allgemein" : "General")}</div>
                             <div className="text-[11px] text-muted-foreground">Level: {post.asset.explicitLevel}</div>
                             {post.asset.fileUrl && (
                               <a
@@ -559,17 +561,17 @@ export function ScheduleClient({
                                 className="text-[11px] text-sky-400 hover:underline flex items-center gap-1 mt-1 truncate"
                               >
                                 <ExternalLink className="h-3 w-3 shrink-0" />
-                                Dateilink öffnen
+                                {t.schedule.openFileLink}
                               </a>
                             )}
                           </>
                         ) : (
-                          <span className="text-muted-foreground italic">Kein spezielles Asset verknüpft</span>
+                          <span className="text-muted-foreground italic">{t.schedule.noAssetLinked}</span>
                         )}
                       </div>
 
                       <div className="pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
-                        Geplant: {format(targetDate, "EEEE, dd. MMMM yyyy • HH:mm", { locale: dateLocale })} Uhr
+                        {t.schedule.scheduledAt} {format(targetDate, language === "de" ? "EEEE, dd. MMMM yyyy • HH:mm 'Uhr'" : "EEEE, MMMM dd, yyyy • HH:mm", { locale: dateLocale })}
                       </div>
                     </div>
                   </div>
@@ -583,7 +585,7 @@ export function ScheduleClient({
                       className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      Löschen
+                      {t.schedule.deleteButton}
                     </Button>
 
                     <div className="flex items-center gap-2">
@@ -628,16 +630,16 @@ export function ScheduleClient({
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-primary" />
-              <DialogTitle>Content-Bestand erfassen (mit Stückzahl)</DialogTitle>
+              <DialogTitle>{t.schedule.addContentModalTitle}</DialogTitle>
             </div>
             <DialogDescription>
-              Legen Sie ein oder mehrere Medien gleichen Typs auf einmal an, ohne jeden Eintrag wiederholen zu müssen.
+              {t.schedule.addContentModalDesc}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleAddContentSubmit} className="space-y-3.5 py-2">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Model auswählen</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.selectModelLabel}</label>
               <select
                 value={contentModelId}
                 onChange={(e) => setContentModelId(e.target.value)}
@@ -653,44 +655,44 @@ export function ScheduleClient({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Medientyp</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.mediaTypeLabel}</label>
                 <select
                   value={contentType}
                   onChange={(e) => setContentType(e.target.value as any)}
                   className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-xs"
                 >
-                  <option value="PHOTO">📷 Foto</option>
-                  <option value="VIDEO">🎬 Video</option>
+                  <option value="PHOTO">{language === "de" ? "📷 Foto" : "📷 Photo"}</option>
+                  <option value="VIDEO">{language === "de" ? "🎬 Video" : "🎬 Video"}</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Explizitheit</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.explicitLabel}</label>
                 <select
                   value={contentLevel}
                   onChange={(e) => setContentLevel(e.target.value as any)}
                   className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-xs"
                 >
-                  <option value="TEASER">TEASER (Kostenlos)</option>
+                  <option value="TEASER">TEASER ({language === "de" ? "Kostenlos" : "Free"})</option>
                   <option value="SOFT">SOFT (Promo / 15 ⭐)</option>
-                  <option value="PPV">PPV (Stars Paywall / 50 ⭐)</option>
+                  <option value="PPV">PPV ({t.schedule.starsPaywall} / 50 ⭐)</option>
                 </select>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Titel / Basis-Bezeichnung</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.titleLabel}</label>
                 <Input
                   value={contentTitle}
                   onChange={(e) => setContentTitle(e.target.value)}
-                  placeholder="z.B. Sommer Strand Outfit"
+                  placeholder={t.schedule.titlePlaceholder}
                   className="text-xs h-9"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground block mb-1">Anzahl / Stück</label>
+                <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.countLabel}</label>
                 <Input
                   type="number"
                   min={1}
@@ -704,43 +706,45 @@ export function ScheduleClient({
 
             {contentCount > 1 && (
               <p className="text-[11px] text-purple-400 font-medium">
-                ⚡ Erstellt automatisch {contentCount} durchnummerierte Content-Slots ({contentTitle || "Medium"} #1 bis #{contentCount}).
+                {language === "de"
+                  ? `⚡ Erstellt automatisch ${contentCount} durchnummerierte Content-Slots (${contentTitle || "Medium"} #1 bis #${contentCount}).`
+                  : `⚡ Automatically creates ${contentCount} numbered content slots (${contentTitle || "Media"} #1 to #${contentCount}).`}
               </p>
             )}
 
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Thema / Setting</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.themeLabel}</label>
               <Input
                 value={contentTheme}
                 onChange={(e) => setContentTheme(e.target.value)}
-                placeholder="z.B. Strand, Lingerie, Gym"
+                placeholder={t.schedule.themePlaceholder}
                 className="text-xs h-9"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Regie-Hinweise / Notizen (optional)</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.notesLabel}</label>
               <Input
                 value={contentNotes}
                 onChange={(e) => setContentNotes(e.target.value)}
-                placeholder="z.B. Flirtender Blick, Abendsonne"
+                placeholder={t.schedule.notesPlaceholder}
                 className="text-xs h-9"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Dateilink / Referenzordner (optional)</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.urlLabel}</label>
               <Input
                 value={contentUrl}
                 onChange={(e) => setContentUrl(e.target.value)}
-                placeholder="z.B. ordner_juli/pic_01.jpg"
+                placeholder={t.schedule.urlPlaceholder}
                 className="text-xs h-9"
               />
             </div>
 
             <DialogFooter>
               <Button type="submit" disabled={isSubmitting} className="w-full">
-                {isSubmitting ? "Erfasse..." : `${contentCount} Content-Einheit(en) anlegen`}
+                {isSubmitting ? t.schedule.submittingContent : `${contentCount} ${t.schedule.submitAddContent}`}
               </Button>
             </DialogFooter>
           </form>
@@ -753,52 +757,52 @@ export function ScheduleClient({
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-400" />
-              <DialogTitle>Intelligenten Zeitplan erzeugen</DialogTitle>
+              <DialogTitle>{t.schedule.autoPlanModalTitle}</DialogTitle>
             </div>
             <DialogDescription>
-              Verteilt vorhandene Medien automatisch so, dass die Kanäle nicht überflutet werden.
+              {t.schedule.autoPlanModalDesc}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleAutoPlanSubmit} className="space-y-4 py-2">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Model auswählen</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.selectModelLabel}</label>
               <select
                 value={planModelId}
                 onChange={(e) => setPlanModelId(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-xs"
               >
-                <option value="ALL">Alle Models mit verfügbarem Content</option>
+                <option value="ALL">{t.schedule.allModelsOption}</option>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name} ({m._count?.assets || 0} verfügbare Medien)
+                    {m.name} ({m._count?.assets || 0} {t.schedule.availableMediaSuffix})
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">Startdatum für die Taktung (optional)</label>
+              <label className="text-xs font-semibold text-muted-foreground block mb-1">{t.schedule.startDateLabel}</label>
               <Input
                 type="date"
                 value={planStartDate}
                 onChange={(e) => setPlanStartDate(e.target.value)}
                 className="text-xs h-9"
               />
-              <span className="text-[11px] text-muted-foreground mt-0.5 block">Leer lassen für automatischen Start ab morgen.</span>
+              <span className="text-[11px] text-muted-foreground mt-0.5 block">{t.schedule.startDateHint}</span>
             </div>
 
             {/* Smart Pacing Rules Box */}
             <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs space-y-1.5">
               <span className="font-semibold text-purple-300 block flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" />
-                Intelligente Pacing-Regeln (Strikt pro Kanal / Model):
+                {t.schedule.smartRulesTitle}
               </span>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground text-[11px]">
-                <li><strong>Unabhängig je Kanal:</strong> Jedes Model bzw. jeder Channel wird völlig separat getaktet.</li>
-                <li><strong>Maximal 1–2 Bilder pro Tag je Kanal:</strong> Prime-Zeiten um 14:30 & 20:15 Uhr verhindern Kanal-Überflutung.</li>
-                <li><strong>Automatische Pausentage:</strong> Bei geringem Content-Bestand (&lt; 10–15 Bilder) eines Models werden für diesen Kanal 1–2 Tage Pause eingelegt, um die Pipeline zu strecken.</li>
-                <li><strong>Automatische VIP-Captions:</strong> Engagierende Telegram-Texte mit Free/Paywall-Aufteilung passend zum Bildtyp.</li>
+                <li>{t.schedule.rule1}</li>
+                <li>{t.schedule.rule2}</li>
+                <li>{t.schedule.rule3}</li>
+                <li>{t.schedule.rule4}</li>
               </ul>
             </div>
 
@@ -807,12 +811,12 @@ export function ScheduleClient({
                 {isSubmitting ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Berechne & Erzeuge Zeitplan...
+                    {t.schedule.generatingSubmitButton}
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    Zeitplan jetzt generieren
+                    {t.schedule.generateSubmitButton}
                   </>
                 )}
               </Button>

@@ -54,8 +54,9 @@ model User {
   isRegistered    Boolean           @default(false)
   isActive        Boolean           @default(true)  // Master Admin can suspend/restrict access
   lastLoginAt     DateTime?
-  tonAddress      String?           // Public Address for 50/50 & recoupment payouts
-  createdAt       DateTime          @default(now())
+  tonAddress         String?           // Public Address for 50/50 & recoupment payouts
+  tonWalletEncrypted String?           // AES-256-GCM encrypted 24-word seed phrase for password-authorized transfers
+  createdAt          DateTime          @default(now())
 
   assignedModels    Model[]           @relation("InvestorModels")
   submittedExpenses Expense[]

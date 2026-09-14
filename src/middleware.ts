@@ -35,9 +35,40 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 2. If authenticated and visiting /login or /register, redirect into portal
+  // 2. Decode user role directly from JWT payload to prevent any UI flicker
+  let userRole: string | null = null;
+  if (token) {
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const json = atob(base64);
+        const parsed = JSON.parse(json);
+        userRole = parsed?.role || null;
+      }
+    } catch {}
+  }
+
+  // 3. If authenticated and visiting /login or /register, redirect into portal immediately
   if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/", request.url));
+    const target = userRole === "INVESTOR" ? "/investor" : "/";
+    return NextResponse.redirect(new URL(target, request.url));
+  }
+
+  // 4. Role-based isolation: If Investor visits Master routes, redirect immediately before rendering
+  if (token && userRole === "INVESTOR") {
+    // Root path is Master Dashboard -> Investor must be at /investor
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/investor", request.url));
+    }
+    // Protected Master Admin routes
+    if (
+      pathname === "/models" ||
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/schedule")
+    ) {
+      return NextResponse.redirect(new URL("/investor", request.url));
+    }
   }
 
   return NextResponse.next();

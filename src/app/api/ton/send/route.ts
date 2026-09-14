@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { TonClient, WalletContractV4, internal, toNano, fromNano, Address } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
+import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 import { getCurrentUser, logUserActivity } from "@/lib/auth";
 import { isValidTonAddress } from "@/lib/ton";
+import { decryptMnemonic, encryptMnemonic } from "@/lib/wallet-crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +17,41 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { mnemonic, recipient, amount, comment } = body;
+    const { password, recipient, amount, comment, mnemonic } = body;
 
-    // 1. Validate Recipient
+    // 1. Fetch user from DB to verify password and retrieve encrypted wallet
+    const dbUser = await prisma.user.findUnique({
+      where: { id: currentUser.id },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json({ error: "Benutzerkonto nicht gefunden." }, { status: 404 });
+    }
+
+    // 2. Validate Password (User's account password)
+    if (!password) {
+      return NextResponse.json(
+        { error: "Bitte geben Sie Ihr Account-Passwort ein, um die Auszahlung zu verifizieren." },
+        { status: 400 }
+      );
+    }
+
+    if (!dbUser.passwordHash) {
+      return NextResponse.json(
+        { error: "Für dieses Konto wurde noch kein Passwort festgelegt." },
+        { status: 400 }
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, dbUser.passwordHash);
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { error: "Falsches Account-Passwort. Bitte überprüfen Sie Ihre Eingabe." },
+        { status: 403 }
+      );
+    }
+
+    // 3. Validate Recipient Address
     if (!recipient || !isValidTonAddress(recipient)) {
       return NextResponse.json(
         { error: "Ungültige Empfänger TON-Adresse." },
@@ -24,7 +59,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Validate Amount
+    // 4. Validate Amount
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       return NextResponse.json(
@@ -33,22 +68,46 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Validate Mnemonic
+    // 5. Retrieve Wallet Mnemonic
     let words: string[] = [];
-    if (Array.isArray(mnemonic)) {
-      words = mnemonic;
-    } else if (typeof mnemonic === "string") {
-      words = mnemonic.trim().split(/\s+/);
+
+    // Priority A: Decrypt from user profile
+    if (dbUser.tonWalletEncrypted) {
+      try {
+        words = decryptMnemonic(dbUser.tonWalletEncrypted);
+      } catch (decErr: any) {
+        console.error("[TON Send] Error decrypting wallet from DB:", decErr.message);
+      }
+    }
+
+    // Priority B: Fallback from client payload (and auto-save to DB)
+    if (words.length !== 24 && mnemonic) {
+      const candidateWords = Array.isArray(mnemonic)
+        ? mnemonic
+        : typeof mnemonic === "string"
+        ? mnemonic.trim().split(/\s+/)
+        : [];
+      if (candidateWords.length === 24) {
+        words = candidateWords;
+        try {
+          await prisma.user.update({
+            where: { id: dbUser.id },
+            data: { tonWalletEncrypted: encryptMnemonic(words) },
+          });
+        } catch {}
+      }
     }
 
     if (words.length !== 24) {
       return NextResponse.json(
-        { error: "Zur Freigabe der Transaktion ist eine gültige 24-Wort Secret Recovery Phrase erforderlich." },
+        {
+          error: "Kein aktiver Wallet-Schlüssel gefunden. Bitte richten Sie Ihr Wallet in den Einstellungen neu ein oder sichern Sie es ab.",
+        },
         { status: 400 }
       );
     }
 
-    // 4. Initialize TonClient & Contract
+    // 6. Initialize TonClient & Contract
     const endpoint = process.env.TON_API_ENDPOINT || "https://toncenter.com/api/v2/jsonRPC";
     const apiKey = process.env.TON_API_KEY || undefined;
 
@@ -61,7 +120,7 @@ export async function POST(req: Request) {
     const walletContract = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
     const wallet = client.open(walletContract);
 
-    // 5. Verify Balance
+    // 7. Verify Balance
     const balanceNano = await wallet.getBalance();
     const requiredNano = toNano(parsedAmount.toString()) + toNano("0.02");
 
@@ -74,7 +133,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 6. Get Seqno & Send Transfer
+    // 8. Get Seqno & Send Transfer
     const seqno = await wallet.getSeqno();
 
     await wallet.sendTransfer({
@@ -90,7 +149,7 @@ export async function POST(req: Request) {
       ],
     });
 
-    // 7. Log activity
+    // 9. Log activity
     const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
     const userAgent = req.headers.get("user-agent") || "unknown";
     await logUserActivity(

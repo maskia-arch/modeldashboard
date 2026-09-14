@@ -300,7 +300,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                             </Badge>
                           ) : (
                             <Badge variant="warning" className="text-[10px] py-0 shrink-0">
-                              Recouping ({model.investorSharePercent || 50}%)
+                              {t.overview.amortizing} ({model.investorSharePercent || 50}%)
                             </Badge>
                           )}
                         </div>
@@ -329,7 +329,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                       <div className="p-2 rounded-lg bg-sky-950/20 border border-sky-800/30 text-sky-400 text-[11px] flex items-center justify-between">
                         <span className="truncate">{t.models.directSplitDesc}</span>
                         <Badge variant="outline" className="text-[10px] text-sky-400 border-sky-800/40 shrink-0 ml-2">
-                          {model.investorSharePercent || 50}% Direkt
+                          {model.investorSharePercent || 50}% {language === "de" ? "Direkt" : "Direct"}
                         </Badge>
                       </div>
                     ) : (
@@ -437,7 +437,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={language === "de" ? "Kanäle oder Gruppen filtern..." : "Filter channels or groups..."}
+                    placeholder={t.models.filterChannelsPlaceholder}
                     className="h-8 pl-8 text-xs bg-background"
                   />
                 </div>
@@ -757,9 +757,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                 ))}
               </select>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {language === "de"
-                  ? "Der ausgewählte Investor erhält sofort exklusiven Zugriff auf diesen Kanal in seinem Portal."
-                  : "The selected investor receives immediate exclusive access to this channel in their portal."}
+                {t.models.investorAssignNotice}
               </p>
             </div>
 

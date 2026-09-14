@@ -40,28 +40,42 @@ export default async function OverviewPage() {
   }
 
   let models: any[] = [];
+  let investors: any[] = [];
   try {
-    models = await prisma.model.findMany({
-      include: {
-        expenses: true,
-        starTransactions: true,
-        payouts: true,
-        posts: {
-          take: 3,
-          orderBy: { scheduledFor: "desc" },
-        },
-        _count: {
-          select: {
-            assets: true,
-            posts: true,
+    const [fetchedModels, fetchedInvestors] = await Promise.all([
+      prisma.model.findMany({
+        include: {
+          investor: {
+            select: { id: true, name: true, email: true, tonAddress: true },
+          },
+          expenses: true,
+          starTransactions: true,
+          payouts: true,
+          posts: {
+            take: 3,
+            orderBy: { scheduledFor: "desc" },
+          },
+          _count: {
+            select: {
+              assets: true,
+              posts: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.user.findMany({
+        where: { role: "INVESTOR" },
+        select: { id: true, name: true, email: true, tonAddress: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    models = fetchedModels;
+    investors = fetchedInvestors;
   } catch (error) {
     console.error("[OverviewPage] Database query warning (schema initializing?):", error);
     models = [];
+    investors = [];
   }
 
   const modelsWithFin = models.map((m) => ({
@@ -75,25 +89,30 @@ export default async function OverviewPage() {
       {
         modelName: m.name,
         channelTitle: m.channelTitle,
-        investorSharePercent: m.investorSharePercent,
+        investorSharePercent: m.investorId ? m.investorSharePercent : 0,
         enableExpenseRecoupment: m.enableExpenseRecoupment,
       }
     ),
   }));
 
   // Aggregate global numbers
-  const totalLocked = modelsWithFin.reduce((acc, m) => acc + (m.fin?.pipeline?.lockedPendingUsd || 0), 0);
-  const totalRecouped = modelsWithFin.reduce((acc, m) => acc + (m.fin?.recoupedUsd || 0), 0);
-  const totalAvailablePayout = modelsWithFin.reduce((acc, m) => acc + (m.fin?.partnerAvailablePayoutUsd || 0), 0);
-  const totalGrossRevenue = modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalGrossRevenueUsd || 0), 0);
+  const totalLocked = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.pipeline?.lockedPendingUsd || 0), 0).toFixed(2));
+  const totalRecouped = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.recoupedUsd || 0), 0).toFixed(2));
+  const totalAvailablePayout = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.investorAvailablePayoutUsd || 0), 0).toFixed(2));
+  const totalGrossRevenue = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalGrossRevenueUsd || 0), 0).toFixed(2));
+  const totalManagementShare = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.managementTotalShareUsd || 0), 0).toFixed(2));
+  const totalDisbursed = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalPaidOutUsd || 0), 0).toFixed(2));
 
   return (
     <OverviewClient
       modelsWithFin={modelsWithFin}
+      investors={investors}
       totalGrossRevenue={totalGrossRevenue}
       totalLocked={totalLocked}
       totalRecouped={totalRecouped}
       totalAvailablePayout={totalAvailablePayout}
+      totalManagementShare={totalManagementShare}
+      totalDisbursed={totalDisbursed}
     />
   );
 }

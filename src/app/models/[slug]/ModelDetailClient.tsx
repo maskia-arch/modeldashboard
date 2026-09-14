@@ -35,6 +35,7 @@ import { PayoutModal } from "@/components/PayoutModal";
 import { formatUsd, formatStars, truncateAddress } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface InvestorItem {
   id: string;
@@ -55,6 +56,7 @@ export function ModelDetailClient({
   investors = [],
   isMasterAdmin = false,
 }: ModelDetailClientProps) {
+  const { t, language } = useLanguage();
   const [model, setModel] = useState(initialModel);
   const [financials, setFinancials] = useState<ModelFinancials>(initialFinancials);
   const [isGrokModalOpen, setIsGrokModalOpen] = useState(false);
@@ -244,35 +246,35 @@ export function ModelDetailClient({
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black tracking-tight">{model.name}</h1>
               {model.enableExpenseRecoupment === false ? (
-                <Badge variant="info">Direkt-Split ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} Aktiv)</Badge>
+                <Badge variant="info">{language === "de" ? "Direkt-Split" : "Direct Split"} ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
               ) : financials.isRecouped ? (
-                <Badge variant="success">100% Recouped ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} Active)</Badge>
+                <Badge variant="success">100% {language === "de" ? "Amortisiert" : "Recouped"} ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
               ) : (
-                <Badge variant="warning">Recouping Principal ({model.investorSharePercent || 50}%)</Badge>
+                <Badge variant="warning">{language === "de" ? "Amortisiert noch" : "Recouping Principal"} ({model.investorSharePercent || 50}%)</Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground font-mono mt-0.5">
-              Channel: {model.channelTitle || model.telegramChannelId} • ID: {model.telegramChannelId}
+              {t.modelDetail.channelLabel}: {model.channelTitle || model.telegramChannelId} • {t.modelDetail.idLabel}: {model.telegramChannelId}
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
               {model.investor ? (
                 <>
-                  <span className="text-muted-foreground">Investor: <strong className="text-foreground">{model.investor.name || model.investor.email}</strong></span>
+                  <span className="text-muted-foreground">{t.modelDetail.investorLabel}: <strong className="text-foreground">{model.investor.name || model.investor.email}</strong></span>
                   {model.investor.tonAddress ? (
                     <span className="font-mono text-[11px] text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 flex items-center gap-1">
                       💎 {truncateAddress(model.investor.tonAddress)}
                     </span>
                   ) : (
                     <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-400">
-                      Wallet nicht eingerichtet
+                      {t.modelDetail.walletNotConfigured}
                     </Badge>
                   )}
                 </>
               ) : (
-                <span className="text-muted-foreground italic">Kein Investor zugeordnet</span>
+                <span className="text-muted-foreground italic">{t.modelDetail.unassignedInvestor}</span>
               )}
               <Badge variant="outline" className="text-[10px] font-mono text-primary border-primary/30 ml-1">
-                {model.investorSharePercent || 50}% Inv / {100 - (model.investorSharePercent || 50)}% Agentur
+                {model.investorSharePercent || 50}% {language === "de" ? "Inv" : "Inv"} / {100 - (model.investorSharePercent || 50)}% {language === "de" ? "Agentur" : "Agency"}
               </Badge>
               {isMasterAdmin && (
                 <Button
@@ -286,7 +288,7 @@ export function ModelDetailClient({
                   className="h-6 text-[11px] px-2 text-primary hover:text-primary gap-1 font-semibold"
                 >
                   <Sliders className="h-3 w-3" />
-                  Zuweisung & Split anpassen
+                  {t.modelDetail.adjustSplitButton}
                 </Button>
               )}
             </div>
@@ -300,7 +302,7 @@ export function ModelDetailClient({
             className="gap-2 text-xs font-semibold"
           >
             <Sparkles className="h-4 w-4" />
-            AI Posting Plan (xAI Grok)
+            {t.modelDetail.aiPlanButton}
           </Button>
 
           <Button
@@ -310,7 +312,7 @@ export function ModelDetailClient({
             className="gap-2 text-xs font-semibold"
           >
             <Wallet className="h-4 w-4" />
-            Log TON Payout ({formatUsd(financials.partnerAvailablePayoutUsd)})
+            {t.modelDetail.logPayoutButton} ({formatUsd(financials.partnerAvailablePayoutUsd)})
           </Button>
         </div>
       </div>
@@ -320,23 +322,23 @@ export function ModelDetailClient({
         <TabsList className="grid grid-cols-5 w-full max-w-2xl">
           <TabsTrigger value="pipeline" className="gap-1.5 text-xs">
             <TrendingUp className="h-3.5 w-3.5" />
-            Pipeline
+            {t.modelDetail.tabPipeline}
           </TabsTrigger>
           <TabsTrigger value="posts" className="gap-1.5 text-xs">
             <Calendar className="h-3.5 w-3.5" />
-            Posts ({model.posts.length})
+            {t.modelDetail.tabPosts} ({model.posts.length})
           </TabsTrigger>
           <TabsTrigger value="assets" className="gap-1.5 text-xs">
             <ImageIcon className="h-3.5 w-3.5" />
-            Vault ({model.assets.length})
+            {t.modelDetail.tabVault} ({model.assets.length})
           </TabsTrigger>
           <TabsTrigger value="stars" className="gap-1.5 text-xs">
             <Star className="h-3.5 w-3.5" />
-            Stars ({model.starTransactions.length})
+            {t.modelDetail.tabStars} ({model.starTransactions.length})
           </TabsTrigger>
           <TabsTrigger value="expenses" className="gap-1.5 text-xs">
             <DollarSign className="h-3.5 w-3.5" />
-            Expenses ({model.expenses.length})
+            {t.modelDetail.tabExpenses} ({model.expenses.length})
           </TabsTrigger>
         </TabsList>
 
@@ -353,9 +355,9 @@ export function ModelDetailClient({
         <TabsContent value="posts" className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">Content Timeline & Queue</h3>
+              <h3 className="text-lg font-bold">{t.modelDetail.postsTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                BullMQ scheduled dispatches and Telegram Bot API deliveries
+                {t.modelDetail.postsSubtitle}
               </p>
             </div>
             <Button
@@ -365,7 +367,7 @@ export function ModelDetailClient({
               className="gap-1.5 text-xs"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Generate Strategy via Grok
+              {t.modelDetail.generateGrokButton}
             </Button>
           </div>
 
@@ -375,30 +377,30 @@ export function ModelDetailClient({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Scheduled For</th>
-                      <th className="p-3">Asset</th>
-                      <th className="p-3">Caption</th>
-                      <th className="p-3">Stars Price</th>
-                      <th className="p-3">Telegram Msg</th>
-                      <th className="p-3 text-right">Manual Action</th>
+                      <th className="p-3">{t.modelDetail.colStatus}</th>
+                      <th className="p-3">{t.modelDetail.colScheduledFor}</th>
+                      <th className="p-3">{t.modelDetail.colAsset}</th>
+                      <th className="p-3">{t.modelDetail.colCaption}</th>
+                      <th className="p-3">{t.modelDetail.colStarsPrice}</th>
+                      <th className="p-3">{t.modelDetail.colTelegramMsg}</th>
+                      <th className="p-3 text-right">{t.modelDetail.colManualAction}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {model.posts.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                          No posts scheduled or published yet. Click "Generate Strategy via Grok" to create a timetable!
+                          {t.modelDetail.noPostsScheduled}
                         </td>
                       </tr>
                     ) : (
                       model.posts.map((post: any) => (
                         <tr key={post.id} className="hover:bg-muted/30 transition-colors">
                           <td className="p-3">
-                            {post.status === "PUBLISHED" && <Badge variant="success">Published</Badge>}
-                            {post.status === "SCHEDULED" && <Badge variant="warning">Ready (Manual)</Badge>}
-                            {post.status === "FAILED" && <Badge variant="destructive">Failed</Badge>}
-                            {post.status === "DRAFT" && <Badge variant="outline">Draft</Badge>}
+                            {post.status === "PUBLISHED" && <Badge variant="success">{t.modelDetail.published}</Badge>}
+                            {post.status === "SCHEDULED" && <Badge variant="warning">{t.modelDetail.readyManual}</Badge>}
+                            {post.status === "FAILED" && <Badge variant="destructive">{t.modelDetail.failed}</Badge>}
+                            {post.status === "DRAFT" && <Badge variant="outline">{t.modelDetail.draft}</Badge>}
                           </td>
                           <td className="p-3 whitespace-nowrap font-medium">
                             {format(new Date(post.scheduledFor), "dd.MM.yyyy HH:mm")}
@@ -425,7 +427,7 @@ export function ModelDetailClient({
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-muted-foreground italic">Text only</span>
+                              <span className="text-muted-foreground italic">{t.modelDetail.textOnly}</span>
                             )}
                           </td>
                           <td className="p-3 max-w-xs truncate" title={post.caption}>
@@ -435,10 +437,10 @@ export function ModelDetailClient({
                             {post.starsPrice > 0 ? (
                               <Badge variant="ppv" className="gap-1">
                                 <Star className="h-2.5 w-2.5 fill-current" />
-                                {post.starsPrice} Stars
+                                {post.starsPrice} {t.modelDetail.starsBadge}
                               </Badge>
                             ) : (
-                              <Badge variant="teaser">Free</Badge>
+                              <Badge variant="teaser">{t.modelDetail.freeBadge}</Badge>
                             )}
                           </td>
                           <td className="p-3 font-mono text-muted-foreground">
@@ -460,10 +462,10 @@ export function ModelDetailClient({
                                 className="h-7 text-xs bg-indigo-600 hover:bg-indigo-500 gap-1 font-semibold"
                               >
                                 <Send className="h-3 w-3" />
-                                Post Now
+                                {t.modelDetail.postNow}
                               </Button>
                             ) : (
-                              <span className="text-[11px] text-muted-foreground">Sent</span>
+                              <span className="text-[11px] text-muted-foreground">{t.modelDetail.sent}</span>
                             )}
                           </td>
                         </tr>
@@ -480,9 +482,9 @@ export function ModelDetailClient({
         <TabsContent value="assets" className="space-y-4 pt-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-bold">Content-Inventar & Medien-Bestand</h3>
+              <h3 className="text-lg font-bold">{t.modelDetail.vaultTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                Erfasster Bild- & Videobestand (Metadaten-first, kein Upload nötig) für automatische xAI Grok Langzeit-Planung
+                {t.modelDetail.vaultSubtitle}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -493,7 +495,7 @@ export function ModelDetailClient({
                 className="gap-1.5 text-xs font-semibold"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                Stapel-Inventar anlegen (Batch)
+                {t.modelDetail.batchButton}
               </Button>
               <Button
                 variant="outline"
@@ -502,7 +504,7 @@ export function ModelDetailClient({
                 className="gap-1.5 text-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Einzelnes Medium
+                {t.modelDetail.singleAssetButton}
               </Button>
             </div>
           </div>
@@ -542,7 +544,7 @@ export function ModelDetailClient({
                   {asset.isUsed && (
                     <div className="absolute bottom-2 right-2">
                       <Badge variant="outline" className="bg-black/70 text-[10px] text-emerald-400 border-emerald-500/40">
-                        Im Zeitplan
+                        {t.modelDetail.inScheduleBadge}
                       </Badge>
                     </div>
                   )}
@@ -581,13 +583,13 @@ export function ModelDetailClient({
         <TabsContent value="stars" className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">Native Telegram Stars Ledger</h3>
+              <h3 className="text-lg font-bold">{t.modelDetail.starsTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                Fetched via GramJS payments.getStarsTransactions with 21-day maturity counter
+                {t.modelDetail.starsSubtitle}
               </p>
             </div>
             <Badge variant="outline" className="text-xs">
-              Maturity Rule: TxDate + 21 Days
+              {t.modelDetail.maturityRuleBadge}
             </Badge>
           </div>
 
@@ -597,19 +599,19 @@ export function ModelDetailClient({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Transaction Date</th>
-                      <th className="p-3">Matures At (21 Days)</th>
-                      <th className="p-3">Stars Amount</th>
-                      <th className="p-3">Estimated USD</th>
-                      <th className="p-3">Telegram Tx ID</th>
+                      <th className="p-3">{t.modelDetail.colStatus}</th>
+                      <th className="p-3">{t.modelDetail.colTxDate}</th>
+                      <th className="p-3">{t.modelDetail.colMaturesAt}</th>
+                      <th className="p-3">{t.modelDetail.colStarsAmount}</th>
+                      <th className="p-3">{t.modelDetail.colEstimatedUsd}</th>
+                      <th className="p-3">{t.modelDetail.colTelegramTxId}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {model.starTransactions.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="p-6 text-center text-muted-foreground">
-                          No star transactions recorded yet. They are synced automatically every 15 minutes.
+                          {t.modelDetail.noStarsRecorded}
                         </td>
                       </tr>
                     ) : (
@@ -623,12 +625,12 @@ export function ModelDetailClient({
                               {isMatured ? (
                                 <Badge variant="success" className="gap-1">
                                   <CheckCircle2 className="h-3 w-3" />
-                                  Matured (Liquid)
+                                  {t.modelDetail.maturedStatus}
                                 </Badge>
                               ) : (
                                 <Badge variant="warning" className="gap-1">
                                   <Lock className="h-3 w-3" />
-                                  Pending Lock
+                                  {t.modelDetail.pendingLockStatus}
                                 </Badge>
                               )}
                             </td>
@@ -638,7 +640,7 @@ export function ModelDetailClient({
                             <td className="p-3 whitespace-nowrap">
                               {format(new Date(tx.maturesAt), "dd.MM.yyyy")}
                               <span className="text-[10px] text-muted-foreground block">
-                                {isMatured ? "Matured" : `Matures ${maturesIn}`}
+                                {isMatured ? t.modelDetail.maturedLabel : `${t.modelDetail.maturesLabel} ${maturesIn}`}
                               </span>
                             </td>
                             <td className="p-3 whitespace-nowrap font-bold text-amber-400">
@@ -666,17 +668,17 @@ export function ModelDetailClient({
           {model.enableExpenseRecoupment === false && (
             <div className="p-3 rounded-lg bg-sky-950/20 border border-sky-800/30 text-sky-400 text-xs flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>Hinweis: Für dieses Model ist die Vorab-Amortisation von Investitionsbelegen deaktiviert. Alle Umsätze fließen sofort zu {model.investorSharePercent || 50}% in den direkten Gewinn-Split. Eingetragene Ausgaben dienen lediglich der internen Dokumentation.</span>
+              <span>{t.modelDetail.directSplitNotice}</span>
             </div>
           )}
 
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">Investments & Expenses</h3>
+              <h3 className="text-lg font-bold">{t.modelDetail.expensesTitle}</h3>
               <p className="text-xs text-muted-foreground">
                 {model.enableExpenseRecoupment === false
-                  ? "Direkt-Split aktiv – Keine vorrangige Amortisation von Investitionen/Belegen."
-                  : `All logged expenses increase the 100% recoupment target prior to ${model.investorSharePercent || 50}/${100 - (model.investorSharePercent || 50)} profit splitting`}
+                  ? t.modelDetail.directSplitNotice
+                  : t.modelDetail.expensesSubtitle}
               </p>
             </div>
             <Button
@@ -686,7 +688,7 @@ export function ModelDetailClient({
               className="gap-1.5 text-xs"
             >
               <Plus className="h-3.5 w-3.5" />
-              Add Expense / Investment
+              {t.modelDetail.addExpenseButton}
             </Button>
           </div>
 
@@ -696,17 +698,17 @@ export function ModelDetailClient({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                      <th className="p-3">Description</th>
-                      <th className="p-3">Date</th>
-                      <th className="p-3">Amount ($ USD)</th>
-                      <th className="p-3">Receipt Link</th>
+                      <th className="p-3">{t.modelDetail.colDescription}</th>
+                      <th className="p-3">{t.modelDetail.colDate}</th>
+                      <th className="p-3">{t.modelDetail.colAmount}</th>
+                      <th className="p-3">{t.modelDetail.colReceipt}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {model.expenses.length === 0 ? (
                       <tr>
                         <td colSpan={4} className="p-6 text-center text-muted-foreground">
-                          No expenses logged yet.
+                          {t.modelDetail.noExpensesLogged}
                         </td>
                       </tr>
                     ) : (
@@ -727,7 +729,7 @@ export function ModelDetailClient({
                                 rel="noreferrer"
                                 className="text-primary hover:underline flex items-center gap-1 font-mono"
                               >
-                                View Receipt <ExternalLink className="h-3 w-3" />
+                                {t.modelDetail.viewReceipt} <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : (
                               <span className="text-muted-foreground">-</span>
@@ -770,9 +772,9 @@ export function ModelDetailClient({
       <Dialog open={isAssetModalOpen} onOpenChange={setIsAssetModalOpen}>
         <DialogContent onClose={() => setIsAssetModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>Content-Inventar: Einzelnes Medium anlegen</DialogTitle>
+            <DialogTitle>{t.modelDetail.singleAssetModalTitle}</DialogTitle>
             <DialogDescription>
-              Erfasse Content-Metadaten (Art, Thema, Explizitheit) für die Grok-Zeitplanung. Kein Dateiupload erforderlich.
+              {t.modelDetail.singleAssetModalDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -780,31 +782,31 @@ export function ModelDetailClient({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Medientyp
+                  {t.modelDetail.mediaTypeLabel}
                 </label>
                 <select
                   value={assetType}
                   onChange={(e) => setAssetType(e.target.value as any)}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
-                  <option value="PHOTO" className="bg-card">📷 Foto / Bild</option>
-                  <option value="VIDEO" className="bg-card">🎬 Video Clip</option>
-                  <option value="TEXT" className="bg-card">💬 Text / Story</option>
+                  <option value="PHOTO" className="bg-card">{t.modelDetail.mediaTypePhoto}</option>
+                  <option value="VIDEO" className="bg-card">{t.modelDetail.mediaTypeVideo}</option>
+                  <option value="TEXT" className="bg-card">{t.modelDetail.mediaTypeText}</option>
                 </select>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Explizitheitsgrad (Monetarisierung)
+                  {t.modelDetail.explicitLabel}
                 </label>
                 <select
                   value={assetLevel}
                   onChange={(e) => setAssetLevel(e.target.value as any)}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
-                  <option value="TEASER" className="bg-card">TEASER (Free / 0 Stars)</option>
-                  <option value="SOFT" className="bg-card">SOFT (Promo / 0-25 Stars)</option>
-                  <option value="PPV" className="bg-card">PPV (Stars Paywall 50-500)</option>
+                  <option value="TEASER" className="bg-card">{t.modelDetail.explicitTeaser}</option>
+                  <option value="SOFT" className="bg-card">{t.modelDetail.explicitSoft}</option>
+                  <option value="PPV" className="bg-card">{t.modelDetail.explicitPpv}</option>
                 </select>
               </div>
             </div>
@@ -812,29 +814,29 @@ export function ModelDetailClient({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Titel / Basis-Name
+                  {t.modelDetail.titleLabel}
                 </label>
                 <Input
                   value={assetTitle}
                   onChange={(e) => setAssetTitle(e.target.value)}
-                  placeholder="z.B. Strand Bikini Set"
+                  placeholder={t.modelDetail.titlePlaceholder}
                 />
               </div>
 
               <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Thema / Setting
+                  {t.modelDetail.themeLabel}
                 </label>
                 <Input
                   value={assetTheme}
                   onChange={(e) => setAssetTheme(e.target.value)}
-                  placeholder="z.B. Lingerie, Strand, Gym"
+                  placeholder={t.modelDetail.themePlaceholder}
                 />
               </div>
 
               <div className="sm:col-span-1">
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  Anzahl / Menge
+                  {t.modelDetail.countLabel}
                 </label>
                 <Input
                   type="number"
@@ -848,35 +850,37 @@ export function ModelDetailClient({
             </div>
             {assetCount > 1 && (
               <p className="text-[11px] text-purple-400 font-medium">
-                ⚡ Erstellt automatisch {assetCount} nummerierte Medien-Slots (z. B. {assetTitle || "Medium"} #1 bis #{assetCount})
+                ⚡ {language === "de"
+                  ? `Erstellt automatisch ${assetCount} nummerierte Medien-Slots (z. B. ${assetTitle || "Medium"} #1 bis #${assetCount})`
+                  : `Automatically creates ${assetCount} numbered media slots (e.g. ${assetTitle || "Media"} #1 to #${assetCount})`}
               </p>
             )}
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Grok AI Regie-Hinweise (optional)
+                {t.modelDetail.notesLabel}
               </label>
               <Input
                 value={assetNotes}
                 onChange={(e) => setAssetNotes(e.target.value)}
-                placeholder="z.B. Rotes Kleid, flirtender Blick, warmes Abendlicht"
+                placeholder={t.modelDetail.notesPlaceholder}
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Interne Referenz / Link / Dateipfad (optional)
+                {t.modelDetail.urlLabel}
               </label>
               <Input
                 value={assetUrl}
                 onChange={(e) => setAssetUrl(e.target.value)}
-                placeholder="z.B. ordner_juli/pic_01.jpg oder https://... (optional)"
+                placeholder={t.modelDetail.urlPlaceholder}
               />
             </div>
 
             <DialogFooter>
               <Button type="submit" disabled={isSavingAsset} className="w-full">
-                {isSavingAsset ? "Speichere..." : "In Content-Inventar aufnehmen"}
+                {isSavingAsset ? t.modelDetail.savingAssetButton : t.modelDetail.saveAssetButton}
               </Button>
             </DialogFooter>
           </form>
@@ -889,10 +893,10 @@ export function ModelDetailClient({
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-400" />
-              <DialogTitle>Content-Inventar im Stapel anlegen (Batch)</DialogTitle>
+              <DialogTitle>{t.modelDetail.batchModalTitle}</DialogTitle>
             </div>
             <DialogDescription>
-              Lege den Content-Bestand für 1–2+ Monate auf einmal fest. Das System erzeugt daraus automatisch den Vorrat für xAI Grok.
+              {t.modelDetail.batchModalDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -902,7 +906,7 @@ export function ModelDetailClient({
                 <div key={idx} className="p-3 rounded-lg border bg-card/50 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
-                      Gruppe #{idx + 1}
+                      {language === "de" ? "Gruppe" : "Group"} #{idx + 1}
                     </span>
                     {batchItems.length > 1 && (
                       <Button
@@ -912,14 +916,14 @@ export function ModelDetailClient({
                         className="h-6 text-xs text-destructive hover:bg-destructive/10"
                         onClick={() => setBatchItems((prev) => prev.filter((_, i) => i !== idx))}
                       >
-                        Entfernen
+                        {language === "de" ? "Entfernen" : "Remove"}
                       </Button>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     <div>
-                      <label className="text-[10px] text-muted-foreground block mb-1">Medientyp</label>
+                      <label className="text-[10px] text-muted-foreground block mb-1">{t.modelDetail.mediaTypeLabel}</label>
                       <select
                         value={item.type}
                         onChange={(e) => {
@@ -930,13 +934,13 @@ export function ModelDetailClient({
                         }}
                         className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs"
                       >
-                        <option value="PHOTO" className="bg-card">📷 Foto</option>
-                        <option value="VIDEO" className="bg-card">🎬 Video</option>
+                        <option value="PHOTO" className="bg-card">{language === "de" ? "📷 Foto" : "📷 Photo"}</option>
+                        <option value="VIDEO" className="bg-card">{language === "de" ? "🎬 Video" : "🎬 Video"}</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-muted-foreground block mb-1">Explizitheit</label>
+                      <label className="text-[10px] text-muted-foreground block mb-1">{t.modelDetail.explicitLabel}</label>
                       <select
                         value={item.explicitLevel}
                         onChange={(e) => {
@@ -947,29 +951,29 @@ export function ModelDetailClient({
                         }}
                         className="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs"
                       >
-                        <option value="TEASER" className="bg-card">TEASER (Free)</option>
-                        <option value="SOFT" className="bg-card">SOFT (0-25 ⭐)</option>
-                        <option value="PPV" className="bg-card">PPV (Stars Paywall)</option>
+                        <option value="TEASER" className="bg-card">{t.modelDetail.explicitTeaser}</option>
+                        <option value="SOFT" className="bg-card">{t.modelDetail.explicitSoft}</option>
+                        <option value="PPV" className="bg-card">{t.modelDetail.explicitPpv}</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-muted-foreground block mb-1">Thema / Setting</label>
+                      <label className="text-[10px] text-muted-foreground block mb-1">{t.modelDetail.themeLabel}</label>
                       <Input
                         className="h-8 text-xs"
                         value={item.theme}
                         onChange={(e) => {
                           const val = e.target.value;
                           setBatchItems((prev) =>
-                            prev.map((it, i) => (i === idx ? { ...it, theme: val, baseTitle: `${val} ${it.type === "PHOTO" ? "Foto" : "Video"}` } : it))
+                            prev.map((it, i) => (i === idx ? { ...it, theme: val, baseTitle: `${val} ${it.type === "PHOTO" ? (language === "de" ? "Foto" : "Photo") : "Video"}` } : it))
                           );
                         }}
-                        placeholder="z.B. Strand"
+                        placeholder={t.modelDetail.themePlaceholder}
                       />
                     </div>
 
                     <div>
-                      <label className="text-[10px] text-muted-foreground block mb-1">Anzahl (Vorrat)</label>
+                      <label className="text-[10px] text-muted-foreground block mb-1">{t.modelDetail.countLabel}</label>
                       <Input
                         type="number"
                         min={1}
@@ -997,18 +1001,18 @@ export function ModelDetailClient({
               onClick={() =>
                 setBatchItems((prev) => [
                   ...prev,
-                  { type: "PHOTO", explicitLevel: "TEASER", theme: "Lifestyle / Casual", count: 10, baseTitle: "Lifestyle Foto" },
+                  { type: "PHOTO", explicitLevel: "TEASER", theme: "Lifestyle / Casual", count: 10, baseTitle: language === "de" ? "Lifestyle Foto" : "Lifestyle Photo" },
                 ])
               }
             >
               <Plus className="h-3 w-3" />
-              Weitere Content-Gruppe hinzufügen
+              {t.modelDetail.batchAddGroup}
             </Button>
 
             <div className="p-3 bg-muted/40 rounded-lg text-xs flex items-center justify-between">
-              <span className="text-muted-foreground">Gesamte neu erstellte Medien:</span>
+              <span className="text-muted-foreground">{t.modelDetail.batchTotalUnits}</span>
               <span className="font-bold text-foreground">
-                {batchItems.reduce((acc, it) => acc + (it.count || 0), 0)} Content-Einheiten
+                {batchItems.reduce((acc, it) => acc + (it.count || 0), 0)} {language === "de" ? "Content-Einheiten" : "Units"}
               </span>
             </div>
 
@@ -1017,12 +1021,12 @@ export function ModelDetailClient({
                 {isSavingBatch ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Erzeuge Inventar...
+                    {t.modelDetail.batchSavingButton}
                   </>
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4" />
-                    Inventar jetzt anlegen & freigeben
+                    {t.modelDetail.batchSaveButton}
                   </>
                 )}
               </Button>
@@ -1035,28 +1039,28 @@ export function ModelDetailClient({
       <Dialog open={isExpenseModalOpen} onOpenChange={setIsExpenseModalOpen}>
         <DialogContent onClose={() => setIsExpenseModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>Log Model Expense</DialogTitle>
+            <DialogTitle>{t.modelDetail.expenseModalTitle}</DialogTitle>
             <DialogDescription>
-              Record an investment to be recouped 100% prior to {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} profit splitting
+              {t.modelDetail.expenseModalDesc}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreateExpense} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Expense Description
+                {t.modelDetail.expenseDescLabel}
               </label>
               <Input
                 required
                 value={expenseDesc}
                 onChange={(e) => setExpenseDesc(e.target.value)}
-                placeholder="e.g. Studio photoshoot, Instagram shoutout"
+                placeholder={t.modelDetail.expenseDescPlaceholder}
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Amount ($ USD)
+                {t.modelDetail.expenseAmountLabel}
               </label>
               <Input
                 required
@@ -1070,7 +1074,7 @@ export function ModelDetailClient({
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Receipt URL (optional)
+                {t.modelDetail.expenseReceiptLabel}
               </label>
               <Input
                 value={expenseReceipt}
@@ -1081,7 +1085,7 @@ export function ModelDetailClient({
 
             <DialogFooter>
               <Button type="submit" disabled={isSavingExpense} className="w-full">
-                {isSavingExpense ? "Adding Expense..." : "Add Expense"}
+                {isSavingExpense ? t.modelDetail.savingExpenseButton : t.modelDetail.saveExpenseButton}
               </Button>
             </DialogFooter>
           </form>
@@ -1094,10 +1098,10 @@ export function ModelDetailClient({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sliders className="h-5 w-5 text-primary" />
-              Investor & Gewinnbeteiligung zuordnen
+              {t.modelDetail.assignModalTitle}
             </DialogTitle>
             <DialogDescription>
-              Legen Sie fest, welcher Investor diesen Kanal in seinem Portal einsehen kann und wie hoch seine Gewinnbeteiligung nach 100% Amortisation ist.
+              {t.modelDetail.assignModalDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -1111,14 +1115,14 @@ export function ModelDetailClient({
           <form onSubmit={handleSaveAssignment} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Investor zuordnen
+                {t.modelDetail.assignInvestorLabel}
               </label>
               <select
                 value={assignInvestorId}
                 onChange={(e) => setAssignInvestorId(e.target.value)}
                 className="w-full h-10 px-3 py-2 text-xs rounded-md border border-input bg-background text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="">Kein Investor zugeordnet (Nur Master Admin)</option>
+                <option value="">{t.modelDetail.assignInvestorNone}</option>
                 {investors.map((inv) => (
                   <option key={inv.id} value={inv.id}>
                     {inv.name ? `${inv.name} (${inv.email})` : inv.email}
@@ -1126,7 +1130,7 @@ export function ModelDetailClient({
                 ))}
               </select>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Der gewählte Investor sieht diesen Kanal sofort in seinem geschützten Investoren-Portal.
+                {t.modelDetail.assignInvestorHint}
               </p>
             </div>
 
@@ -1134,14 +1138,14 @@ export function ModelDetailClient({
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <Percent className="h-3.5 w-3.5 text-primary" />
-                  Investor Gewinnbeteiligung (%)
+                  {t.modelDetail.assignShareLabel}
                 </label>
                 <span className="text-xs font-mono font-bold text-primary">
-                  {assignSharePercent}% Investor / {100 - assignSharePercent}% Agentur
+                  {assignSharePercent}% {language === "de" ? "Investor" : "Investor"} / {100 - assignSharePercent}% {language === "de" ? "Agentur" : "Agency"}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Prozentsatz des Reingewinns nach vollständiger 100% Amortisation aller Investitionen und Ausgaben.
+                {t.modelDetail.assignShareHint}
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <Input
@@ -1180,11 +1184,11 @@ export function ModelDetailClient({
                   className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
                 />
                 <span className="text-xs font-semibold text-foreground">
-                  Investitionsbelege & Vorab-Amortisation berücksichtigen
+                  {t.modelDetail.assignRecoupmentLabel}
                 </span>
               </label>
               <p className="text-[11px] text-muted-foreground pl-6">
-                Wenn deaktiviert, greift eine reine Gewinnbeteiligung ab dem ersten Dollar. Investitionsbelege/Ausgaben werden nicht zur vorrangigen Tilgung herangezogen.
+                {t.modelDetail.assignRecoupmentDesc}
               </p>
             </div>
 
@@ -1195,18 +1199,18 @@ export function ModelDetailClient({
                 onClick={() => setIsAssignModalOpen(false)}
                 disabled={isSavingAssign}
               >
-                Abbrechen
+                {t.common.cancel}
               </Button>
               <Button type="submit" disabled={isSavingAssign} className="gap-2">
                 {isSavingAssign ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Speichere...
+                    {t.modelDetail.savingAssignButton}
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Zuweisung speichern
+                    {t.modelDetail.saveAssignButton}
                   </>
                 )}
               </Button>

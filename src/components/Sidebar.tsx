@@ -28,7 +28,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { t } = useLanguage();
   const { isMobileMenuOpen, closeMobileMenu } = useNavigation();
-  const [userRole, setUserRole] = useState<string>("MASTER_ADMIN");
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -54,7 +54,8 @@ export function Sidebar() {
     return null;
   }
 
-  const isInvestor = userRole === "INVESTOR";
+  // Smooth detection: If on investor route or userRole is INVESTOR, immediately render investor navigation
+  const isInvestor = userRole === "INVESTOR" || pathname.startsWith("/investor") || pathname.startsWith("/settings/wallet");
 
   const NAV_ITEMS = isInvestor
     ? [

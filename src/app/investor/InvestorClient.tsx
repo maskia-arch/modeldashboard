@@ -107,7 +107,7 @@ export function InvestorClient({
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-black tracking-tight">{t.investorPortal.title}</h1>
-            <Badge variant="success">100% Recoupment Active</Badge>
+            <Badge variant="success">{language === "de" ? "100% Amortisation Aktiv" : "100% Recoupment Active"}</Badge>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             {language === "de" ? "Willkommen zurück" : "Welcome back"},{" "}
@@ -169,7 +169,7 @@ export function InvestorClient({
           <CardContent className="text-xs text-muted-foreground">
             {portfolio.totalPendingReviewInvestUsd > 0 && (
               <span className="text-amber-400 block font-semibold">
-                +{formatUsd(portfolio.totalPendingReviewInvestUsd)} {language === "de" ? "in Prüfung" : "pending review"}
+                +{formatUsd(portfolio.totalPendingReviewInvestUsd)} {t.investorPortal.inReview}
               </span>
             )}
             {t.investorPortal.statInvestedDesc}
@@ -188,7 +188,7 @@ export function InvestorClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            {language === "de" ? "Offene Amortisation: " : "Remaining balance: "}
+            {t.investorPortal.remainingBalanceLabel}{" "}
             {formatUsd(portfolio.totalRemainingInvestBalanceUsd)}
           </CardContent>
         </Card>
@@ -197,7 +197,7 @@ export function InvestorClient({
         <Card className="border-amber-500/30 bg-amber-950/10">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center justify-between">
-              {language === "de" ? "21-Tage Haltefrist" : "21-Day Locked Revenue"}
+              {t.investorPortal.lockedHoldingTitle}
               <Lock className="h-4 w-4 text-amber-400" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-amber-300">
@@ -205,7 +205,7 @@ export function InvestorClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            {language === "de" ? "Wartet in Treuhand auf Reifung" : "Locked on Telegram, matures into payouts"}
+            {t.investorPortal.lockedHoldingDesc}
           </CardContent>
         </Card>
 
@@ -213,7 +213,7 @@ export function InvestorClient({
         <Card className="border-emerald-500/30 bg-emerald-950/10">
           <CardHeader className="pb-2">
             <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
-              {language === "de" ? "Auszahlungsanspruch" : "Liquid Payout Entitlement"}
+              {t.investorPortal.liquidPayoutClaimTitle}
               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
             </span>
             <CardTitle className="text-2xl font-bold mt-1 text-emerald-300">
@@ -222,8 +222,8 @@ export function InvestorClient({
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
             {portfolio.totalAvailablePayoutUsd > 0
-              ? (language === "de" ? "Wird vom Master per TON an dich überwiesen" : "Ready for TON blockchain transfer")
-              : (language === "de" ? "Aktuell alle fälligen Beträge vollständig ausbezahlt" : "All eligible earnings currently disbursed")}
+              ? t.investorPortal.liquidPayoutClaimDescReady
+              : t.investorPortal.liquidPayoutClaimDescSettled}
           </CardContent>
         </Card>
       </div>
@@ -249,12 +249,10 @@ export function InvestorClient({
         <TabsContent value="channels" className="space-y-4 pt-2">
           <div className="space-y-1">
             <h3 className="text-lg font-bold">
-              {language === "de" ? "Kanal-Amortisationsübersicht" : "Channel-by-Channel Balance Sheets"}
+              {t.investorPortal.channelBalanceSheetTitle}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {language === "de"
-                ? "Investitionen sind strikt kanalbezogen: Erträge eines Kanals tilgen ausschließlich die genehmigten Ausgaben dieses Kanals."
-                : "Investments are channel-specific: revenues recoup exclusively approved expenses of that channel."}
+              {t.investorPortal.channelBalanceSheetDesc}
             </p>
           </div>
 
@@ -270,11 +268,11 @@ export function InvestorClient({
                       </CardDescription>
                     </div>
                     {channel.enableExpenseRecoupment === false ? (
-                      <Badge variant="info">Direkt-Split • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"}</Badge>
+                      <Badge variant="info">{t.overview.directSplitBadge} • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {t.common.active}</Badge>
                     ) : channel.isRecouped ? (
-                      <Badge variant="success">100% Recouped • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} Active</Badge>
+                      <Badge variant="success">100% {t.overview.amortized100Badge} • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {t.common.active}</Badge>
                     ) : (
-                      <Badge variant="warning">Recouping 100% Share ({channel.investorSharePercent || 50}%)</Badge>
+                      <Badge variant="warning">{t.overview.amortizing} ({channel.investorSharePercent || 50}%)</Badge>
                     )}
                   </div>
                 </CardHeader>
@@ -285,7 +283,7 @@ export function InvestorClient({
                     <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs space-y-1">
                       <div className="flex items-center gap-1.5 font-semibold text-blue-400">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{language === "de" ? "Direkte Gewinnbeteiligung (Keine Amortisation)" : "Direct Profit Split (No Recoupment)"}</span>
+                        <span>{t.investorPortal.directSplitNoticeTitle}</span>
                       </div>
                       <p className="text-muted-foreground text-[11px]">
                         {language === "de"
@@ -297,7 +295,7 @@ export function InvestorClient({
                     <div className="space-y-1.5">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
-                          Channel Amortization ({channel.recoupmentProgressPercent}%)
+                          {t.investorPortal.channelAmortization} ({channel.recoupmentProgressPercent}%)
                         </span>
                         <span className="font-semibold text-foreground">
                           {formatUsd(channel.recoupedUsd)} / {formatUsd(channel.totalApprovedInvestUsd)}
@@ -314,30 +312,30 @@ export function InvestorClient({
                   {/* Channel Ledger Breakdown */}
                   <div className="space-y-2 pt-2 border-t text-xs">
                     <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">Channel Gross Stars Revenue:</span>
+                      <span className="text-muted-foreground">{t.investorPortal.grossStarsRevenue}</span>
                       <span className="font-semibold">{formatUsd(channel.totalGrossRevenueUsd)}</span>
                     </div>
                     <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">Channel 21d Locked (Escrow):</span>
+                      <span className="text-muted-foreground">{t.investorPortal.escrowLocked}</span>
                       <span className="text-amber-400 font-semibold">{formatUsd(channel.pipeline.lockedPendingUsd)}</span>
                     </div>
                     {channel.enableExpenseRecoupment !== false && (
                       <div className="flex justify-between py-1 border-b border-border/50">
-                        <span className="text-muted-foreground">Remaining Open Invest Target:</span>
+                        <span className="text-muted-foreground">{t.investorPortal.openInvestTarget}</span>
                         <span className="text-blue-400 font-semibold">{formatUsd(channel.remainingInvestBalanceUsd)}</span>
                       </div>
                     )}
                     <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">Bereits ausgezahlt (Erfüllt):</span>
+                      <span className="text-muted-foreground">{t.investorPortal.alreadyDisbursed}</span>
                       <span className="text-muted-foreground font-semibold">{formatUsd(channel.totalPaidOutUsd)}</span>
                     </div>
                     <div className="flex justify-between py-1 text-sm font-bold text-emerald-400 pt-1">
-                      <span>Liquid Auszahlbar:</span>
+                      <span>{t.investorPortal.liquidPayoutDue}</span>
                       <span>
                         {formatUsd(channel.investorAvailablePayoutUsd)}
                         {channel.investorAvailablePayoutUsd === 0 && (
                           <span className="text-[10px] text-muted-foreground ml-1.5 font-normal">
-                            (Vollständig getilgt/ausbezahlt)
+                            {t.investorPortal.fullySettledNotice}
                           </span>
                         )}
                       </span>
@@ -353,14 +351,14 @@ export function InvestorClient({
         <TabsContent value="expenses" className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">Submitted Investment Invoices</h3>
+              <h3 className="text-lg font-bold">{t.investorPortal.submittedInvoicesTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                Invoices reviewed by Master Admin to legitimize channel recoupment eligibility
+                {t.investorPortal.submittedInvoicesDesc}
               </p>
             </div>
             <Button onClick={() => setIsSubmitModalOpen(true)} size="sm" className="gap-1.5 text-xs">
               <Plus className="h-3.5 w-3.5" />
-              Submit Invoice
+              {t.investorPortal.submitInvoiceButton}
             </Button>
           </div>
 
@@ -370,29 +368,29 @@ export function InvestorClient({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Date</th>
-                      <th className="p-3">Target Channel</th>
-                      <th className="p-3">Description</th>
-                      <th className="p-3">Amount ($ USD)</th>
-                      <th className="p-3">Receipt Document</th>
-                      <th className="p-3">Review Note</th>
+                      <th className="p-3">{t.investorPortal.colStatus}</th>
+                      <th className="p-3">{t.investorPortal.colDate}</th>
+                      <th className="p-3">{t.investorPortal.colTargetChannel}</th>
+                      <th className="p-3">{t.modelDetail.colDescription}</th>
+                      <th className="p-3">{t.modelDetail.colAmount}</th>
+                      <th className="p-3">{t.investorPortal.colReceipt}</th>
+                      <th className="p-3">{t.investorPortal.colReviewNote}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {expenses.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                          No invoices submitted yet. Click "Submit Invoice" to add advertising or production costs.
+                          {t.investorPortal.noExpenses}
                         </td>
                       </tr>
                     ) : (
                       expenses.map((exp) => (
                         <tr key={exp.id} className="hover:bg-muted/30 transition-colors">
                           <td className="p-3">
-                            {exp.status === "APPROVED" && <Badge variant="success">Approved</Badge>}
-                            {exp.status === "PENDING_REVIEW" && <Badge variant="warning">Under Review</Badge>}
-                            {exp.status === "REJECTED" && <Badge variant="destructive">Rejected</Badge>}
+                            {exp.status === "APPROVED" && <Badge variant="success">{t.investorPortal.expenseStatus.APPROVED}</Badge>}
+                            {exp.status === "PENDING_REVIEW" && <Badge variant="warning">{t.investorPortal.expenseStatus.PENDING_REVIEW}</Badge>}
+                            {exp.status === "REJECTED" && <Badge variant="destructive">{t.investorPortal.expenseStatus.REJECTED}</Badge>}
                           </td>
                           <td className="p-3 whitespace-nowrap text-muted-foreground">
                             {exp.createdAt ? (() => { try { return format(new Date(exp.createdAt), "dd.MM.yyyy"); } catch { return "-"; } })() : "-"}
@@ -410,7 +408,7 @@ export function InvestorClient({
                                 rel="noreferrer"
                                 className="text-primary hover:underline flex items-center gap-1 font-mono"
                               >
-                                View PDF <ExternalLink className="h-3 w-3" />
+                                {t.investorPortal.viewPdf} <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : (
                               <span className="text-muted-foreground">-</span>
@@ -433,13 +431,15 @@ export function InvestorClient({
         <TabsContent value="payouts" className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold">Erfüllte TON-Auszahlungen</h3>
+              <h3 className="text-lg font-bold">{t.investorPortal.tablePayoutsTitle}</h3>
               <p className="text-xs text-muted-foreground">
-                Vom Master Admin händisch auf deine TON Wallet überwiesen und auf der Blockchain verifiziert
+                {language === "de"
+                  ? "Vom Master Admin händisch auf deine TON Wallet überwiesen und auf der Blockchain verifiziert"
+                  : "Transferred manually by Master Admin to your TON wallet and verified on the blockchain"}
               </p>
             </div>
             <Badge variant="outline" className="text-xs font-mono">
-              {fulfilledPayouts.length} Auszahlungen verbucht
+              {fulfilledPayouts.length} {language === "de" ? "Auszahlungen verbucht" : "Payouts recorded"}
             </Badge>
           </div>
 
@@ -449,20 +449,20 @@ export function InvestorClient({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b bg-muted/40 text-muted-foreground text-left">
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Datum</th>
-                      <th className="p-3">Betroffener Channel</th>
-                      <th className="p-3">Betrag ($ USD)</th>
-                      <th className="p-3">Betrag (💎 TON)</th>
-                      <th className="p-3">Empfänger-Adresse</th>
-                      <th className="p-3">On-Chain Tx Hash</th>
+                      <th className="p-3">{t.investorPortal.colStatus}</th>
+                      <th className="p-3">{t.investorPortal.colDate}</th>
+                      <th className="p-3">{language === "de" ? "Betroffener Channel" : "Channel"}</th>
+                      <th className="p-3">{t.modelDetail.colAmount}</th>
+                      <th className="p-3">{t.investorPortal.colTonAmount}</th>
+                      <th className="p-3">{t.investorPortal.colRecipient}</th>
+                      <th className="p-3">{t.investorPortal.colTxHash}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {fulfilledPayouts.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-6 text-center text-muted-foreground">
-                          Noch keine Auszahlungen verbucht. Sobald der Master Admin Beträge überweist, erscheinen sie hier verifiziert.
+                          {t.investorPortal.noPayouts}
                         </td>
                       </tr>
                     ) : (
@@ -471,7 +471,7 @@ export function InvestorClient({
                           <td className="p-3">
                             <Badge variant="success" className="gap-1 font-semibold">
                               <CheckCircle2 className="h-3 w-3" />
-                              Erfüllt
+                              {language === "de" ? "Erfüllt" : "Fulfilled"}
                             </Badge>
                           </td>
                           <td className="p-3 whitespace-nowrap text-muted-foreground">
@@ -516,11 +516,11 @@ export function InvestorClient({
                 <Wallet className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle>Integrierte TON Wallet einrichten</DialogTitle>
+                <DialogTitle>{language === "de" ? "Integrierte TON Wallet einrichten" : "Set Up Integrated TON Wallet"}</DialogTitle>
                 <DialogDescription>
                   {currentTonAddress
-                    ? "Deine aktive TON Auszahlungsadresse im System"
-                    : "Wichtig: Generiere deine non-custodiale Wallet. Deine Adresse wird automatisch an das Master Dashboard übermittelt."}
+                    ? (language === "de" ? "Deine aktive TON Auszahlungsadresse im System" : "Your active TON payout address in the system")
+                    : (language === "de" ? "Wichtig: Generiere deine non-custodiale Wallet. Deine Adresse wird automatisch an das Master Dashboard übermittelt." : "Important: Generate your non-custodial wallet. Your address will be automatically synced with the Master Dashboard.")}
                 </DialogDescription>
               </div>
             </div>
@@ -537,7 +537,7 @@ export function InvestorClient({
               disabled={!currentTonAddress}
               className="w-full"
             >
-              {currentTonAddress ? "Fertigstellen & zum Dashboard" : "Bitte zuerst Adresse generieren & speichern"}
+              {currentTonAddress ? (language === "de" ? "Fertigstellen & zum Dashboard" : "Complete & Go to Dashboard") : (language === "de" ? "Bitte zuerst Adresse generieren & speichern" : "Please generate & save wallet first")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -549,10 +549,10 @@ export function InvestorClient({
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" />
-              <DialogTitle>Submit Channel Investment</DialogTitle>
+              <DialogTitle>{t.investorPortal.submitExpenseModalTitle}</DialogTitle>
             </div>
             <DialogDescription>
-              Submit advertisement, shoot, or production expenses for Master Admin review.
+              {t.investorPortal.submitExpenseModalDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -566,7 +566,7 @@ export function InvestorClient({
           <form onSubmit={handleSubmitExpense} className="space-y-4">
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Target Creator Channel (Strictly Channel-Bound)
+                {t.investorPortal.channelSelectLabel}
               </label>
               <select
                 required
@@ -576,7 +576,7 @@ export function InvestorClient({
               >
                 {assignedModels.map((m) => (
                   <option key={m.id} value={m.id} className="bg-card">
-                    {m.name} ({m.channelTitle || "Assigned"})
+                    {m.name} ({m.channelTitle || (language === "de" ? "Zugeordnet" : "Assigned")})
                   </option>
                 ))}
               </select>
@@ -584,19 +584,19 @@ export function InvestorClient({
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Expense / Investment Description
+                {t.investorPortal.descriptionLabel}
               </label>
               <Input
                 required
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Telegram Channel Shoutout (50k views)"
+                placeholder={t.investorPortal.descriptionPlaceholder}
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Amount ($ USD)
+                {t.investorPortal.amountLabel}
               </label>
               <Input
                 required
@@ -610,12 +610,12 @@ export function InvestorClient({
 
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                Receipt Document / Invoice Link (URL)
+                {t.investorPortal.receiptLabel}
               </label>
               <Input
                 value={receiptUrl}
                 onChange={(e) => setReceiptUrl(e.target.value)}
-                placeholder="https://... (Receipt PDF or Screenshot)"
+                placeholder={t.investorPortal.receiptPlaceholder}
               />
             </div>
 
@@ -633,16 +633,18 @@ export function InvestorClient({
               </div>
             ) : (
               <div className="p-3 bg-muted/40 rounded-lg text-[11px] text-muted-foreground space-y-1">
-                <span className="font-semibold text-foreground block">Recoupment Policy:</span>
+                <span className="font-semibold text-foreground block">{language === "de" ? "Amortisations-Richtlinie:" : "Recoupment Policy:"}</span>
                 <p>
-                  Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor die vereinbarten Gewinnbeteiligungen greifen.
+                  {language === "de"
+                    ? "Sobald vom Master Admin genehmigt, tilgen 100 % aller fälligen Telegram Stars Einnahmen dieses Channels vorrangig deine Investition, bevor die vereinbarten Gewinnbeteiligungen greifen."
+                    : "Once approved by the Master Admin, 100% of all maturing Telegram Stars revenues of this channel prioritize recouping your investment before standard profit splits apply."}
                 </p>
               </div>
             )}
 
             <DialogFooter>
               <Button type="submit" disabled={isSubmitting} className="w-full">
-                {isSubmitting ? "Submitting for Review..." : "Submit to Master for Approval"}
+                {isSubmitting ? t.investorPortal.submitting : t.investorPortal.submit}
               </Button>
             </DialogFooter>
           </form>
