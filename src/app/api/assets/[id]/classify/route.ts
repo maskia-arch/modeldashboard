@@ -40,9 +40,17 @@ export async function POST(
       );
     }
 
-    const localPath = getAssetLocalPath(asset.fileUrl);
+    let localPath = getAssetLocalPath(asset.fileUrl);
     if (!localPath) {
-      return NextResponse.json({ error: "File not found on local disk" }, { status: 404 });
+      const { restoreAssetMediaFile } = await import("@/lib/model-sources");
+      const restored = await restoreAssetMediaFile(asset.id);
+      if (restored.success && restored.filePath) {
+        localPath = restored.filePath;
+      }
+    }
+
+    if (!localPath) {
+      return NextResponse.json({ error: "Datei konnte auf der Festplatte nicht gefunden oder wiederhergestellt werden." }, { status: 404 });
     }
 
     const classification = await classifyImageWithGrokVision({
@@ -50,13 +58,16 @@ export async function POST(
       modelName: asset.model.name,
     });
 
+    const cleanedTags = (asset.tags || []).filter((t: string) => t !== "unclassified");
+    const combinedTags = Array.from(new Set([...cleanedTags, ...(classification.tags || [])]));
+
     const updated = await prisma.asset.update({
       where: { id: asset.id },
       data: {
         title: classification.title,
         theme: classification.theme,
         explicitLevel: classification.explicitLevel,
-        tags: classification.tags,
+        tags: combinedTags,
         notes: `${classification.notes} | Caption: "${classification.suggestedCaption}" | Stars: ${classification.suggestedStarsPrice}`,
       },
     });

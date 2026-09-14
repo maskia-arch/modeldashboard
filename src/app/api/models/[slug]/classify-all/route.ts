@@ -37,7 +37,13 @@ export async function POST(
       return NextResponse.json({ error: "Model not found" }, { status: 404 });
     }
 
-    // Identify assets that need classification
+    let force = false;
+    try {
+      const body = await req.json();
+      if (body.force) force = true;
+    } catch {}
+
+    // Identify assets to classify
     const unclassifiedAssets = model.assets.filter((a) => {
       const isUnclassifiedTag = a.tags?.includes("unclassified");
       const isQuelleGeneric =
@@ -46,18 +52,20 @@ export async function POST(
       return isUnclassifiedTag || isQuelleGeneric;
     });
 
-    if (unclassifiedAssets.length === 0) {
+    const targetAssets = force ? model.assets : unclassifiedAssets;
+
+    if (targetAssets.length === 0) {
       return NextResponse.json({
         success: true,
         classifiedCount: 0,
-        message: "Keine unklassifizierten Fotos gefunden.",
+        message: force ? "Keine Fotos für dieses Model vorhanden." : "Keine unklassifizierten Fotos gefunden.",
       });
     }
 
     let classifiedCount = 0;
     const errors: string[] = [];
 
-    for (const asset of unclassifiedAssets) {
+    for (const asset of targetAssets) {
       if (!asset.fileUrl || !isPhotoExtension(asset.fileUrl)) continue;
 
       let localPath = getAssetLocalPath(asset.fileUrl);

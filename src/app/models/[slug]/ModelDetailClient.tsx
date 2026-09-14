@@ -176,11 +176,13 @@ export function ModelDetailClient({
     }
   };
 
-  const handleBatchGrokClassify = async () => {
+  const handleBatchGrokClassify = async (force: boolean = false) => {
     setIsBatchClassifying(true);
     try {
       const res = await fetch(`/api/models/${model.slug}/classify-all`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Batch-Klassifizierung fehlgeschlagen");
@@ -292,6 +294,8 @@ export function ModelDetailClient({
       (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
     return isUnclassifiedTag || isQuelleGeneric;
   }).length;
+
+  const hasPhotos = (model.assets || []).some((a: any) => a.type === "PHOTO");
 
   return (
     <div className="space-y-6">
@@ -555,7 +559,7 @@ export function ModelDetailClient({
                       variant="outline"
                       size="sm"
                       disabled={isBatchClassifying}
-                      onClick={handleBatchGrokClassify}
+                      onClick={() => handleBatchGrokClassify(false)}
                       className="gap-1.5 text-xs font-bold bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 shadow-sm"
                     >
                       {isBatchClassifying ? (
@@ -566,8 +570,25 @@ export function ModelDetailClient({
                       {isBatchClassifying
                         ? (language === "de" ? "Grok analysiert..." : "Grok analyzing...")
                         : (language === "de"
-                            ? `🤖 Grok AI: Alle Fotos bewerten (${unclassifiedPhotosCount})`
-                            : `🤖 Grok AI: Classify All (${unclassifiedPhotosCount})`)}
+                            ? `🤖 Grok AI: Fotos bewerten (${unclassifiedPhotosCount})`
+                            : `🤖 Grok AI: Classify Photos (${unclassifiedPhotosCount})`)}
+                    </Button>
+                  )}
+                  {hasPhotos && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isBatchClassifying}
+                      onClick={() => handleBatchGrokClassify(true)}
+                      className="gap-1.5 text-xs font-semibold border-purple-500/40 text-purple-300 hover:text-purple-200 hover:bg-purple-950/30 shadow-sm"
+                      title={language === "de" ? "Alle Fotos des Models nochmals von Grok bewerten lassen" : "Re-classify all photos with Grok"}
+                    >
+                      {isBatchClassifying ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5 text-purple-400" />
+                      )}
+                      {t.modelDetail.reclassifyAllButton}
                     </Button>
                   )}
                   <Button
@@ -631,7 +652,7 @@ export function ModelDetailClient({
               <Button
                 size="sm"
                 disabled={isBatchClassifying}
-                onClick={handleBatchGrokClassify}
+                onClick={() => handleBatchGrokClassify(false)}
                 className="gap-2 bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white font-bold h-9 shadow-md shrink-0"
               >
                 {isBatchClassifying ? (
@@ -794,23 +815,43 @@ export function ModelDetailClient({
                         {t.modelDetail.directPostButton}
                       </Button>
                       <div className="flex items-center gap-1">
-                        {isUnclassified && asset.type === "PHOTO" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={classifyingAssetId === asset.id}
-                            className="h-6 text-[10px] px-2 bg-gradient-to-r from-amber-500/15 to-purple-500/15 border-amber-500/40 text-amber-300 hover:text-amber-200 font-bold gap-1"
-                            onClick={() => handleQuickGrokClassify(asset.id)}
-                          >
-                            {classifyingAssetId === asset.id ? (
-                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
-                            ) : (
-                              <Sparkles className="h-2.5 w-2.5 text-amber-400" />
-                            )}
-                            {classifyingAssetId === asset.id
-                              ? (language === "de" ? "Grok..." : "Grok...")
-                              : "🤖 Grok AI"}
-                          </Button>
+                        {asset.type === "PHOTO" && (
+                          isUnclassified ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={classifyingAssetId === asset.id}
+                              className="h-6 text-[10px] px-2 bg-gradient-to-r from-amber-500/15 to-purple-500/15 border-amber-500/40 text-amber-300 hover:text-amber-200 font-bold gap-1"
+                              onClick={() => handleQuickGrokClassify(asset.id)}
+                            >
+                              {classifyingAssetId === asset.id ? (
+                                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="h-2.5 w-2.5 text-amber-400" />
+                              )}
+                              {classifyingAssetId === asset.id
+                                ? (language === "de" ? "Grok..." : "Grok...")
+                                : "🤖 Grok AI"}
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={classifyingAssetId === asset.id}
+                              className="h-6 text-[10px] px-1.5 border-purple-500/40 text-purple-300 hover:text-purple-200 hover:bg-purple-950/30 font-medium gap-1"
+                              title={language === "de" ? "Mit Grok AI erneut bewerten" : "Re-classify with Grok AI"}
+                              onClick={() => handleQuickGrokClassify(asset.id)}
+                            >
+                              {classifyingAssetId === asset.id ? (
+                                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-2.5 w-2.5 text-purple-400" />
+                              )}
+                              {classifyingAssetId === asset.id
+                                ? (language === "de" ? "Grok..." : "Grok...")
+                                : t.modelDetail.reclassifyButton}
+                            </Button>
+                          )
                         )}
                         <Button
                           variant="outline"

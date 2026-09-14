@@ -336,7 +336,9 @@ export const translations = {
       uploadContentButton: "📁 Medien hochladen",
       sourceChannelButton: "📡 Quell-Kanal",
       directPostButton: "🚀 Jetzt Posten",
-      classifyButton: "🏷️ Klassifizieren",
+      classifyButton: "🏷️ Manuell",
+      reclassifyButton: "🔄 Neu bewerten",
+      reclassifyAllButton: "🔄 Gesamten Content erneut mit Grok AI klassifizieren",
       scheduleAssetButton: "📅 Verplanen",
     },
 
@@ -1201,7 +1203,9 @@ export const translations = {
       uploadContentButton: "📁 Upload Media",
       sourceChannelButton: "📡 Source Channel",
       directPostButton: "🚀 Post Now",
-      classifyButton: "🏷️ Classify",
+      classifyButton: "🏷️ Manual",
+      reclassifyButton: "🔄 Re-classify",
+      reclassifyAllButton: "🔄 Re-classify All Content with Grok AI",
       scheduleAssetButton: "📅 Schedule",
     },
 
