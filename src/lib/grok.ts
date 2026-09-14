@@ -438,6 +438,27 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
 
 export const generateMockSchedule = generateRealisticSchedule;
 
+export interface GrokClassificationDetails {
+  tier: "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5";
+  category: string;
+  confidence: number;
+}
+
+export interface GrokAttributes {
+  face_visible: boolean;
+  body_writing: boolean;
+  body_writing_text?: string | null;
+  perspective: "Selfie" | "Mirror-Selfie" | "POV" | "Close-up" | "Full-Body" | "Third-Person" | string;
+  setting: "Bedroom" | "Bathroom" | "Outdoor" | "Studio" | "Car" | "Living Room" | "Other" | string;
+  fetish_tags?: string[];
+}
+
+export interface GrokQuality {
+  score: number;
+  lighting: string;
+  sharpness: string;
+}
+
 export interface GrokImageClassification {
   title: string;
   theme: string;
@@ -446,11 +467,15 @@ export interface GrokImageClassification {
   tags: string[];
   notes: string;
   suggestedCaption: string;
+  classification: GrokClassificationDetails;
+  attributes: GrokAttributes;
+  quality: GrokQuality;
   visibleFeatures?: string[];
 }
 
 /**
  * Evaluates and classifies a photo using xAI Grok Vision.
+ * Follows the 6-Tier Expositionsgrad system (Tier 0 to Tier 5) with secondary attributes and quality scoring.
  * Videos and GIFs are explicitly prohibited from being passed to this function.
  */
 export async function classifyImageWithGrokVision(params: {
@@ -471,82 +496,80 @@ export async function classifyImageWithGrokVision(params: {
   }
 
   const apiKey = process.env.XAI_API_KEY;
-  const visionModel = process.env.XAI_VISION_MODEL || "grok-2-vision-1212";
-
-  // Fallback if no valid API key is set
-  if (!apiKey || apiKey === "demo_xai_key") {
-    return generateFallbackClassification(params.localFilePath, params.modelName);
+  let visionModel = process.env.XAI_VISION_MODEL || "grok-4.20-non-reasoning";
+  if (
+    visionModel.includes("grok-2-vision") ||
+    visionModel === "grok-vision-beta" ||
+    visionModel === "grok-beta"
+  ) {
+    visionModel = "grok-4.20-non-reasoning";
   }
 
-  try {
-    const fileBuffer = await fs.promises.readFile(params.localFilePath);
-    let mimeType = "image/jpeg";
-    if (ext === ".png") mimeType = "image/png";
-    else if (ext === ".webp") mimeType = "image/webp";
+  if (!apiKey || apiKey === "demo_xai_key") {
+    throw new Error(
+      "Kein gültiger XAI_API_KEY gefunden. Bitte trage einen aktiven xAI Grok API-Key in der .env ein."
+    );
+  }
 
-    const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+  const fileBuffer = await fs.promises.readFile(params.localFilePath);
+  let mimeType = "image/jpeg";
+  if (ext === ".png") mimeType = "image/png";
+  else if (ext === ".webp") mimeType = "image/webp";
 
-    const systemPrompt = `You are Grok 4.1 Vision, an expert VIP Creator Content Auditor and NSFW Visual Analyst for OnlyFans and Telegram Stars VIP Channels.
+  const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+
+  const systemPrompt = `You are Grok 4.1 Vision, the master VIP Creator Content Auditor and NSFW Visual Analyst for OnlyFans and Telegram Stars VIP Channels.
 Analyze the provided photo of creator "${params.modelName || "Creator"}".
 
-YOUR CORE DIRECTIVE:
-Classify the image strictly according to visible body parts, erotic allure, explicit level, and Telegram Stars monetization.
+HAUPT-KLASSIFIZIERUNG NACH EXPOSITIONSGRAD (TIERS):
+- Tier 0: "SFW / Lifestyle" -> Vollständig bekleidet, keine Reizwäsche, keine anzügliche Ausrichtung. (Streetwear, Porträts, Casual Selfies, Alltagskleidung, Hoodies, normale Kleider). Stars: 0.
+- Tier 1: "Suggestive / Bademode" -> Knappe Kleidung, aber gesellschaftlich öffentlich akzeptiert. Keine Unterwäsche. (Bikini, Badeanzug, knappe Sportkleidung, tiefer Ausschnitt). Stars: 0-25.
+- Tier 2: "Lingerie / Unterwäsche" -> Typische Reizwäsche oder Unterwäsche. Intimbereich und Brustwarzen sind bedeckt oder maximal semi-transparent. (BH & Slip, Corsagen, Bodysuits, Strapsen, Boudoir-Shootings). Stars: 25-75.
+- Tier 3: "Teilakt (Partial Nude)" -> Gezielte Entblößung ohne direkte Genitalansicht. (Oben-ohne / Topless, unbedeckter Po / Rückansicht, verdeckter Akt mit Händen/Schatten). Stars: 100-250.
+- Tier 4: "Vollakt (Full Nude)" -> Vollständige Nacktheit mit sichtbarem Genitalbereich. (Frontalakt, intime Close-ups, gespreizte Posen). Stars: 250-450.
+- Tier 5: "Explizit / Interaktion" -> Direkte sexuelle Handlungen, Masturbation, Toys im Einsatz oder Partner-Content. (Sexuelle Akte, Penetration, intensive BDSM-/Fetisch-Aktionen). Stars: 450-800+.
 
-CRITICAL CLASSIFICATION HIERARCHY (FOLLOW STRICTLY):
-
-1. "TEASER" (0 Stars / Free / Public Channel):
-   - STRICT REQUIREMENT: NON-NUDE ONLY. MUST BE 100% SOCIAL-MEDIA SAFE (Instagram / TikTok compliant).
-   - Fully clothed, streetwear, lifestyle portraits, gym/fitness in sports bra and leggings, beachwear/bikini WITHOUT bare buttocks or exposed breasts.
-   - ABSOLUTE PROHIBITION: NO bare ass, NO exposed breasts or nipples, NO see-through/sheer exposure, NO visible genitalia.
-   - suggestedStarsPrice: 0.
-
-2. "SOFT" (25 - 75 Stars / Paid Teaser):
-   - Erotic allure, lingerie, boudoir, lace underwear, sheer/translucent clothing, deep cleavage, sideboob, underboob.
-   - Booty / Ass in panties, thongs, or cheeky bikinis.
-   - Seductive bedroom/bathroom poses, covered topless (hands or hair covering nipples).
-   - NO fully bare nipples, NO exposed vulva / pussy.
-   - suggestedStarsPrice: 25 to 75 Stars.
-
-3. "PPV" (100 - 500 Stars / Premium Paywall):
-   - FULL NUDITY OR EXPLICIT GENITAL / BREAST / BUTTOCK EXPOSURE!
-   - Topless / bare breasts / visible nipples -> TAG "tits", suggestedStarsPrice: 100 - 200 Stars.
-   - Fully bare uncovered ass / butt cheek close-up -> TAG "ass", suggestedStarsPrice: 150 - 250 Stars.
-   - Genitalia visible, uncovered pussy, spreading, highly erotic explicit nude -> TAG "pussy", suggestedStarsPrice: 300 - 500 Stars.
-
-BODY PART DETECTION:
-You MUST check if any of these are visible or strongly showcased and include them in "visibleFeatures":
-- "ass": if buttocks are clearly visible or the primary focus (in thong or bare).
-- "tits": if breasts or nipples are bare, sheer, or prominent.
-- "pussy": if vulva, mons pubis, or genitalia are exposed or clearly outlined.
-- "cleavage", "lingerie", "bikini", "legs", "feet", "face".
-
-TAGGING RULES:
-- If "tits" detected: include "tits", "topless" in tags.
-- If "ass" detected: include "ass", "booty" in tags.
-- If "pussy" detected: include "pussy", "nude", "explicit" in tags.
-- Add relevant aesthetic tags (e.g. "dessous", "spitze", "bett", "spiegel", etc.).
-
-IMAGE-ACCURATE GERMAN CAPTION:
-- You MUST write a conversational, authentic, flirty German caption matching the EXACT visual details of this photo (outfit color, setting like bed/mirror/couch/balcony, expression, mood).
-- If TEASER: Friendly lifestyle greeting or playful question to fans.
-- If SOFT/PPV: Seductive, tantalizing paywall teaser text that makes subscribers eager to unlock the image with Telegram Stars!
+SEKUNDÄRE MERKMALE (ZUSATZ-TAGS FÜR FILTER & SUCHE):
+- face_visible: boolean (true wenn das Gesicht erkennbar ist, false wenn abgeschnitten oder verdeckt)
+- perspective: "Selfie" | "Mirror-Selfie" | "POV" | "Close-up" | "Full-Body" | "Third-Person"
+- setting: "Bedroom" | "Bathroom" | "Outdoor" | "Studio" | "Car" | "Living Room" | "Other"
+- body_writing: boolean (true wenn Beschriftungen auf der Haut vorhanden sind wie Custom-Namen oder Sprüche)
+- body_writing_text: string or null (der erkannte Text auf der Haut)
+- fetish_tags: array of strings (z.B. "Feet", "BDSM", "Costume/Cosplay", "Latex/Leder", "Dom/Sub", "Tattoo", "Piercing")
+- quality: { score: number (1.0-10.0 basierend auf Belichtung, Bildschärfe und Komposition), lighting: string, sharpness: string }
 
 STRICT JSON OUTPUT FORMAT:
 {
-  "title": "Short German title (e.g. 'Rote Spitze im Bett', 'Oben Ohne am Spiegel', 'Booty Close-Up')",
-  "theme": "Theme (e.g. 'Boudoir & Lingerie', 'Topless & Nude', 'Booty & Curves', 'Beach & Bikini', 'Casual Lifestyle')",
-  "explicitLevel": "TEASER" | "SOFT" | "PPV",
-  "visibleFeatures": ["ass", "tits", "pussy"],
-  "suggestedStarsPrice": number (0 for TEASER, 25-75 for SOFT, 100-500 for PPV),
-  "tags": ["array", "of", "tags"],
-  "notes": "Exact visual breakdown: What is the creator wearing? What body parts (tits/ass/pussy) are visible? Describe setting.",
-  "suggestedCaption": "Authentic German caption tailored to this specific photo"
+  "classification": {
+    "tier": "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5",
+    "category": "SFW / Lifestyle" | "Suggestive / Bademode" | "Lingerie / Unterwäsche" | "Teilakt (Partial Nude)" | "Vollakt (Full Nude)" | "Explizit / Interaktion",
+    "confidence": 0.95
+  },
+  "attributes": {
+    "face_visible": true,
+    "body_writing": false,
+    "body_writing_text": null,
+    "perspective": "Mirror-Selfie",
+    "setting": "Bedroom",
+    "fetish_tags": ["Tattoo"]
+  },
+  "tags": ["Topless", "Selfie", "Tattoo", "Mirror"],
+  "quality": {
+    "score": 7.5,
+    "lighting": "Warm / Indoor",
+    "sharpness": "Hoch"
+  },
+  "title": "Kurzer aussagekräftiger deutscher Titel",
+  "suggestedCaption": "Authentische, verführerische deutsche Bildunterschrift abgestimmt auf dieses Bild",
+  "suggestedStarsPrice": 150
 }`;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 35000);
 
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+  let response: Response;
+  try {
+    response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,
       headers: {
@@ -562,7 +585,7 @@ STRICT JSON OUTPUT FORMAT:
             content: [
               {
                 type: "text",
-                text: "Auditing creator image for explicitLevel, visible body parts (ass/tits/pussy), stars price, and tailored German caption. Return strict JSON.",
+                text: "Auditiere das Creator-Bild exakt nach dem Tier 0-5 System. Gib striktes JSON zurück.",
               },
               {
                 type: "image_url",
@@ -573,58 +596,147 @@ STRICT JSON OUTPUT FORMAT:
             ],
           },
         ],
-        temperature: 0.5,
+        temperature: 0.2,
         response_format: { type: "json_object" },
       }),
     });
-
+  } finally {
     clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn(`Grok Vision API returned status ${response.status}. Falling back to smart local classifier.`);
-      return generateFallbackClassification(params.localFilePath, params.modelName);
-    }
-
-    const data = await response.json();
-    const rawJson = data.choices?.[0]?.message?.content;
-    if (!rawJson) throw new Error("Empty response from Grok Vision");
-
-    const parsed = JSON.parse(rawJson);
-    const visible = Array.isArray(parsed.visibleFeatures) ? parsed.visibleFeatures : [];
-    const baseTags = Array.isArray(parsed.tags) ? parsed.tags : [];
-    const allTags = Array.from(new Set([...baseTags, ...visible])).map((t) => t.toLowerCase());
-
-    let level: "TEASER" | "SOFT" | "PPV" = "TEASER";
-    if (parsed.explicitLevel === "PPV" || visible.includes("pussy") || visible.includes("tits") || allTags.includes("nude") || allTags.includes("topless")) {
-      level = "PPV";
-    } else if (parsed.explicitLevel === "SOFT" || visible.includes("ass") || allTags.includes("lingerie") || allTags.includes("dessous") || allTags.includes("booty")) {
-      level = "SOFT";
-    }
-
-    let stars = typeof parsed.suggestedStarsPrice === "number" ? parsed.suggestedStarsPrice : 0;
-    if (level === "PPV" && stars < 100) stars = visible.includes("pussy") ? 350 : 150;
-    if (level === "SOFT" && stars <= 0) stars = 50;
-    if (level === "TEASER") stars = 0;
-
-    return {
-      title: parsed.title || "Exklusives Creator Foto",
-      theme: parsed.theme || (level === "PPV" ? "Topless & Nude" : level === "SOFT" ? "Boudoir & Lingerie" : "Lifestyle & Allure"),
-      explicitLevel: level,
-      suggestedStarsPrice: stars,
-      tags: allTags.length > 0 ? allTags : ["creator", level.toLowerCase()],
-      notes: `Grok 4.1 Vision: ${parsed.notes || "Klassifiziert"} | Sichtbar: ${visible.length > 0 ? visible.join(", ") : "Keine Nacktheit"}`,
-      suggestedCaption: parsed.suggestedCaption || "Kleiner Gruß für meine VIPs 💕 Wie gefällt euch das Bild?",
-      visibleFeatures: visible,
-    };
-  } catch (error) {
-    console.warn("Grok Vision analysis failed, using smart local fallback:", error);
-    return generateFallbackClassification(params.localFilePath, params.modelName);
   }
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error(`Grok Vision API error (HTTP ${response.status}): ${errText}`);
+    throw new Error(`xAI Grok Vision API Fehler (${response.status}): ${errText.slice(0, 180)}`);
+  }
+
+  const data = await response.json();
+  const rawJson = data.choices?.[0]?.message?.content;
+  if (!rawJson) throw new Error("Keine Antwort von Grok Vision erhalten.");
+
+  const parsed = JSON.parse(rawJson);
+  const classification = parsed.classification || {
+    tier: "Tier 0",
+    category: "SFW / Lifestyle",
+    confidence: 0.9,
+  };
+  const attributes = parsed.attributes || {
+    face_visible: true,
+    body_writing: false,
+    body_writing_text: null,
+    perspective: "Selfie",
+    setting: "Bedroom",
+    fetish_tags: [],
+  };
+  const quality = parsed.quality || {
+    score: 7.0,
+    lighting: "Gut",
+    sharpness: "Hoch",
+  };
+
+  const rawTier = String(classification.tier || "Tier 0").trim();
+  const normalizedTier: "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5" =
+    ["Tier 0", "Tier 1", "Tier 2", "Tier 3", "Tier 4", "Tier 5"].includes(rawTier)
+      ? (rawTier as any)
+      : "Tier 0";
+
+  // Map Tier to Core Level (TEASER / SOFT / PPV)
+  let explicitLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
+  let suggestedStarsPrice = 0;
+
+  if (normalizedTier === "Tier 0") {
+    explicitLevel = "TEASER";
+    suggestedStarsPrice = 0;
+  } else if (normalizedTier === "Tier 1") {
+    explicitLevel = "TEASER";
+    suggestedStarsPrice = typeof parsed.suggestedStarsPrice === "number" && parsed.suggestedStarsPrice > 0
+      ? Math.min(parsed.suggestedStarsPrice, 25)
+      : 0;
+  } else if (normalizedTier === "Tier 2") {
+    explicitLevel = "SOFT";
+    suggestedStarsPrice = typeof parsed.suggestedStarsPrice === "number" && parsed.suggestedStarsPrice > 0
+      ? Math.min(Math.max(parsed.suggestedStarsPrice, 25), 75)
+      : 50;
+  } else if (normalizedTier === "Tier 3") {
+    explicitLevel = "PPV";
+    suggestedStarsPrice = typeof parsed.suggestedStarsPrice === "number" && parsed.suggestedStarsPrice >= 100
+      ? Math.min(Math.max(parsed.suggestedStarsPrice, 100), 250)
+      : 150;
+  } else if (normalizedTier === "Tier 4") {
+    explicitLevel = "PPV";
+    suggestedStarsPrice = typeof parsed.suggestedStarsPrice === "number" && parsed.suggestedStarsPrice >= 200
+      ? Math.min(Math.max(parsed.suggestedStarsPrice, 250), 450)
+      : 350;
+  } else if (normalizedTier === "Tier 5") {
+    explicitLevel = "PPV";
+    suggestedStarsPrice = typeof parsed.suggestedStarsPrice === "number" && parsed.suggestedStarsPrice >= 400
+      ? Math.max(parsed.suggestedStarsPrice, 500)
+      : 500;
+  }
+
+  // Generate enriched tags for easy filtering and searching
+  const rawTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+  const fetishTags = Array.isArray(attributes.fetish_tags) ? attributes.fetish_tags : [];
+  const tierSlug = normalizedTier.toLowerCase().replace(/\s+/g, ""); // "tier0", "tier1", ...
+  const perspectiveSlug = attributes.perspective ? attributes.perspective.toLowerCase().replace(/[^a-z0-9]/g, "-") : "";
+  const settingSlug = attributes.setting ? attributes.setting.toLowerCase().replace(/[^a-z0-9]/g, "-") : "";
+
+  const systemGeneratedTags = [
+    tierSlug,
+    attributes.face_visible ? "face" : "no-face",
+    perspectiveSlug,
+    settingSlug,
+    normalizedTier === "Tier 3" ? "topless" : "",
+    normalizedTier === "Tier 3" ? "teilakt" : "",
+    normalizedTier === "Tier 4" ? "vollakt" : "",
+    normalizedTier === "Tier 4" ? "nude" : "",
+    normalizedTier === "Tier 5" ? "explicit" : "",
+    quality.score >= 8 ? "high-quality" : "",
+    attributes.body_writing ? "body-writing" : "",
+  ].filter(Boolean);
+
+  const combinedTags = Array.from(
+    new Set([
+      ...systemGeneratedTags,
+      ...fetishTags.map((t: string) => t.toLowerCase()),
+      ...rawTags.map((t: string) => t.toLowerCase()),
+    ])
+  );
+
+  const structuredNotes = `[${normalizedTier}: ${classification.category} | Score: ${quality.score}/10 | ${attributes.perspective} | ${attributes.setting} | Face: ${attributes.face_visible ? "Ja" : "Nein"}]`;
+
+  return {
+    title: parsed.title || `${normalizedTier} - ${classification.category}`,
+    theme: classification.category,
+    explicitLevel,
+    suggestedStarsPrice,
+    tags: combinedTags,
+    notes: structuredNotes,
+    suggestedCaption: parsed.suggestedCaption || "Kleiner Einblick für meine treuen VIPs 💕",
+    classification: {
+      tier: normalizedTier,
+      category: classification.category,
+      confidence: typeof classification.confidence === "number" ? classification.confidence : 0.95,
+    },
+    attributes: {
+      face_visible: Boolean(attributes.face_visible),
+      body_writing: Boolean(attributes.body_writing),
+      body_writing_text: attributes.body_writing_text || null,
+      perspective: attributes.perspective || "Selfie",
+      setting: attributes.setting || "Bedroom",
+      fetish_tags: fetishTags,
+    },
+    quality: {
+      score: typeof quality.score === "number" ? quality.score : 7.0,
+      lighting: quality.lighting || "Normal",
+      sharpness: quality.sharpness || "Normal",
+    },
+    visibleFeatures: combinedTags,
+  };
 }
 
 /**
  * Smart local fallback classifier when Grok API key is unconfigured or offline.
- * Implements a realistic distribution (Teaser / Soft Lingerie / PPV Nude) with tags and stars.
  */
 function generateFallbackClassification(
   filePath: string,
@@ -634,83 +746,78 @@ function generateFallbackClassification(
   const fileName = path.basename(filePath).toLowerCase();
 
   let explicitLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
-  let theme = "Casual & Lifestyle";
+  let tier: "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3" | "Tier 4" | "Tier 5" = "Tier 0";
+  let category = "SFW / Lifestyle";
   let suggestedStarsPrice = 0;
   let title = "Casual Streetwear Portrait";
   let suggestedCaption = "Guten Morgen ihr Lieben! 💕 Ich wünsche euch einen wundervollen Start in den Tag ✨ Was habt ihr heute Schönes vor?";
   let tags = ["lifestyle", "selfie", "portrait"];
   let visibleFeatures: string[] = ["face"];
 
-  // Inspect filename keywords for explicit clues
   if (fileName.includes("pussy") || fileName.includes("nude") || fileName.includes("naked") || fileName.includes("explicit") || fileName.includes("sex")) {
     explicitLevel = "PPV";
-    theme = "Full Nude & Explicit";
+    tier = "Tier 4";
+    category = "Vollakt (Full Nude)";
     title = "Intimer unzensierter Einblick";
     suggestedStarsPrice = 350;
-    tags = ["pussy", "nude", "explicit", "vip", "stars"];
+    tags = ["pussy", "nude", "explicit", "vip", "stars", "tier4", "vollakt"];
     visibleFeatures = ["pussy", "ass", "tits"];
     suggestedCaption = "Ganz exklusiv und ohne jedes Geheimnis für meine treuesten VIPs... 🤫 Klickt unten auf den Stern um das unzensierte Set freizuschalten! 🌟🔞";
   } else if (fileName.includes("tits") || fileName.includes("boobs") || fileName.includes("topless") || fileName.includes("obenohne") || fileName.includes("brüste")) {
     explicitLevel = "PPV";
-    theme = "Topless & Nude";
+    tier = "Tier 3";
+    category = "Teilakt (Partial Nude)";
     title = "Sinnliches Oben-Ohne Porträt";
     suggestedStarsPrice = 180;
-    tags = ["tits", "topless", "nude", "vip"];
+    tags = ["tits", "topless", "nude", "vip", "tier3", "teilakt"];
     visibleFeatures = ["tits"];
     suggestedCaption = "Zu heiß für Instagram... 🔥 Schaltet das komplette Oben-Ohne Foto unten mit Telegram Stars frei! 🌟";
   } else if (fileName.includes("ass") || fileName.includes("booty") || fileName.includes("lingerie") || fileName.includes("dessous") || fileName.includes("boudoir")) {
     explicitLevel = "SOFT";
-    theme = "Boudoir & Lingerie";
+    tier = "Tier 2";
+    category = "Lingerie / Unterwäsche";
     title = "Verführerisches Lingerie Set";
     suggestedStarsPrice = 50;
-    tags = ["lingerie", "ass", "booty", "dessous"];
+    tags = ["lingerie", "ass", "booty", "dessous", "tier2"];
     visibleFeatures = ["ass", "cleavage"];
     suggestedCaption = "Spitze auf der Haut und ein kleiner Blick hinter die Kulissen... Gefällt euch dieses Set? 😉💕";
   } else {
-    // Deterministic hash based on filename so generic Telegram messages get a realistic mix
-    let hash = 0;
-    for (let i = 0; i < fileName.length; i++) {
-      hash = (hash * 31 + fileName.charCodeAt(i)) % 100;
-    }
-
-    if (hash < 30) {
-      // 30% Teaser (Non-Nude)
-      explicitLevel = "TEASER";
-      theme = "Casual & Lifestyle";
-      title = "Süßes Spiegelselfie";
-      suggestedStarsPrice = 0;
-      tags = ["teaser", "lifestyle", "casual", "face"];
-      visibleFeatures = ["face", "outfit"];
-      suggestedCaption = "Ein kleiner Gruß aus dem Alltag 💕 Wie gefällt euch mein heutiges Outfit? Schreibt es mir in die Kommentare!";
-    } else if (hash < 65) {
-      // 35% Soft (Lingerie / Booty)
-      explicitLevel = "SOFT";
-      theme = "Boudoir & Lingerie";
-      title = "Spitzen-Dessous am Bett";
-      suggestedStarsPrice = 45;
-      tags = ["lingerie", "ass", "booty", "dessous", "soft"];
-      visibleFeatures = ["ass", "cleavage"];
-      suggestedCaption = "Gemütlicher Abend im Schlafzimmer... 🔥 Wer von euch leistet mir Gesellschaft? Klickt unten für das volle Foto!";
-    } else {
-      // 35% PPV (Topless / Nude)
-      explicitLevel = "PPV";
-      theme = "Topless & VIP Special";
-      title = "Hautnah & Unzensiert";
-      suggestedStarsPrice = 180;
-      tags = ["tits", "topless", "nude", "ppv", "vip"];
-      visibleFeatures = ["tits", "ass"];
-      suggestedCaption = "Nur für meine echten Fans hier im Kanal... 🤫 Holt euch das unzensierte Foto direkt mit Telegram Stars! 🌟✨";
-    }
+    explicitLevel = "TEASER";
+    tier = "Tier 0";
+    category = "SFW / Lifestyle";
+    title = `Foto (${path.basename(filePath)})`;
+    suggestedStarsPrice = 0;
+    tags = ["foto", "unclassified", "tier0"];
+    visibleFeatures = [];
+    suggestedCaption = "Neuer Content für euch! 💕";
   }
 
   return {
     title,
-    theme,
+    theme: category,
     explicitLevel,
     suggestedStarsPrice,
     tags,
-    notes: `Klassifiziert (${modelName || "Model"}) | Merkmale: ${visibleFeatures.join(", ")}`,
+    notes: `[${tier}: ${category}] Offline-Fallback (${modelName || "Model"})`,
     suggestedCaption,
+    classification: {
+      tier,
+      category,
+      confidence: 0.5,
+    },
+    attributes: {
+      face_visible: true,
+      body_writing: false,
+      body_writing_text: null,
+      perspective: "Selfie",
+      setting: "Bedroom",
+      fetish_tags: [],
+    },
+    quality: {
+      score: 6.0,
+      lighting: "Normal",
+      sharpness: "Normal",
+    },
     visibleFeatures,
   };
 }

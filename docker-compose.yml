@@ -65,7 +65,8 @@ services:
       TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
       TELEGRAM_SESSION_STRING: ${TELEGRAM_SESSION_STRING}
       XAI_API_KEY: ${XAI_API_KEY}
-      XAI_MODEL: ${XAI_MODEL:-grok-beta}
+      XAI_MODEL: ${XAI_MODEL:-grok-4.20-non-reasoning}
+      XAI_VISION_MODEL: ${XAI_VISION_MODEL:-grok-4.20-non-reasoning}
       TON_API_ENDPOINT: ${TON_API_ENDPOINT:-https://toncenter.com/api/v2/jsonRPC}
       TON_API_KEY: ${TON_API_KEY}
       STAR_USD_RATE: ${STAR_USD_RATE:-0.013}

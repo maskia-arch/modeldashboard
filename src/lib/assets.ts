@@ -131,3 +131,41 @@ export function isVideoOrGifExtension(filenameOrUrl: string): boolean {
   const ext = path.extname(filenameOrUrl).toLowerCase();
   return [".mp4", ".mov", ".mkv", ".avi", ".gif"].includes(ext);
 }
+
+const CLASSIFICATION_TAG_WORDS = new Set([
+  "teaser",
+  "soft",
+  "ppv",
+  "lingerie",
+  "dessous",
+  "booty",
+  "ass",
+  "tits",
+  "pussy",
+  "topless",
+  "nude",
+  "explicit",
+  "creator",
+  "casuallifestyle",
+  "casual",
+  "lifestyle",
+  "face",
+  "portrait",
+  "selfie",
+  "unclassified",
+  "spitze",
+  "bett",
+  "spiegel",
+  "vip",
+]);
+
+/**
+ * Strips obsolete or previous classification tags and merges with freshly verified tags.
+ * Preserves structural tags like source identifiers (#quelle, #telegram, model name).
+ */
+export function mergeCleanedTags(existingTags: string[] = [], newTags: string[] = []): string[] {
+  const preservedMetaTags = existingTags.filter(
+    (t) => !CLASSIFICATION_TAG_WORDS.has(t.toLowerCase())
+  );
+  return Array.from(new Set([...preservedMetaTags, ...newTags.map((t) => t.toLowerCase())]));
+}

@@ -88,8 +88,8 @@ export async function POST(
           modelName: model.name,
         });
 
-        const cleanedTags = (asset.tags || []).filter((t: string) => t !== "unclassified");
-        const combinedTags = Array.from(new Set([...cleanedTags, ...classification.tags]));
+        const { mergeCleanedTags } = await import("@/lib/assets");
+        const combinedTags = mergeCleanedTags(asset.tags || [], classification.tags || []);
 
         await prisma.asset.update({
           where: { id: asset.id },
@@ -98,7 +98,7 @@ export async function POST(
             theme: classification.theme,
             explicitLevel: classification.explicitLevel,
             tags: combinedTags,
-            notes: `${asset.notes || ""} | Grok: ${classification.notes} | Caption: "${classification.suggestedCaption}" | Stars: ${classification.suggestedStarsPrice}`,
+            notes: `${classification.notes} | Caption: "${classification.suggestedCaption}" | Stars: ${classification.suggestedStarsPrice}`,
           },
         });
 

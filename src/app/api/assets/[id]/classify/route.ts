@@ -58,8 +58,8 @@ export async function POST(
       modelName: asset.model.name,
     });
 
-    const cleanedTags = (asset.tags || []).filter((t: string) => t !== "unclassified");
-    const combinedTags = Array.from(new Set([...cleanedTags, ...(classification.tags || [])]));
+    const { mergeCleanedTags } = await import("@/lib/assets");
+    const combinedTags = mergeCleanedTags(asset.tags || [], classification.tags || []);
 
     const updated = await prisma.asset.update({
       where: { id: asset.id },

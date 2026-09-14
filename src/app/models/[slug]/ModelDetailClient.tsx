@@ -57,6 +57,29 @@ interface ModelDetailClientProps {
   isMasterAdmin?: boolean;
 }
 
+function getTierBadgeInfo(tags: string[] = []) {
+  const t = tags.map((x: string) => x.toLowerCase());
+  if (t.includes("tier5") || t.includes("explizit")) {
+    return { label: "Tier 5: Explizit", className: "bg-red-500/25 text-red-300 border-red-500/50" };
+  }
+  if (t.includes("tier4") || t.includes("vollakt")) {
+    return { label: "Tier 4: Vollakt", className: "bg-rose-500/25 text-rose-300 border-rose-500/50" };
+  }
+  if (t.includes("tier3") || t.includes("teilakt") || t.includes("topless")) {
+    return { label: "Tier 3: Teilakt", className: "bg-purple-500/25 text-purple-300 border-purple-500/50" };
+  }
+  if (t.includes("tier2") || t.includes("lingerie")) {
+    return { label: "Tier 2: Lingerie", className: "bg-pink-500/25 text-pink-300 border-pink-500/50" };
+  }
+  if (t.includes("tier1") || t.includes("bademode")) {
+    return { label: "Tier 1: Bademode", className: "bg-cyan-500/25 text-cyan-300 border-cyan-500/50" };
+  }
+  if (t.includes("tier0") || t.includes("sfw")) {
+    return { label: "Tier 0: SFW", className: "bg-blue-500/25 text-blue-300 border-blue-500/50" };
+  }
+  return null;
+}
+
 export function ModelDetailClient({
   initialModel,
   initialFinancials,
@@ -675,6 +698,7 @@ export function ModelDetailClient({
               const isUnclassified =
                 asset.tags?.includes("unclassified") ||
                 (asset.tags?.includes("quelle") && (!asset.theme || asset.theme === "Allgemein" || asset.theme === "Unklassifiziert" || asset.title?.startsWith("Quell-Medium")));
+              const tierBadge = getTierBadgeInfo(asset.tags || []);
 
               return (
                 <Card key={asset.id} className="overflow-hidden border group bg-card/60 flex flex-col justify-between">
@@ -743,7 +767,7 @@ export function ModelDetailClient({
                         </div>
                       )}
 
-                      <div className="absolute top-2 left-2 flex gap-1">
+                      <div className="absolute top-2 left-2 flex gap-1 flex-wrap items-center">
                         {isUnclassified ? (
                           <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 text-[10px] font-bold gap-1 shadow-sm backdrop-blur-sm">
                             <Sparkles className="h-3 w-3 text-amber-400" />
@@ -751,6 +775,11 @@ export function ModelDetailClient({
                           </Badge>
                         ) : (
                           <>
+                            {tierBadge && (
+                              <Badge variant="outline" className={`text-[9px] font-bold py-0 h-4 border shadow-sm backdrop-blur-sm ${tierBadge.className}`}>
+                                {tierBadge.label}
+                              </Badge>
+                            )}
                             {asset.explicitLevel === "PPV" && <Badge variant="ppv">PPV</Badge>}
                             {asset.explicitLevel === "SOFT" && <Badge variant="soft">SOFT</Badge>}
                             {asset.explicitLevel === "TEASER" && <Badge variant="teaser">TEASER</Badge>}
