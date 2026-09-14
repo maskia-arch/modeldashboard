@@ -42,10 +42,18 @@ export async function POST(
 
     let localPath = getAssetLocalPath(asset.fileUrl);
     if (!localPath) {
-      const { restoreAssetMediaFile } = await import("@/lib/model-sources");
-      const restored = await restoreAssetMediaFile(asset.id);
-      if (restored.success && restored.filePath) {
-        localPath = restored.filePath;
+      try {
+        const { restoreAssetMediaFile } = await import("@/lib/model-sources");
+        const restorePromise = restoreAssetMediaFile(asset.id);
+        const timeoutPromise = new Promise<{ success: boolean; filePath?: string; error?: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: "Telegram restore timeout" }), 20000)
+        );
+        const restored = await Promise.race([restorePromise, timeoutPromise]);
+        if (restored.success && restored.filePath) {
+          localPath = restored.filePath;
+        }
+      } catch (rErr: any) {
+        console.warn(`[Classify] Telegram restore error for asset ${asset.id}:`, rErr.message);
       }
     }
 

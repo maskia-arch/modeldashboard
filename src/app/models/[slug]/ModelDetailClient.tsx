@@ -43,6 +43,9 @@ import {
   UploadCloud,
   Radio,
   HardDrive,
+  Minimize2,
+  Maximize2,
+  X,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -290,6 +293,7 @@ export function ModelDetailClient({
   const [isBatchClassifying, setIsBatchClassifying] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{
     isOpen: boolean;
+    isMinimized?: boolean;
     total: number;
     current: number;
     currentTitle: string;
@@ -305,11 +309,27 @@ export function ModelDetailClient({
   const handleQuickGrokClassify = async (assetId: string) => {
     setClassifyingAssetId(assetId);
     try {
-      const res = await fetch(`/api/assets/${assetId}/classify`, {
-        method: "POST",
-      });
-      const data = await safeJson(res);
-      if (!res.ok) throw new Error(data.error || "Grok Klassifizierung fehlgeschlagen");
+      let data: any = null;
+      let lastErr: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (attempt > 1) {
+            await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+          }
+          const res = await fetch(`/api/assets/${assetId}/classify`, {
+            method: "POST",
+          });
+          data = await safeJson(res);
+          if (res.ok && data.success) break;
+          if (attempt < 3 && (res.status >= 500 || res.status === 429 || res.status === 520)) {
+            continue;
+          }
+          throw new Error(data?.error || `Grok Klassifizierung fehlgeschlagen (${res.status})`);
+        } catch (e: any) {
+          lastErr = e;
+          if (attempt >= 3) throw e;
+        }
+      }
       await refreshData();
     } catch (err: any) {
       alert(err.message || "Fehler bei der Grok-Analyse");
@@ -343,6 +363,7 @@ export function ModelDetailClient({
     setIsBatchClassifying(true);
     setBatchProgress({
       isOpen: true,
+      isMinimized: false,
       total: eligiblePhotos.length,
       current: 0,
       currentTitle: eligiblePhotos[0]?.title || "Initialisiere...",
@@ -388,37 +409,72 @@ export function ModelDetailClient({
           : null
       );
 
-      try {
-        const res = await fetch(`/api/assets/${asset.id}/classify`, {
-          method: "POST",
-        });
-        const data = await safeJson(res);
+      const MAX_RETRIES = 3;
+      let handled = false;
 
-        if (res.ok && data.success) {
-          successes++;
-          const tier =
-            data.classification?.classification?.tier ||
-            data.classification?.explicitLevel ||
-            "Klassifiziert";
-          const cat = data.classification?.classification?.category || "";
-          const stars = data.classification?.suggestedStarsPrice ?? 0;
-          logs.unshift(`✅ ${assetLabel}: ${tier}${cat ? ` (${cat})` : ""} • ${stars} ⭐`);
-        } else {
-          if (
-            res.status === 404 ||
-            data.error?.includes("Festplatte") ||
-            data.error?.includes("nicht gefunden")
-          ) {
-            skipped++;
-            logs.unshift(`⚠️ ${assetLabel}: Datei nicht auf Server-Festplatte (übersprungen)`);
-          } else {
-            errors++;
-            logs.unshift(`❌ ${assetLabel}: ${data.error || "Fehler"}`);
-          }
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        if (cancelBatchRef.current) break;
+
+        if (attempt > 1) {
+          logs.unshift(
+            language === "de"
+              ? `🔄 ${assetLabel}: Wiederholungsversuch (${attempt}/${MAX_RETRIES}) wegen Serververzögerung...`
+              : `🔄 ${assetLabel}: Retry attempt (${attempt}/${MAX_RETRIES}) due to server delay...`
+          );
+          setBatchProgress((prev) => (prev ? { ...prev, logs: [...logs] } : null));
+          await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
         }
-      } catch (err: any) {
-        errors++;
-        logs.unshift(`❌ ${assetLabel}: ${err.message}`);
+
+        try {
+          const res = await fetch(`/api/assets/${asset.id}/classify`, {
+            method: "POST",
+          });
+          const data = await safeJson(res);
+
+          if (res.ok && data.success) {
+            successes++;
+            const tier =
+              data.classification?.classification?.tier ||
+              data.classification?.explicitLevel ||
+              "Klassifiziert";
+            const cat = data.classification?.classification?.category || "";
+            const stars = data.classification?.suggestedStarsPrice ?? 0;
+            logs.unshift(`✅ ${assetLabel}: ${tier}${cat ? ` (${cat})` : ""} • ${stars} ⭐`);
+            handled = true;
+            break;
+          } else {
+            if (
+              res.status === 404 ||
+              data.error?.includes("Festplatte") ||
+              data.error?.includes("nicht gefunden")
+            ) {
+              skipped++;
+              logs.unshift(`⚠️ ${assetLabel}: Datei nicht auf Server-Festplatte (übersprungen)`);
+              handled = true;
+              break;
+            }
+
+            // If transient error (520, 502, 503, 504, 429) and attempts remaining:
+            if (attempt < MAX_RETRIES && (res.status >= 500 || res.status === 429 || res.status === 520 || res.status === 0)) {
+              console.warn(`[BatchClassify] Asset ${asset.id} attempt ${attempt} returned ${res.status}, retrying...`);
+              continue;
+            }
+
+            errors++;
+            logs.unshift(`❌ ${assetLabel}: Serverfehler (${res.status}): ${data.error || "Ungültige Serverantwort"}`);
+            handled = true;
+            break;
+          }
+        } catch (err: any) {
+          if (attempt < MAX_RETRIES) {
+            console.warn(`[BatchClassify] Asset ${asset.id} attempt ${attempt} threw: ${err.message}, retrying...`);
+            continue;
+          }
+          errors++;
+          logs.unshift(`❌ ${assetLabel}: ${err.message}`);
+          handled = true;
+          break;
+        }
       }
 
       setBatchProgress((prev) =>
@@ -432,6 +488,11 @@ export function ModelDetailClient({
             }
           : null
       );
+
+      // Periodically refresh dashboard data in background so cards update live
+      if ((i + 1) % 2 === 0 || i === eligiblePhotos.length - 1) {
+        refreshData().catch(() => {});
+      }
     }
 
     setBatchProgress((prev) => (prev ? { ...prev, isFinished: true } : null));
@@ -1915,69 +1976,80 @@ export function ModelDetailClient({
       </Dialog>
 
       {/* Batch Grok Vision Classification Modal with Real-time Progress */}
-      {batchProgress?.isOpen && (
+      {batchProgress?.isOpen && !batchProgress?.isMinimized && (
         <Dialog
-          open={batchProgress.isOpen}
+          open={Boolean(batchProgress.isOpen && !batchProgress.isMinimized)}
           onOpenChange={(open) => {
-            if (!open && !batchProgress.isFinished) {
-              if (
-                confirm(
-                  language === "de"
-                    ? "Batch-Klassifizierung wirklich anhalten?"
-                    : "Pause/Stop batch classification?"
-                )
-              ) {
-                cancelBatchRef.current = true;
-                setBatchProgress((prev) =>
-                  prev ? { ...prev, isCancelled: true, isFinished: true } : null
-                );
-                refreshData();
+            if (!open) {
+              if (!batchProgress.isFinished) {
+                // Minimize instead of aborting when closing the dialog
+                setBatchProgress((prev) => (prev ? { ...prev, isMinimized: true } : null));
+              } else {
+                setBatchProgress(null);
               }
-            } else if (!open) {
-              setBatchProgress(null);
             }
           }}
         >
           <DialogContent className="max-w-xl bg-card border-border shadow-2xl">
             <DialogHeader>
-              <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-md">
-                  <Sparkles className="h-5 w-5" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-amber-500 to-purple-600 flex items-center justify-center text-white shrink-0 shadow-md">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <DialogTitle className="text-base font-bold flex items-center gap-2">
+                      <span>
+                        {language === "de"
+                          ? "🤖 Grok 4.20 Vision Batch-Klassifizierung"
+                          : "🤖 Grok 4.20 Vision Batch Classifier"}
+                      </span>
+                      {batchProgress.isFinished ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]"
+                        >
+                          {language === "de" ? "Abgeschlossen" : "Completed"}
+                        </Badge>
+                      ) : batchProgress.isCancelled ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px]"
+                        >
+                          {language === "de" ? "Angehalten" : "Stopped"}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-[10px] animate-pulse"
+                        >
+                          {language === "de" ? "Aktiv..." : "Running..."}
+                        </Badge>
+                      )}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs">
+                      {model.name} • {batchProgress.current} von {batchProgress.total} Fotos bearbeitet
+                    </DialogDescription>
+                  </div>
                 </div>
-                <div>
-                  <DialogTitle className="text-base font-bold flex items-center gap-2">
-                    <span>
-                      {language === "de"
-                        ? "🤖 Grok 4.20 Vision Batch-Klassifizierung"
-                        : "🤖 Grok 4.20 Vision Batch Classifier"}
+
+                {/* Minimize Button in Header */}
+                {!batchProgress.isFinished && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setBatchProgress((prev) => (prev ? { ...prev, isMinimized: true } : null))
+                    }
+                    className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    title={language === "de" ? "Im Hintergrund weiterlaufen lassen" : "Run in background"}
+                  >
+                    <Minimize2 className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">
+                      {language === "de" ? "Hintergrund" : "Minimize"}
                     </span>
-                    {batchProgress.isFinished ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px]"
-                      >
-                        {language === "de" ? "Abgeschlossen" : "Completed"}
-                      </Badge>
-                    ) : batchProgress.isCancelled ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px]"
-                      >
-                        {language === "de" ? "Angehalten" : "Stopped"}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-[10px] animate-pulse"
-                      >
-                        {language === "de" ? "Aktiv..." : "Running..."}
-                      </Badge>
-                    )}
-                  </DialogTitle>
-                  <DialogDescription className="text-xs">
-                    {model.name} • {batchProgress.current} von {batchProgress.total} Fotos bearbeitet
-                  </DialogDescription>
-                </div>
+                  </Button>
+                )}
               </div>
             </DialogHeader>
 
@@ -2078,22 +2150,35 @@ export function ModelDetailClient({
               </div>
             </div>
 
-            <DialogFooter className="gap-2 sm:gap-0">
+            <DialogFooter className="gap-2 sm:gap-2 flex-col sm:flex-row">
               {!batchProgress.isFinished ? (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => {
-                    cancelBatchRef.current = true;
-                    setBatchProgress((prev) =>
-                      prev ? { ...prev, isCancelled: true, isFinished: true } : null
-                    );
-                    refreshData();
-                  }}
-                  className="w-full sm:w-auto text-xs font-semibold"
-                >
-                  {language === "de" ? "Analyse stoppen" : "Stop Analysis"}
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setBatchProgress((prev) => (prev ? { ...prev, isMinimized: true } : null))
+                    }
+                    className="w-full sm:w-auto text-xs font-semibold"
+                  >
+                    <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
+                    {language === "de" ? "Im Hintergrund weiterlaufen" : "Run in Background"}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      cancelBatchRef.current = true;
+                      setBatchProgress((prev) =>
+                        prev ? { ...prev, isCancelled: true, isFinished: true } : null
+                      );
+                      refreshData();
+                    }}
+                    className="w-full sm:w-auto text-xs font-semibold"
+                  >
+                    {language === "de" ? "Analyse stoppen" : "Stop Analysis"}
+                  </Button>
+                </>
               ) : (
                 <Button
                   variant="gradient"
@@ -2113,6 +2198,93 @@ export function ModelDetailClient({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Floating Background Task Widget (Visible when minimized & active or just completed) */}
+      {batchProgress && batchProgress.isMinimized && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 p-3 px-4 rounded-xl border border-purple-500/50 bg-card/95 backdrop-blur-md shadow-2xl shadow-purple-950/40 animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="relative flex items-center justify-center">
+            {batchProgress.isFinished ? (
+              <div className="h-7 w-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
+            ) : batchProgress.isCancelled ? (
+              <div className="h-7 w-7 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/40">
+                <AlertCircle className="h-4 w-4" />
+              </div>
+            ) : (
+              <div className="h-7 w-7 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-500/40">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              </div>
+            )}
+          </div>
+
+          <div
+            className="flex flex-col text-xs cursor-pointer select-none"
+            onClick={() =>
+              setBatchProgress((prev) => (prev ? { ...prev, isMinimized: false, isOpen: true } : null))
+            }
+          >
+            <div className="font-bold text-foreground flex items-center gap-1.5">
+              <span>
+                {batchProgress.isFinished
+                  ? (language === "de" ? "Grok-Analyse abgeschlossen" : "Grok Analysis Completed")
+                  : batchProgress.isCancelled
+                  ? (language === "de" ? "Analyse angehalten" : "Analysis Paused")
+                  : (language === "de" ? "Grok läuft im Hintergrund" : "Grok in Background")}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">
+                {batchProgress.current}/{batchProgress.total}
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground truncate max-w-[220px]">
+              {batchProgress.isFinished
+                ? `${batchProgress.successCount} ${language === "de" ? "Fotos klassifiziert" : "photos classified"}`
+                : batchProgress.currentTitle || (language === "de" ? "Analysiere Fotos..." : "Analyzing photos...")}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 pl-2 border-l border-border/50">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setBatchProgress((prev) => (prev ? { ...prev, isMinimized: false, isOpen: true } : null))
+              }
+              className="h-7 px-2 text-[11px] font-semibold text-purple-300 hover:text-purple-100 hover:bg-purple-500/20"
+              title={language === "de" ? "Vollständiges Protokoll öffnen" : "Open full log"}
+            >
+              <Maximize2 className="h-3.5 w-3.5 mr-1" />
+              {language === "de" ? "Öffnen" : "Expand"}
+            </Button>
+            {batchProgress.isFinished ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setBatchProgress(null)}
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  cancelBatchRef.current = true;
+                  setBatchProgress((prev) =>
+                    prev ? { ...prev, isCancelled: true, isFinished: true } : null
+                  );
+                  refreshData();
+                }}
+                className="h-7 px-1.5 text-[11px] text-rose-400 hover:text-rose-200 hover:bg-rose-500/20"
+                title={language === "de" ? "Analyse stoppen" : "Stop"}
+              >
+                {language === "de" ? "Stopp" : "Stop"}
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Delete Model Safety Confirmation Dialog */}
