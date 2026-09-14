@@ -95,8 +95,10 @@ export async function POST(req: Request) {
         investorId: investorId && investorId !== "NONE" ? investorId : null,
         investorSharePercent:
           typeof investorSharePercent === "number"
-            ? investorSharePercent
-            : parseFloat(investorSharePercent) || 50.0,
+            ? Math.max(0, Math.min(100, investorSharePercent))
+            : !isNaN(parseFloat(investorSharePercent))
+            ? Math.max(0, Math.min(100, parseFloat(investorSharePercent)))
+            : 50.0,
         enableExpenseRecoupment: enableExpenseRecoupment !== false,
       },
       include: {

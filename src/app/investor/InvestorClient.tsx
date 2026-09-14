@@ -268,11 +268,11 @@ export function InvestorClient({
                       </CardDescription>
                     </div>
                     {channel.enableExpenseRecoupment === false ? (
-                      <Badge variant="info">{t.overview.directSplitBadge} • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {t.common.active}</Badge>
+                      <Badge variant="info">{t.overview.directSplitBadge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
                     ) : channel.isRecouped ? (
-                      <Badge variant="success">100% {t.overview.amortized100Badge} • {channel.investorSharePercent || 50}/{100 - (channel.investorSharePercent || 50)} {t.common.active}</Badge>
+                      <Badge variant="success">100% {t.overview.amortized100Badge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
                     ) : (
-                      <Badge variant="warning">{t.overview.amortizing} ({channel.investorSharePercent || 50}%)</Badge>
+                      <Badge variant="warning">{t.overview.amortizing} ({channel.investorSharePercent ?? 50}%)</Badge>
                     )}
                   </div>
                 </CardHeader>
@@ -287,8 +287,8 @@ export function InvestorClient({
                       </div>
                       <p className="text-muted-foreground text-[11px]">
                         {language === "de"
-                          ? `Einnahmen werden direkt im Verhältnis ${channel.investorSharePercent || 50}% (Investor) zu ${100 - (channel.investorSharePercent || 50)}% (Agentur) aufgeteilt.`
-                          : `Revenues are split directly at ${channel.investorSharePercent || 50}% (Investor) / ${100 - (channel.investorSharePercent || 50)}% (Agency).`}
+                          ? `Einnahmen werden direkt im Verhältnis ${channel.investorSharePercent ?? 50}% (Investor) zu ${100 - (channel.investorSharePercent ?? 50)}% (Agentur) aufgeteilt.`
+                          : `Revenues are split directly at ${channel.investorSharePercent ?? 50}% (Investor) / ${100 - (channel.investorSharePercent ?? 50)}% (Agency).`}
                       </p>
                     </div>
                   ) : (

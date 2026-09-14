@@ -83,7 +83,12 @@ export function ModelDetailClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investorId: assignInvestorId || null,
-          investorSharePercent: parseFloat(assignSharePercent as any) || 50,
+          investorSharePercent:
+            typeof assignSharePercent === "number"
+              ? assignSharePercent
+              : !isNaN(parseFloat(assignSharePercent as any))
+              ? Math.max(0, Math.min(100, parseFloat(assignSharePercent as any)))
+              : 50,
           enableExpenseRecoupment: assignEnableExpenseRecoupment,
         }),
       });
@@ -246,11 +251,11 @@ export function ModelDetailClient({
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-black tracking-tight">{model.name}</h1>
               {model.enableExpenseRecoupment === false ? (
-                <Badge variant="info">{language === "de" ? "Direkt-Split" : "Direct Split"} ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
+                <Badge variant="info">{language === "de" ? "Direkt-Split" : "Direct Split"} ({model.investorSharePercent ?? 50}/{100 - (model.investorSharePercent ?? 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
               ) : financials.isRecouped ? (
-                <Badge variant="success">100% {language === "de" ? "Amortisiert" : "Recouped"} ({model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
+                <Badge variant="success">100% {language === "de" ? "Amortisiert" : "Recouped"} ({model.investorSharePercent ?? 50}/{100 - (model.investorSharePercent ?? 50)} {language === "de" ? "Aktiv" : "Active"})</Badge>
               ) : (
-                <Badge variant="warning">{language === "de" ? "Amortisiert noch" : "Recouping Principal"} ({model.investorSharePercent || 50}%)</Badge>
+                <Badge variant="warning">{language === "de" ? "Amortisiert noch" : "Recouping Principal"} ({model.investorSharePercent ?? 50}%)</Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground font-mono mt-0.5">
@@ -274,7 +279,7 @@ export function ModelDetailClient({
                 <span className="text-muted-foreground italic">{t.modelDetail.unassignedInvestor}</span>
               )}
               <Badge variant="outline" className="text-[10px] font-mono text-primary border-primary/30 ml-1">
-                {model.investorSharePercent || 50}% {language === "de" ? "Inv" : "Inv"} / {100 - (model.investorSharePercent || 50)}% {language === "de" ? "Agentur" : "Agency"}
+                {model.investorSharePercent ?? 50}% {language === "de" ? "Inv" : "Inv"} / {100 - (model.investorSharePercent ?? 50)}% {language === "de" ? "Agentur" : "Agency"}
               </Badge>
               {isMasterAdmin && (
                 <Button

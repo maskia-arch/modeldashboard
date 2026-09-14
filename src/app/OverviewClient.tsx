@@ -94,7 +94,12 @@ export function OverviewClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investorId: editInvestorId || null,
-          investorSharePercent: parseFloat(editInvestorSharePercent as any) || 50,
+          investorSharePercent:
+            typeof editInvestorSharePercent === "number"
+              ? editInvestorSharePercent
+              : !isNaN(parseFloat(editInvestorSharePercent as any))
+              ? Math.max(0, Math.min(100, parseFloat(editInvestorSharePercent as any)))
+              : 50,
           enableExpenseRecoupment: editEnableExpenseRecoupment,
         }),
       });
@@ -303,17 +308,13 @@ export function OverviewClient({
 
                         {/* Split */}
                         <td className="p-3">
-                          {hasInvestor ? (
-                            <div className="space-y-0.5">
-                              <Badge variant="secondary" className="text-[10px] font-mono">
-                                {fin.investorSharePercent}% {t.overview.investorCol} / {fin.managementSharePercent}% {t.overview.masterCol}
-                              </Badge>
-                            </div>
-                          ) : (
+                          <div className="space-y-0.5">
                             <Badge variant="secondary" className="text-[10px] font-mono">
-                              100% {t.overview.masterCol}
+                              {fin.investorSharePercent > 0
+                                ? `${fin.investorSharePercent}% ${t.overview.investorCol} / ${fin.managementSharePercent}% ${t.overview.masterCol}`
+                                : `100% ${t.overview.masterCol}`}
                             </Badge>
-                          )}
+                          </div>
                         </td>
 
                         {/* Recoupment mode */}
@@ -343,7 +344,7 @@ export function OverviewClient({
 
                         {/* Investor Gross Claim */}
                         <td className="p-3 font-semibold text-foreground whitespace-nowrap">
-                          {hasInvestor ? formatUsd(fin.investorGrossEarningsUsd) : "$0.00"}
+                          {formatUsd(fin.investorGrossEarningsUsd)}
                         </td>
 
                         {/* Open Payout */}
@@ -441,7 +442,7 @@ export function OverviewClient({
                             
                             {/* Dynamic Split Badge */}
                             <Badge variant="secondary" className="text-[10px] py-0 font-mono">
-                              {hasInvestor
+                              {fin.investorSharePercent > 0
                                 ? `${fin.investorSharePercent}/${fin.managementSharePercent} Split`
                                 : `100% ${t.overview.masterCol}`}
                             </Badge>
@@ -465,9 +466,13 @@ export function OverviewClient({
                           </CardTitle>
                           <CardDescription className="text-xs font-mono mt-0.5">
                             {model.channelTitle || model.telegramChannelId}
-                            {hasInvestor && (
+                            {hasInvestor ? (
                               <span className="text-muted-foreground block text-[11px] font-sans mt-0.5">
                                 {t.overview.investorLabel}: <strong>{model.investor.name || model.investor.email}</strong>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/70 block text-[11px] font-sans mt-0.5 italic">
+                                {t.overview.investorLabel}: {t.overview.noInvestorAssigned}
                               </span>
                             )}
                           </CardDescription>

@@ -89,7 +89,7 @@ export default async function OverviewPage() {
       {
         modelName: m.name,
         channelTitle: m.channelTitle,
-        investorSharePercent: m.investorId ? m.investorSharePercent : 0,
+        investorSharePercent: typeof m.investorSharePercent === "number" ? m.investorSharePercent : 50,
         enableExpenseRecoupment: m.enableExpenseRecoupment,
       }
     ),
@@ -98,7 +98,7 @@ export default async function OverviewPage() {
   // Aggregate global numbers
   const totalLocked = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.pipeline?.lockedPendingUsd || 0), 0).toFixed(2));
   const totalRecouped = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.recoupedUsd || 0), 0).toFixed(2));
-  const totalAvailablePayout = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.investorAvailablePayoutUsd || 0), 0).toFixed(2));
+  const totalAvailablePayout = Number(modelsWithFin.reduce((acc, m) => acc + (m.investorId ? (m.fin?.investorAvailablePayoutUsd || 0) : 0), 0).toFixed(2));
   const totalGrossRevenue = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalGrossRevenueUsd || 0), 0).toFixed(2));
   const totalManagementShare = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.managementTotalShareUsd || 0), 0).toFixed(2));
   const totalDisbursed = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalPaidOutUsd || 0), 0).toFixed(2));

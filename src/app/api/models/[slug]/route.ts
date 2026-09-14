@@ -89,7 +89,8 @@ export async function PATCH(
       updateData.investorId = body.investorId && body.investorId !== "NONE" ? body.investorId : null;
     }
     if (body.investorSharePercent !== undefined) {
-      updateData.investorSharePercent = parseFloat(body.investorSharePercent) || 50.0;
+      const parsed = parseFloat(body.investorSharePercent);
+      updateData.investorSharePercent = !isNaN(parsed) ? Math.max(0, Math.min(100, parsed)) : 50.0;
     }
     if (body.enableExpenseRecoupment !== undefined) {
       updateData.enableExpenseRecoupment = Boolean(body.enableExpenseRecoupment);

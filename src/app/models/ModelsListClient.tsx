@@ -114,7 +114,12 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
           name: editName,
           channelTitle: editChannelTitle,
           investorId: editInvestorId || null,
-          investorSharePercent: parseFloat(editInvestorSharePercent as any) || 50,
+          investorSharePercent:
+            typeof editInvestorSharePercent === "number"
+              ? editInvestorSharePercent
+              : !isNaN(parseFloat(editInvestorSharePercent as any))
+              ? Math.max(0, Math.min(100, parseFloat(editInvestorSharePercent as any)))
+              : 50,
           enableExpenseRecoupment: editEnableExpenseRecoupment,
         }),
       });
@@ -201,7 +206,12 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
           avatarUrl,
           openInvestBalance: parseFloat(openInvestBalance) || 0,
           investorId: investorId || null,
-          investorSharePercent: parseFloat(investorSharePercent as any) || 50,
+          investorSharePercent:
+            typeof investorSharePercent === "number"
+              ? investorSharePercent
+              : !isNaN(parseFloat(investorSharePercent as any))
+              ? Math.max(0, Math.min(100, parseFloat(investorSharePercent as any)))
+              : 50,
           enableExpenseRecoupment,
         }),
       });
@@ -292,15 +302,15 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                           <CardTitle className="text-base font-bold truncate">{model.name}</CardTitle>
                           {model.enableExpenseRecoupment === false ? (
                             <Badge variant="info" className="text-[10px] py-0 shrink-0">
-                              {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)} {t.models.directSplitBadge}
+                              {(model.investorSharePercent ?? 50)}/{100 - (model.investorSharePercent ?? 50)} {t.models.directSplitBadge}
                             </Badge>
                           ) : fin?.isRecouped ? (
                             <Badge variant="success" className="text-[10px] py-0 shrink-0">
-                              {model.investorSharePercent || 50}/{100 - (model.investorSharePercent || 50)}
+                              {(model.investorSharePercent ?? 50)}/{100 - (model.investorSharePercent ?? 50)}
                             </Badge>
                           ) : (
                             <Badge variant="warning" className="text-[10px] py-0 shrink-0">
-                              {t.overview.amortizing} ({model.investorSharePercent || 50}%)
+                              {t.overview.amortizing} ({model.investorSharePercent ?? 50}%)
                             </Badge>
                           )}
                         </div>
@@ -329,7 +339,7 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                       <div className="p-2 rounded-lg bg-sky-950/20 border border-sky-800/30 text-sky-400 text-[11px] flex items-center justify-between">
                         <span className="truncate">{t.models.directSplitDesc}</span>
                         <Badge variant="outline" className="text-[10px] text-sky-400 border-sky-800/40 shrink-0 ml-2">
-                          {model.investorSharePercent || 50}% {language === "de" ? "Direkt" : "Direct"}
+                          {model.investorSharePercent ?? 50}% {language === "de" ? "Direkt" : "Direct"}
                         </Badge>
                       </div>
                     ) : (
