@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { mnemonicNew, mnemonicToPrivateKey } from "@ton/crypto";
 import { WalletContractV4 } from "@ton/ton";
 import { KeyRound, Copy, Check, ShieldAlert, Sparkles, Wallet, ExternalLink, RefreshCw } from "lucide-react";
@@ -21,6 +21,13 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
   const [isCopiedAddress, setIsCopiedAddress] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [activeAddress, setActiveAddress] = useState<string>(currentAddress || "");
+
+  useEffect(() => {
+    if (currentAddress) {
+      setActiveAddress(currentAddress);
+    }
+  }, [currentAddress]);
 
   const handleGenerateWallet = async () => {
     setIsGenerating(true);
@@ -66,6 +73,12 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       });
       if (res.ok) {
         setSaveSuccess(true);
+        setActiveAddress(generatedAddress);
+        try {
+          if (mnemonic.length === 24) {
+            localStorage.setItem("dashboard_ton_wallet_last", JSON.stringify({ address: generatedAddress, mnemonic }));
+          }
+        } catch {}
         if (onAddressSaved) onAddressSaved(generatedAddress);
       }
     } catch (err) {
@@ -74,6 +87,8 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       setIsSaving(false);
     }
   };
+
+  const effectiveAddress = activeAddress || currentAddress;
 
   return (
     <Card className="border-border">
@@ -90,7 +105,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
               </CardDescription>
             </div>
           </div>
-          {currentAddress && (
+          {effectiveAddress && (
             <Badge variant="success" className="text-xs">
               Wallet Configured
             </Badge>
@@ -99,16 +114,16 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {currentAddress && !generatedAddress && (
+        {effectiveAddress && !generatedAddress && (
           <div className="p-3.5 rounded-lg bg-muted/40 border text-sm flex items-center justify-between">
             <div>
               <span className="text-xs text-muted-foreground block">Active Receiving Address</span>
-              <span className="font-mono text-xs font-semibold break-all">{currentAddress}</span>
+              <span className="font-mono text-xs font-semibold break-all">{effectiveAddress}</span>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => copyToClipboard(currentAddress, "address")}
+              onClick={() => copyToClipboard(effectiveAddress, "address")}
             >
               {isCopiedAddress ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
             </Button>

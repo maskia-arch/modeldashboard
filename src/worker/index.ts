@@ -5,6 +5,7 @@ import { StringSession } from "telegram/sessions";
 import { PrismaClient } from "@prisma/client";
 import { publishToTelegram } from "../lib/telegram-bot";
 import { calculateMaturityDate, starsToUsd } from "../lib/financial-engine";
+import { syncAllModelsStars } from "../lib/telegram-stars";
 
 const prisma = new PrismaClient();
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
@@ -70,79 +71,15 @@ export async function syncStarsTransactions(): Promise<void> {
 
   isSyncInProgress = true;
   console.log(`\n===============================================================`);
-  console.log(`[Userbot DataSync] [${new Date().toISOString()}] Starting 30-minute sync cycle...`);
-  console.log(`[Userbot DataSync] Rate-limit protection: 30s delay between channel requests.`);
+  console.log(`[Userbot DataSync] [${new Date().toISOString()}] Starting Telegram Stars Historical Sync...`);
   console.log(`===============================================================\n`);
 
   try {
-    const models = await prisma.model.findMany({
-      orderBy: { createdAt: "asc" },
-    });
-
     const client = await getMTProtoClient();
-
-    for (let i = 0; i < models.length; i++) {
-      const model = models[i];
-      console.log(`[Userbot DataSync] (${i + 1}/${models.length}) Querying statistics for channel: ${model.name} (${model.telegramChannelId})...`);
-
-      if (client) {
-        try {
-          const peer = await client.getInputEntity(model.telegramChannelId);
-          const result = (await client.invoke(
-            new Api.payments.GetStarsTransactions({
-              peer,
-              offset: "",
-              limit: 100,
-            })
-          )) as any;
-
-          const transactions = result?.history || [];
-          console.log(`[Userbot DataSync] Found ${transactions.length} stars transactions for ${model.name}`);
-
-          for (const tx of transactions) {
-            const txId = String(tx.id);
-            const stars = Math.abs(Number(tx.stars || tx.starsAmount || 0));
-            const txDate = new Date(tx.date * 1000);
-            const maturesAt = calculateMaturityDate(txDate);
-            const status = new Date() >= maturesAt ? "MATURED" : "PENDING";
-            const estimatedUsd = starsToUsd(stars);
-
-            await prisma.starTransaction.upsert({
-              where: { telegramTxId: txId },
-              update: {
-                status: new Date() >= maturesAt ? "MATURED" : undefined,
-              },
-              create: {
-                modelId: model.id,
-                telegramTxId: txId,
-                starsAmount: stars,
-                estimatedUsd,
-                transactionDate: txDate,
-                maturesAt,
-                status,
-              },
-            });
-          }
-        } catch (callErr: any) {
-          console.error(`[Userbot DataSync] Error fetching stars for ${model.name}:`, callErr.message);
-          // Check for Telegram FloodWait
-          if (callErr.seconds) {
-            console.warn(`[Userbot DataSync] FloodWait received: Telegram requested to wait ${callErr.seconds}s`);
-            await sleep(callErr.seconds * 1000);
-          }
-        }
-      } else {
-        console.log(`[Userbot DataSync] Simulation mode: Statistics recorded for ${model.name}`);
-      }
-
-      // If there are more channels to query, apply the 30-second rate-limit protection offset
-      if (i < models.length - 1) {
-        console.log(`[Userbot DataSync] Waiting 30s before querying next channel to protect rate limits...`);
-        await sleep(CHANNEL_STAGGER_DELAY_MS);
-      }
-    }
-
-    console.log(`\n[Userbot DataSync] 30-minute sync cycle completed successfully.\n`);
+    const result = await syncAllModelsStars(client || undefined);
+    console.log(
+      `[Userbot DataSync] Sync cycle completed: ${result.syncedModels} models, ${result.totalTransactions} transactions, ${result.totalStars} total stars.`
+    );
   } catch (err: any) {
     console.error("[Userbot DataSync] Fatal error in sync loop:", err);
   } finally {
@@ -244,6 +181,29 @@ function startManualPostingWorker(): Worker | null {
 }
 
 /**
+ * BullMQ Worker: Processes on-demand "stars-sync" queue jobs triggered by Master Admin.
+ */
+function startStarsSyncWorker(): Worker | null {
+  const syncWorker = new Worker(
+    "stars-sync",
+    async (job: Job) => {
+      console.log(`[Worker] Manually triggered stars-sync job ${job.id} received.`);
+      const client = await getMTProtoClient();
+      const result = await syncAllModelsStars(client || undefined);
+      console.log(
+        `[Worker] Stars sync completed: ${result.syncedModels} models, ${result.totalTransactions} transactions, ${result.totalStars} stars.`
+      );
+    },
+    {
+      connection: redisConnection,
+      concurrency: 1,
+    }
+  );
+
+  return syncWorker;
+}
+
+/**
  * Recurring cron intervals:
  * - Sync Stars every 30 minutes with 30s channel offset.
  * - Check 21-day maturity hourly.
@@ -280,6 +240,7 @@ async function main() {
 
   // Initialize Worker for manual triggers
   startManualPostingWorker();
+  startStarsSyncWorker();
 
   // Start Cron Schedulers
   startCronSchedulers();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calculateFinancials } from "@/lib/financial-engine";
 import { getCurrentUser } from "@/lib/auth";
+import { syncStarsForChannel } from "@/lib/telegram-stars";
 
 export async function GET() {
   try {
@@ -104,6 +105,14 @@ export async function POST(req: Request) {
         },
       },
     });
+
+    // Initial query: fetch historical stars and status immediately via MTProto
+    try {
+      console.log(`[Models API] Running initial historical stars sync for new channel ${model.name} (${model.telegramChannelId})...`);
+      await syncStarsForChannel(model.id, model.telegramChannelId);
+    } catch (syncErr: any) {
+      console.warn(`[Models API] Initial stars sync warning for ${model.name}:`, syncErr.message);
+    }
 
     return NextResponse.json(model, { status: 201 });
   } catch (error: any) {
