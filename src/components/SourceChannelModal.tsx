@@ -44,10 +44,11 @@ export function SourceChannelModal({
   const [selectedChannelId, setSelectedChannelId] = useState<string>("");
   const [customChannelInput, setCustomChannelInput] = useState<string>("");
   const [syncLimit, setSyncLimit] = useState<number>(50);
-  const [classifyWithGrok, setClassifyWithGrok] = useState<boolean>(true);
+  const [classifyWithGrok, setClassifyWithGrok] = useState<boolean>(false);
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncProgress, setSyncProgress] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -62,17 +63,20 @@ export function SourceChannelModal({
     try {
       const res = await fetch(`/api/models/${modelSlug}/source`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.source) {
-          setCurrentSourceId(data.source.sourceChannelId || "");
-          setCurrentSourceTitle(data.source.sourceChannelTitle || "");
-          setLastSyncedAt(data.source.lastSyncedAt || null);
-          setSelectedChannelId(data.source.sourceChannelId || "");
-        } else {
-          setCurrentSourceId("");
-          setCurrentSourceTitle("");
-          setLastSyncedAt(null);
-        }
+        const rawText = await res.text();
+        try {
+          const data = JSON.parse(rawText);
+          if (data.source) {
+            setCurrentSourceId(data.source.sourceChannelId || "");
+            setCurrentSourceTitle(data.source.sourceChannelTitle || "");
+            setLastSyncedAt(data.source.lastSyncedAt || null);
+            setSelectedChannelId(data.source.sourceChannelId || "");
+          } else {
+            setCurrentSourceId("");
+            setCurrentSourceTitle("");
+            setLastSyncedAt(null);
+          }
+        } catch {}
       }
     } catch (err) {
       console.error("Failed to load source channel config:", err);
@@ -84,8 +88,11 @@ export function SourceChannelModal({
     try {
       const res = await fetch("/api/telegram/dialogs");
       if (res.ok) {
-        const data = await res.json();
-        setDialogs(data.dialogs || []);
+        const rawText = await res.text();
+        try {
+          const data = JSON.parse(rawText);
+          setDialogs(data.dialogs || []);
+        } catch {}
       }
     } catch (err) {
       console.error("Failed to load userbot dialogs:", err);
@@ -113,7 +120,13 @@ export function SourceChannelModal({
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Ungültige Serverantwort (${res.status}): ${rawText.slice(0, 100)}`);
+      }
       if (!res.ok) throw new Error(data.error || "Speichern fehlgeschlagen");
 
       setCurrentSourceId(targetId);
@@ -155,28 +168,95 @@ export function SourceChannelModal({
   const handleSyncNow = async () => {
     setIsSyncing(true);
     setStatusMessage(null);
+    setSyncProgress(
+      syncLimit === 0
+        ? "Verbindung zum Quellkanal wird hergestellt (Modus: ALLE)..."
+        : `Verbindung zum Quellkanal wird hergestellt (Ziel: ${syncLimit} Medien)...`
+    );
 
     try {
-      const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: syncLimit, classifyWithGrok }),
-      });
+      let currentOffset: number | undefined = undefined;
+      let totalImported = 0;
+      let totalSkipped = 0;
+      let remainingLimit = syncLimit;
+      let batchIndex = 1;
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Synchronisierung fehlgeschlagen");
+      while (true) {
+        setSyncProgress(
+          syncLimit === 0
+            ? `📥 Stapel #${batchIndex}: Synchronisiere ALLE Medien (${totalImported} geladen, ${totalSkipped} übersprungen)...`
+            : `📥 Stapel #${batchIndex}: Lade Medien (${totalImported}/${syncLimit} geladen, ${totalSkipped} übersprungen)...`
+        );
+
+        const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            limit: syncLimit === 0 ? 0 : remainingLimit,
+            offsetId: currentOffset,
+            classifyWithGrok,
+          }),
+        });
+
+        const rawText = await res.text();
+        let data: any;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          if (res.status === 504 || rawText.includes("Gateway Timeout")) {
+            throw new Error(
+              "Server-Gateway-Timeout (504): Die Verbindung zu Telegram brauchte zu lange. Bitte erneut versuchen."
+            );
+          }
+          throw new Error(`Ungültige Serverantwort (${res.status}): ${rawText.slice(0, 100)}`);
+        }
+
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || data.message || "Synchronisierung fehlgeschlagen");
+        }
+
+        totalImported += data.importedCount || 0;
+        totalSkipped += data.skippedCount || 0;
+
+        if (syncLimit > 0) {
+          remainingLimit = Math.max(0, syncLimit - (totalImported + totalSkipped));
+        }
+
+        // Break if no more messages or target limit reached
+        if (!data.hasMore || !data.nextOffsetId || (syncLimit > 0 && remainingLimit <= 0)) {
+          break;
+        }
+
+        currentOffset = data.nextOffsetId;
+        batchIndex++;
+        // Short pause between batches to be gentle on Telegram MTProto
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      let summary = "";
+      if (totalImported === 0 && totalSkipped > 0) {
+        summary = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${totalSkipped} bereits im Dashboard vorhanden).`;
+      } else if (totalImported > 0 && totalSkipped > 0) {
+        summary = `Erfolg: ${totalImported} neue Medien heruntergeladen (${totalSkipped} bereits vorhandene übersprungen)!`;
+      } else if (totalImported > 0) {
+        summary = `Erfolg: ${totalImported} Medien erfolgreich auf die Festplatte gespeichert!`;
+      } else {
+        summary = "Keine neuen Medien im Quellkanal gefunden.";
+      }
 
       setStatusMessage({
         type: "success",
-        text: data.message || `${data.importedCount || 0} Medien erfolgreich heruntergeladen!`,
+        text: summary,
       });
 
       setLastSyncedAt(new Date().toISOString());
       if (onSyncCompleted) onSyncCompleted();
     } catch (err: any) {
+      console.error("[SourceChannelModal] Sync error:", err);
       setStatusMessage({ type: "error", text: err.message || "Fehler beim Herunterladen" });
     } finally {
       setIsSyncing(false);
+      setSyncProgress("");
     }
   };
 
@@ -211,6 +291,13 @@ export function SourceChannelModal({
               <AlertCircle className="h-4 w-4 shrink-0" />
             )}
             <span>{statusMessage.text}</span>
+          </div>
+        )}
+
+        {isSyncing && syncProgress && (
+          <div className="p-3 rounded-lg text-xs flex items-center gap-2 bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 animate-pulse">
+            <RefreshCw className="h-4 w-4 animate-spin shrink-0 text-indigo-400" />
+            <span className="font-medium">{syncProgress}</span>
           </div>
         )}
 

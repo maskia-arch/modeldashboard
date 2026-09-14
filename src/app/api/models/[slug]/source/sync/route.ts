@@ -29,22 +29,28 @@ export async function POST(
 
     let limit = 50;
     let classifyWithGrok = false;
+    let offsetId: number | undefined = undefined;
     try {
       const body = await req.json();
       if (typeof body.limit === "number") {
-        limit = body.limit === 0 ? 0 : Math.min(Math.max(body.limit, 5), 5000);
+        limit = body.limit === 0 ? 0 : Math.min(Math.max(body.limit, 1), 5000);
       }
       if (body.classifyWithGrok !== undefined) {
         classifyWithGrok = Boolean(body.classifyWithGrok);
       }
+      if (typeof body.offsetId === "number" && body.offsetId > 0) {
+        offsetId = body.offsetId;
+      }
     } catch {}
 
-    console.log(`[SourceSync] Triggering source channel media sync for ${model.name} (limit: ${limit === 0 ? "ALL" : limit}, grok: ${classifyWithGrok})...`);
-    const result = await syncMediaFromSourceChannel(model.id, limit, classifyWithGrok);
+    console.log(
+      `[SourceSync] Triggering source channel media sync for ${model.name} (limit: ${limit === 0 ? "ALL" : limit}, offsetId: ${offsetId || "none"}, grok: ${classifyWithGrok})...`
+    );
+    const result = await syncMediaFromSourceChannel(model.id, limit, classifyWithGrok, offsetId);
 
     if (!result.success) {
       return NextResponse.json(
-        { error: result.message || "Sync failed" },
+        { error: result.message || "Sync failed", details: result.error },
         { status: 502 }
       );
     }
@@ -53,6 +59,8 @@ export async function POST(
       success: true,
       importedCount: result.importedCount,
       skippedCount: result.skippedCount || 0,
+      hasMore: Boolean(result.hasMore),
+      nextOffsetId: result.nextOffsetId || null,
       message: result.message,
     });
   } catch (error: any) {

@@ -76,8 +76,17 @@ export function deleteModelSource(modelId: string): void {
 export async function syncMediaFromSourceChannel(
   modelId: string,
   limit: number = 50,
-  autoClassifyPhotos: boolean = false
-): Promise<{ success: boolean; importedCount: number; skippedCount?: number; message: string; error?: string }> {
+  autoClassifyPhotos: boolean = false,
+  offsetId?: number
+): Promise<{
+  success: boolean;
+  importedCount: number;
+  skippedCount?: number;
+  hasMore?: boolean;
+  nextOffsetId?: number | null;
+  message: string;
+  error?: string;
+}> {
   const model = await prisma.model.findUnique({ where: { id: modelId } });
   if (!model) {
     return { success: false, importedCount: 0, message: "Model not found" };
@@ -128,13 +137,36 @@ export async function syncMediaFromSourceChannel(
     console.log(`[SourceChannel] Found ${existingAssets.length} existing assets (${existingMsgMap.size} mapped to source messages) for ${model.name}.`);
 
     const isAll = limit === 0;
-    console.log(`[SourceChannel] ${isAll ? "Scanning ALL messages" : `Fetching up to ${limit} messages`} from source channel...`);
+    const batchStartTime = Date.now();
+    const MAX_BATCH_DURATION_MS = 22000; // 22 seconds safety threshold to avoid proxy 504 timeouts
+    const MAX_ITEMS_PER_BATCH = 25; // max items processed in a single batch
 
-    const iterParams = isAll ? {} : { limit };
+    console.log(`[SourceChannel] ${isAll ? "Scanning ALL messages" : `Fetching up to ${limit} messages`} from source channel (offsetId: ${offsetId || "none"})...`);
+
+    const iterParams: any = {};
+    if (offsetId && offsetId > 0) {
+      iterParams.offsetId = offsetId;
+    }
+    if (!isAll) {
+      iterParams.limit = limit;
+    }
+
     let importedCount = 0;
     let skippedExistingCount = 0;
+    let hasMore = false;
+    let nextOffsetId: number | null = null;
 
     for await (const msg of client.iterMessages(peer, iterParams)) {
+      // Check if time budget or item limit exceeded BEFORE processing next item
+      const elapsed = Date.now() - batchStartTime;
+      const batchProcessed = importedCount + skippedExistingCount;
+      if (elapsed > MAX_BATCH_DURATION_MS || batchProcessed >= MAX_ITEMS_PER_BATCH) {
+        console.log(`[SourceChannel] Batch safety threshold reached (${elapsed}ms, ${importedCount} imported, ${skippedExistingCount} skipped). Yielding nextOffsetId=${msg.id}`);
+        hasMore = true;
+        nextOffsetId = msg.id;
+        break;
+      }
+
       // Only process messages that contain media
       if (!msg.media) continue;
 
@@ -180,17 +212,27 @@ export async function syncMediaFromSourceChannel(
       const filename = `source_msg_${msg.id}_${Date.now()}${ext}`;
 
       let buffer: Buffer | undefined = undefined;
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-          console.log(`[SourceChannel] Downloading media from msg #${msg.id} (attempt ${attempt}/3)...`);
-          const res = (await client.downloadMedia(msg, {})) as Buffer | undefined;
-          if (res && Buffer.isBuffer(res) && res.length > 0) {
-            buffer = res;
-            break;
+          console.log(`[SourceChannel] Downloading media from msg #${msg.id} (attempt ${attempt}/2)...`);
+          const downloadPromise = client.downloadMedia(msg, {}) as Promise<Buffer | Uint8Array | undefined>;
+          const timeoutPromise = new Promise<undefined>((_, reject) =>
+            setTimeout(() => reject(new Error("Telegram Download-Timeout (> 25s)")), 25000)
+          );
+
+          const res = await Promise.race([downloadPromise, timeoutPromise]);
+          if (res) {
+            if (Buffer.isBuffer(res) && res.length > 0) {
+              buffer = res;
+              break;
+            } else if (res instanceof Uint8Array && res.byteLength > 0) {
+              buffer = Buffer.from(res);
+              break;
+            }
           }
         } catch (err: any) {
-          console.warn(`[SourceChannel] Download attempt ${attempt}/3 for msg #${msg.id} failed:`, err.message);
-          await sleep(1000);
+          console.warn(`[SourceChannel] Download attempt ${attempt}/2 for msg #${msg.id} failed:`, err.message);
+          if (attempt < 2) await sleep(500);
         }
       }
 
@@ -315,6 +357,8 @@ export async function syncMediaFromSourceChannel(
       success: true,
       importedCount,
       skippedCount: skippedExistingCount,
+      hasMore,
+      nextOffsetId,
       message,
     };
   } catch (error: any) {
@@ -449,9 +493,21 @@ export async function restoreAssetMediaFile(assetId: string): Promise<{
       }
 
       const filename = `source_msg_${msgId}_${Date.now()}${ext}`;
-      const buffer = (await client.downloadMedia(msg, {})) as Buffer | undefined;
+      let buffer: Buffer | undefined = undefined;
+      const downloadPromise = client.downloadMedia(msg, {}) as Promise<Buffer | Uint8Array | undefined>;
+      const timeoutPromise = new Promise<undefined>((_, reject) =>
+        setTimeout(() => reject(new Error("Telegram Download-Timeout (> 25s)")), 25000)
+      );
+      const res = await Promise.race([downloadPromise, timeoutPromise]);
+      if (res) {
+        if (Buffer.isBuffer(res) && res.length > 0) {
+          buffer = res;
+        } else if (res instanceof Uint8Array && res.byteLength > 0) {
+          buffer = Buffer.from(res);
+        }
+      }
 
-      if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      if (!buffer || buffer.length === 0) {
         return { success: false, error: "Failed to download media buffer from Telegram" };
       }
 
