@@ -3,6 +3,7 @@ import {
   extractAssetVisualContext,
   composeStorylineCaption,
   sanitizeCaptionForMediaType,
+  ensureCaptionTimeConsistency,
 } from "./captions";
 
 export const ScheduleItemSchema = z.object({
@@ -104,7 +105,7 @@ CORE PRINCIPLES:
    - Schedule posts that tell an ongoing story across days and hours:
      * Morning (09:00 - 11:30): Waking up in bed, morning coffee, waking thoughts, checking in on the community ("Guten Morgen ihr Lieben ☕...").
      * Midday/Afternoon (13:00 - 16:30): Casual lifestyle, workout, errands, outfit check, what she's doing today, asking fans a question.
-     * Evening (18:30 - 20:30): Feierabend, winding down on the couch, relaxing, getting ready to go out, teasing the night ahead.
+     * Evening (18:30 - 21:00): Feierabend, winding down on the couch, relaxing, getting ready to go out, teasing the night ahead.
      * Late Night / Drop (21:30 - 00:30): Intimate bedtime thoughts, sleeplessness, drops of spicy PPV content, whispering mood ("Kann noch nicht schlafen...").
      * Weekly flow: Mon/Tue chill start -> Wed/Thu anticipation & sneak peeks -> Fri/Sat peak VIP drops & party/weekend vibe -> Sun relaxed cuddling & recovery.
 
@@ -112,7 +113,7 @@ CORE PRINCIPLES:
    - For every asset, you are provided with: 'setting', 'clothing', 'perspective', and 'highlights' (e.g. tattoos, shower, wet hair, bed, oversized hoodie).
    - You MUST explicitly and organically reference what is actually visible in the media:
      * Setting in Bathroom / Mirror -> mention the bathroom mirror, shower, getting ready, or wet hair.
-     * Setting in Bed / Bedroom -> mention waking up, cuddling under the blanket, sleepless night, pillows.
+     * Setting in Bed / Bedroom -> mention relaxing in bed, cuddling under the blanket, sleepless night, pillows. (If posted in the evening, talk about an evening bedtime/cuddle mood, NOT "Guten Morgen"!).
      * Clothing Oversized Hoodie -> joke about wearing cozy oversized loungewear and what might (or might not) be underneath.
      * Tattoos visible -> mention your tattoos, asking how they like the ink on your skin.
      * Topless / Nude PPV drop -> be intimate, personal and vulnerable, teasing that you dared to share something private.
@@ -133,6 +134,17 @@ CORE PRINCIPLES:
    - TEASER assets: starsPrice = 0.
    - SOFT assets: starsPrice = 15 to 50.
    - PPV assets: starsPrice = 100 to 450.
+
+8. ABSOLUTE STRICT TIME-OF-DAY CONSISTENCY:
+   - "timeOfDay" dictates the greeting and emotional context:
+     * If timeOfDay >= "12:00" (e.g. 14:00, 19:30, 20:00, 20:15, 21:00): It is STRICTLY FORBIDDEN to say "Guten Morgen", "Morgengruß", "Start in den Tag", "direkt nach dem Aufstehen", or "erstmal drei Kaffee"!
+     * For 18:00 - 21:59: You MUST use evening greetings ("Schönen Feierabend", "Guten Abend meine Lieben", "Gemütlicher Abend", "Ausgehen").
+     * For 22:00 - 05:00: You MUST use late-night thoughts ("Gute Nacht", "Kann noch nicht schlafen", "Später Einblick").
+     * "Guten Morgen" is EXCLUSIVELY permitted for morning slots between 07:00 and 11:30!
+
+9. STRICT 1-TO-1 ASSET USAGE (NO DUPLICATE ASSETS):
+   - Every post in "schedule" MUST reference a unique "assetId". NEVER reuse an assetId more than once.
+   - Do NOT schedule more posts than the number of available assets provided.
    - Return STRICT valid JSON conforming to the schema.`;
 
   const enrichedAssets = grokAssets.map((a) => {
@@ -212,38 +224,50 @@ Respond in strict JSON with the following structure:
     const parsedJson = JSON.parse(rawContent);
     const validated = GrokScheduleResponseSchema.parse(parsedJson);
 
-    // Format integrity: Sanitize all captions against actual asset media types
+    // Format integrity: Deduplicate by assetId and sanitize all captions against media type and time of day
     const assetMap = new Map(params.availableAssets.map((a) => [a.id, a]));
-    validated.schedule = validated.schedule.map((item) => {
-      const asset = assetMap.get(item.assetId);
-      const mediaType = asset ? asset.type : "PHOTO";
-      return {
-        ...item,
-        caption: sanitizeCaptionForMediaType(item.caption, mediaType),
-      };
-    });
+    const seenAssetIds = new Set<string>();
+    const deduplicatedSchedule: typeof validated.schedule = [];
+
+    for (const item of validated.schedule) {
+      if (!seenAssetIds.has(item.assetId) && assetMap.has(item.assetId)) {
+        seenAssetIds.add(item.assetId);
+        const asset = assetMap.get(item.assetId)!;
+        const sanitized = sanitizeCaptionForMediaType(item.caption, asset.type);
+        deduplicatedSchedule.push({
+          ...item,
+          caption: ensureCaptionTimeConsistency(sanitized, item.timeOfDay),
+        });
+      }
+    }
+    validated.schedule = deduplicatedSchedule;
 
     // If user requested more days than the Grok anchor window (e.g. 30, 60, 90 days),
-    // seamlessly extend the schedule with remaining assets using the local Storyline Engine (in ~3ms)
+    // extend the schedule ONLY with remaining unused assets (NEVER recycle used assets!)
     if (requestedDays > grokTargetDays && validated.schedule.length > 0) {
-      const usedAssetIds = new Set(validated.schedule.map((p) => p.assetId));
-      const unusedAssets = params.availableAssets.filter((a) => !usedAssetIds.has(a.id));
-      const assetsToCycle = unusedAssets.length > 0 ? unusedAssets : params.availableAssets;
-      let nextAssetIdx = 0;
+      const unusedAssets = params.availableAssets.filter((a) => !seenAssetIds.has(a.id));
+      let nextUnusedIdx = 0;
       const usedCaptionsSet = new Set(validated.schedule.map((p) => p.caption));
 
       const maxGrokDay = Math.max(...validated.schedule.map((p) => p.timeOffsetDays), grokTargetDays - 1);
 
       for (let d = maxGrokDay + 1; d < requestedDays; d++) {
+        if (nextUnusedIdx >= unusedAssets.length) {
+          // All available assets scheduled! Stop so post count NEVER exceeds files in folder!
+          break;
+        }
+
         const dayOfWeek = d % 7;
         const isPauseDay = (params.allowPauseDays ?? true) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
         if (isPauseDay) continue;
 
-        const postCount = (dayOfWeek === 4 || dayOfWeek === 5) ? 2 : 1;
-        for (let p = 0; p < postCount; p++) {
-          const asset = assetsToCycle[(nextAssetIdx++) % assetsToCycle.length];
-          const timeOfDay = p === 0 ? "11:30" : "20:45";
-          const slot = p === 0 ? (postCount === 2 ? "morning" : "afternoon") : "latenight";
+        const remainingUnused = unusedAssets.length - nextUnusedIdx;
+        const postCount = (dayOfWeek === 4 || dayOfWeek === 5) && remainingUnused >= 2 ? 2 : 1;
+        for (let p = 0; p < postCount && nextUnusedIdx < unusedAssets.length; p++) {
+          const asset = unusedAssets[nextUnusedIdx++];
+          seenAssetIds.add(asset.id);
+          const timeOfDay = p === 0 ? (postCount === 2 ? "14:30" : "20:15") : "20:45";
+          const slot: "morning" | "afternoon" | "evening" | "latenight" = p === 0 ? (postCount === 2 ? "afternoon" : "evening") : "evening";
           const level = asset.explicitLevel;
           const starsPrice = level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0);
 
@@ -260,11 +284,16 @@ Respond in strict JSON with the following structure:
             timeOffsetDays: d,
             timeOfDay,
             assetId: asset.id,
-            caption,
+            caption: ensureCaptionTimeConsistency(caption, timeOfDay),
             starsPrice,
           });
         }
       }
+    }
+
+    // Hard ceiling: A schedule must NEVER contain more posts than available assets!
+    if (validated.schedule.length > params.availableAssets.length) {
+      validated.schedule = validated.schedule.slice(0, params.availableAssets.length);
     }
 
     // Calculate stats for the full requestedDays schedule
@@ -342,7 +371,27 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
   const ppvAssets = assets.filter((a) => a.explicitLevel === "PPV");
 
 
-  let assetIndex = 0;
+  // Group available assets into non-repeating consumable pools (each asset is used at most ONCE)
+  let teaserPool = [...assets.filter((a) => a.explicitLevel === "TEASER")];
+  let softPool = [...assets.filter((a) => a.explicitLevel === "SOFT")];
+  let ppvPool = [...assets.filter((a) => a.explicitLevel === "PPV")];
+
+  const takeAsset = (preferredTier: "TEASER" | "SOFT" | "PPV"): typeof assets[0] | null => {
+    let pool: typeof assets = preferredTier === "TEASER" ? teaserPool : preferredTier === "SOFT" ? softPool : ppvPool;
+    if (pool.length === 0) {
+      if (teaserPool.length > 0) pool = teaserPool;
+      else if (softPool.length > 0) pool = softPool;
+      else if (ppvPool.length > 0) pool = ppvPool;
+      else return null;
+    }
+
+    const item = pool.shift()!;
+    teaserPool = teaserPool.filter((a) => a.id !== item.id);
+    softPool = softPool.filter((a) => a.id !== item.id);
+    ppvPool = ppvPool.filter((a) => a.id !== item.id);
+    return item;
+  };
+
   const usedCaptionsSet = new Set<string>();
 
   const getStoryCaption = (
@@ -365,33 +414,33 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
   };
 
   for (let day = 0; day < days; day++) {
+    const totalRemaining = teaserPool.length + softPool.length + ppvPool.length;
+    if (totalRemaining === 0) {
+      // ALL available media files scheduled! Stop to guarantee posts NEVER exceed files in folder!
+      break;
+    }
+
     // Determine post count for this day based on strategy
     let postCount = 1;
     const dayOfWeek = day % 7; // 0: Mon, 1: Tue, 2: Wed, 3: Thu, 4: Fri, 5: Sat, 6: Sun
 
     switch (strategy) {
       case "REALISTIC": {
-        // Natural model pacing:
-        // - Sunday (6) or alternating Wednesday (2): Pause day (0 posts) if allowPauseDays
-        // - Friday (4), Saturday (5): Peak days (2 posts)
-        // - Weekdays: 1 post (or occasional 2 posts on paywall drop day)
         if (allowPauseDays && (dayOfWeek === 6 || (dayOfWeek === 2 && day % 14 === 2))) {
-          postCount = 0; // Model rest / creative offline day
+          postCount = 0;
         } else if (dayOfWeek === 4 || dayOfWeek === 5) {
-          postCount = 2; // Weekend high-engagement peaks
+          postCount = 2;
         } else if (day % 5 === 0) {
-          postCount = 2; // Mid-week feature drop
+          postCount = 2;
         } else {
-          postCount = 1; // Standard daily connection
+          postCount = 1;
         }
         break;
       }
       case "VARIABLE_1_2": {
-        // Alternates between 1 and 2 posts, with optional rare pause day
         if (allowPauseDays && day % 10 === 6) {
           postCount = 0;
         } else {
-          // Dynamic rhythm: [1, 2, 1, 2, 2, 2, 1]
           postCount = [1, 2, 1, 2, 2, 2, 1][dayOfWeek];
         }
         break;
@@ -413,7 +462,6 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         break;
       }
       case "RELAXED": {
-        // Posts every 2-3 days (e.g., Mon, Wed, Fri/Sat)
         if (dayOfWeek === 0 || dayOfWeek === 2 || dayOfWeek === 4) {
           postCount = 1;
         } else {
@@ -425,83 +473,60 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         postCount = 1;
     }
 
+    // Ensure we never plan more posts on this day than remaining assets
+    postCount = Math.min(postCount, totalRemaining);
     if (postCount === 0) {
       continue;
     }
 
     for (let p = 0; p < postCount; p++) {
-      let chosenAsset;
+      let chosenAsset: typeof assets[0] | null = null;
       let starsPrice = 0;
       let caption = "";
       let timeOfDay = "";
+      let slot: "morning" | "afternoon" | "evening" | "latenight" = "evening";
 
-      // For 2-post days:
-      // Post 0: Morning/Afternoon Teaser or Soft (0-25 Stars)
-      // Post 1: Evening/Late Night PPV Paywall (100-350 Stars)
       if (postCount === 2) {
         if (p === 0) {
-          timeOfDay = morningTimes[(day + p) % morningTimes.length];
-          chosenAsset = teaserAssets.length > 0
-            ? teaserAssets[assetIndex % teaserAssets.length]
-            : assets[assetIndex % assets.length];
-          starsPrice = 0;
-          caption = getStoryCaption(chosenAsset, "TEASER", "morning", day);
+          // Slot 0 (Afternoon): 14:30
+          timeOfDay = "14:30";
+          slot = "afternoon";
+          chosenAsset = takeAsset("TEASER");
+          if (!chosenAsset) break;
+          starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
         } else {
-          timeOfDay = (dayOfWeek === 4 || dayOfWeek === 5)
-            ? lateNightTimes[(day + p) % lateNightTimes.length]
-            : eveningTimes[(day + p) % eveningTimes.length];
-
-          if (ppvAssets.length > 0) {
-            chosenAsset = ppvAssets[assetIndex % ppvAssets.length];
-            starsPrice = 100 + ((day * 35) % 250); // 100 to 350 Stars
-            caption = getStoryCaption(chosenAsset, "PPV", "latenight", day);
-          } else if (softAssets.length > 0) {
-            chosenAsset = softAssets[assetIndex % softAssets.length];
-            starsPrice = 50;
-            caption = getStoryCaption(chosenAsset, "SOFT", "latenight", day);
-          } else {
-            chosenAsset = assets[assetIndex % assets.length];
-            starsPrice = 100;
-            caption = getStoryCaption(chosenAsset, "PPV", "latenight", day);
-          }
+          // Slot 1 (Evening): 20:15 or 21:30
+          timeOfDay = (dayOfWeek === 4 || dayOfWeek === 5) ? "21:30" : "20:15";
+          slot = "evening";
+          chosenAsset = takeAsset("PPV");
+          if (!chosenAsset) break;
+          starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 + ((day * 25) % 200) : (chosenAsset.explicitLevel === "SOFT" ? 35 : 0);
         }
       } else {
-        // 1 post day: Balanced distribution (40% Teaser, 30% Soft, 30% PPV)
-        timeOfDay = (day % 2 === 0)
-          ? morningTimes[day % morningTimes.length]
-          : eveningTimes[day % eveningTimes.length];
-
-        const roll = (day * 13) % 10; // 0-9
-        if (roll < 4 || (ppvAssets.length === 0 && softAssets.length === 0)) {
-          // Teaser
-          chosenAsset = teaserAssets.length > 0
-            ? teaserAssets[assetIndex % teaserAssets.length]
-            : assets[assetIndex % assets.length];
-          starsPrice = 0;
-          const slot = timeOfDay.startsWith("09") || timeOfDay.startsWith("10") ? "morning" : "afternoon";
-          caption = getStoryCaption(chosenAsset, "TEASER", slot, day);
-        } else if (roll < 7 && softAssets.length > 0) {
-          // Soft
-          chosenAsset = softAssets[assetIndex % softAssets.length];
-          starsPrice = (day % 3 === 0) ? 25 : 0;
-          caption = getStoryCaption(chosenAsset, "SOFT", "afternoon", day);
+        // 1 post day: Alternate between Afternoon (14:30) and Evening (20:15 / 19:45)
+        if (day % 3 === 0) {
+          timeOfDay = "14:30";
+          slot = "afternoon";
         } else {
-          // PPV
-          chosenAsset = (ppvAssets.length > 0)
-            ? ppvAssets[assetIndex % ppvAssets.length]
-            : (softAssets.length > 0 ? softAssets[assetIndex % softAssets.length] : assets[assetIndex % assets.length]);
-          starsPrice = 120 + ((day * 20) % 230); // 120 to 350 Stars
-          caption = getStoryCaption(chosenAsset, "PPV", "evening", day);
+          timeOfDay = (day % 2 === 0) ? "19:45" : "20:15";
+          slot = "evening";
         }
+
+        const preferredLevel: "TEASER" | "SOFT" | "PPV" = (day % 4 === 0) ? "TEASER" : (day % 4 === 1 ? "SOFT" : "PPV");
+        chosenAsset = takeAsset(preferredLevel);
+        if (!chosenAsset) break;
+
+        starsPrice = chosenAsset.explicitLevel === "PPV" ? 120 + ((day * 20) % 230) : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
       }
 
-      assetIndex++;
+      caption = getStoryCaption(chosenAsset, chosenAsset.explicitLevel, slot, day);
+      caption = ensureCaptionTimeConsistency(caption, timeOfDay);
 
       schedule.push({
         timeOffsetDays: day,
         timeOfDay,
         assetId: chosenAsset.id,
-        caption: sanitizeCaptionForMediaType(caption, chosenAsset.type),
+        caption: ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(caption, chosenAsset.type), timeOfDay),
         starsPrice,
       });
     }

@@ -140,44 +140,118 @@ export function composeStorylineCaption(opts: StorylineOptions): string {
   // 1. TEASER POSTS (Free / Engagement)
   // ==========================================
   if (explicit === "TEASER") {
-    if (timeSlot === "morning" || visual.isBedOrCozy) {
-      candidates.push(
-        "Guten Morgen meine Lieben ☕ Direkt nach dem Aufstehen... Wer von euch braucht heute auch erstmal drei Kaffee? Lasst mir ein Herz da 💕",
-        "Noch ganz verschlafen im Bett 🙈 Hoffe ihr seid gut in die neue Woche gestartet! Was habt ihr heute Schönes vor?",
-        "Kurzer Morgengruß nur für euch ☀️ Wer von euch würde jetzt auch noch am liebsten gemütlich im Bett liegen bleiben? 🧸",
-        "Einfach mal ohne Wecker aufgewacht... ✨ Wünsche euch allen einen entspannten und erfolgreichen Tag! Lasst Liebe da 💖"
-      );
-    } else if (visual.isWetOrShower) {
-      candidates.push(
-        "Frisch geduscht und bereit für den Tag 🌸 Schicke euch ganz viel positive Energie und einen dicken Kuss! ✨",
-        "Kurzer Schnappschuss nach der Dusche vor dem Spiegel 🛁 Wie gefällt euch der Look? Schreibt mir mal in die Kommentare 😘"
-      );
-    } else if (visual.clothing.includes("Hoodie") || visual.isCouchOrChill) {
-      candidates.push(
-        "Heute ganz entspannt im gemütlichen Hoodie auf der Couch 🧸 Manchmal braucht man einfach einen ruhigen Tag... Wer leistet mir Gesellschaft? 💋",
-        "Schlabberlook & Kuschelzeit ☕ Wie verbringt ihr heute euren Feierabend? Schreibt es mir mal unten! 💕"
-      );
-    } else if (visual.isMirrorSelfie) {
-      candidates.push(
-        "Spontanes Spiegelselfie vor dem Ausgehen ✨ Wie findet ihr das Outfit heute? Freue mich riesig auf euer Feedback!",
-        "Konnte an keinem Spiegel vorbeigehen ohne kurz an euch zu denken... 📸 Wünsche euch einen wundervollen Tag! 💋"
-      );
+    if (timeSlot === "morning") {
+      if (visual.isBedOrCozy) {
+        candidates.push(
+          "Guten Morgen meine Lieben ☕ Direkt nach dem Aufstehen... Wer von euch braucht heute auch erstmal drei Kaffee? Lasst mir ein Herz da 💕",
+          "Noch ganz verschlafen im Bett 🙈 Hoffe ihr seid gut in den Tag gestartet! Was habt ihr heute Schönes vor?",
+          "Kurzer Morgengruß nur für euch ☀️ Wer von euch würde jetzt auch noch am liebsten gemütlich im Bett liegen bleiben? 🧸",
+          "Einfach mal ohne Wecker aufgewacht... ✨ Wünsche euch allen einen entspannten und erfolgreichen Tag! Lasst Liebe da 💖"
+        );
+      } else if (visual.isWetOrShower) {
+        candidates.push(
+          "Frisch geduscht und bereit für den Tag 🌸 Schicke euch ganz viel positive Energie für euren Morgen! ✨",
+          "Kurzer Schnappschuss nach der Morgendusche vor dem Spiegel 🛁 Wünsche euch einen tollen Start in den Tag! 😘"
+        );
+      } else {
+        candidates.push(
+          "Guten Morgen ihr Süßen ☕ Wünsche euch einen wundervollen Start in den Tag! 💕",
+          "Morgendlicher Gruß nur für meinen VIP-Channel ☀️ Wie startet ihr heute in den Tag? Lasst mir ein Like da ✨",
+          "Direkt morgens an euch gedacht ☀️ Schicke euch ganz viel Liebe und positive Vibes für heute! 💖"
+        );
+      }
+      if (isVideo) {
+        const vidDurationText = durationStr ? `(${durationStr}) ` : "";
+        candidates.push(
+          `Guten Morgen! 💕 Kleiner Grußclip ${vidDurationText}für euren Start in den Tag. Lasst mir ein Like da ✨`
+        );
+      }
+    } else if (timeSlot === "afternoon") {
+      if (visual.clothing.includes("Hoodie") || visual.isCouchOrChill) {
+        candidates.push(
+          "Heute ganz entspannt im gemütlichen Hoodie auf der Couch 🧸 Kleine Pause zwischendurch... Wer leistet mir Gesellschaft? 💋",
+          "Gemütlicher Nachmittags-Look ☕ Wie verbringt ihr heute eure Pause? Schreibt es mir mal unten! 💕"
+        );
+      } else if (visual.isBedOrCozy) {
+        candidates.push(
+          "Einfach mal ein bisschen faul im Bett entspannen heute Nachmittag 🧸... Tut so gut! Was treibt ihr gerade so? 💕",
+          "Kurze Auszeit im Bett ✨ Schicke euch einen dicken Kuss für die zweite Tageshälfte! 😘"
+        );
+      } else if (visual.isMirrorSelfie) {
+        candidates.push(
+          "Spiegelselfie für euren Nachmittag ✨ Wie findet ihr das Outfit heute? Freue mich riesig auf euer Feedback!",
+          "Konnte an keinem Spiegel vorbeigehen ohne kurz an euch zu denken... 📸 Wünsche euch einen schönen Nachmittag! 💋"
+        );
+      } else {
+        candidates.push(
+          "Kleiner Gruß für euren Nachmittag 😘 Wie läuft eure Woche bisher? Lasst mir gerne ein Like da ✨",
+          "Shooting-Pause heute 📸 Welches Outfit gefällt euch an mir am besten? Schreibt es mir in die Kommentare! 💕",
+          "Ein kleiner Vorgeschmack auf das, was heute Abend noch auf euch wartet... Seid ihr bereit? 😉🔥",
+          "Einfach mal kurz durchatmen und die Seele baumeln lassen ☀️ Hoffe ihr habt einen richtig schönen Nachmittag!"
+        );
+      }
+      if (isVideo) {
+        const vidDurationText = durationStr ? `(${durationStr}) ` : "";
+        candidates.push(
+          `Kurzer Video-Einblick ${vidDurationText}hinter die Kulissen 🎥 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!`,
+          `Kleiner Nachmittags-Clip nur für euch 💕 Lasst mir ein Like da!`
+        );
+      }
+    } else if (timeSlot === "evening") {
+      if (visual.clothing.includes("Hoodie") || visual.isCouchOrChill) {
+        candidates.push(
+          "Schönen Feierabend meine Lieben 🧸 Eingekuschelt auf der Couch und lasse den Tag ausklingen... Wer leistet mir Gesellschaft? 💋",
+          "Feierabend-Modus aktiviert ☕ Wie verbringt ihr heute euren Abend? Schreibt es mir mal unten! 💕"
+        );
+      } else if (visual.isBedOrCozy) {
+        candidates.push(
+          "Schon gemütlich im Bett eingekuschelt... 🧸 Feierabend genießen! Wer von euch würde sich jetzt gern dazulegen? 💋",
+          "Abendliche Kuschelzeit im Schlafzimmer ✨ Hoffe ihr hattet alle einen entspannten Tag! Lasst Liebe da 💕"
+        );
+      } else if (visual.isWetOrShower) {
+        candidates.push(
+          "Nach einem langen Tag erstmal ein warmes Bad 🛁 Entspannung pur! Wie war euer Tag heute? 😘",
+          "Frisch aus dem Bad zum Feierabend 🌸 Bereit für einen gemütlichen Abend... Schicke euch einen dicken Kuss! ✨"
+        );
+      } else if (visual.isMirrorSelfie) {
+        candidates.push(
+          "Spiegelselfie vor dem Ausgehen heute Abend ✨ Wie gefällt euch der Look? Freue mich auf euer Feedback! 💋",
+          "Guten Abend meine Lieben 📸 Ein kleiner Schnappschuss vor dem Spiegel nur für diesen Channel! 💕"
+        );
+      } else {
+        candidates.push(
+          "Guten Abend meine Lieben ✨ Hoffe ihr hattet alle einen erfolgreichen Tag! Was habt ihr heute Abend noch vor? 💕",
+          "Feierabend-Gruß nur für euch 😘 Lasst den Tag schön ausklingen und hinterlasst mir ein Herz!",
+          "Ein kleiner Vorgeschmack für euren Abend... Seid ihr bereit für das, was später noch kommt? 😉🔥",
+          "Den Tag entspannt ausklingen lassen ✨ Wünsche euch allen einen wundervollen Feierabend!"
+        );
+      }
+      if (isVideo) {
+        const vidDurationText = durationStr ? `(${durationStr}) ` : "";
+        candidates.push(
+          `Feierabend-Clip ${vidDurationText}für euch 🎥 Reagiert mit 🔥 für mehr heute Abend!`,
+          `Ein kleiner Video-Gruß zum Abend 💋 Schreibt mir mal wie euer Tag war!`
+        );
+      }
     } else {
-      // General Teasers
-      candidates.push(
-        "Kleiner Gruß zwischendurch nur für euch 😘 Wie läuft eure Woche bisher? Lasst mir gerne ein Like da ✨",
-        "Shooting-Tag heute 📸 Welches Outfit gefällt euch an mir am besten? Schreibt es mir in die Kommentare! 💕",
-        "Ein kleiner Vorgeschmack auf das, was diese Woche noch auf euch wartet... Seid ihr bereit? 😉🔥",
-        "Einfach mal die Seele baumeln lassen ☀️ Hoffe ihr hattet einen richtig schönen Tag!"
-      );
-    }
-
-    if (isVideo) {
-      const vidDurationText = durationStr ? `(${durationStr})` : "";
-      candidates.push(
-        `Guten Morgen! 💕 Kleiner Grußclip ${vidDurationText} für euren Start in den Tag. Lasst mir ein Like da ✨`,
-        `Kurzer Video-Einblick hinter die Kulissen 🎥 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!`
-      );
+      // latenight
+      if (visual.isBedOrCozy) {
+        candidates.push(
+          "Liege hier noch wach im Bett... 🌙 Kann irgendwie nicht schlafen. Wer von euch ist auch noch wach? 💋",
+          "Gute Nacht meine Lieben ✨ Noch ganz spät im Bett... Kuschelt euch gut ein und träumt süß! 🧸"
+        );
+      } else {
+        candidates.push(
+          "Später Gruß in die Nacht 🌙 Für alle Nachteulen, die jetzt noch online sind... Schlaft später gut! 💋",
+          "Late Night Check-in ✨ Wer von euch denkt gerade auch an mich? Lasst ein Herz da 💕"
+        );
+      }
+      if (isVideo) {
+        const vidDurationText = durationStr ? `(${durationStr}) ` : "";
+        candidates.push(
+          `Später Video-Clip ${vidDurationText}zu später Stunde 🌙 Wer schaut jetzt noch zu? 🔥`
+        );
+      }
     }
   }
 
@@ -288,7 +362,87 @@ export function composeStorylineCaption(opts: StorylineOptions): string {
     selected = candidates[dayIndex % candidates.length];
   }
 
-  return sanitizeCaptionForMediaType(selected, asset.type);
+  return ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(selected, asset.type), timeSlot);
+}
+
+/**
+ * Ensures strict logical consistency between the post's scheduled time and caption greetings.
+ * NEVER allows "Guten Morgen" in afternoon/evening/night posts,
+ * and NEVER allows "Feierabend" / "Gute Nacht" in morning posts.
+ */
+export function ensureCaptionTimeConsistency(
+  caption: string,
+  timeOrHour: string | number
+): string {
+  if (!caption) return "";
+
+  let hour = 12;
+  if (typeof timeOrHour === "number") {
+    hour = timeOrHour;
+  } else if (typeof timeOrHour === "string") {
+    if (timeOrHour === "morning") hour = 9;
+    else if (timeOrHour === "afternoon") hour = 14;
+    else if (timeOrHour === "evening") hour = 20;
+    else if (timeOrHour === "latenight") hour = 23;
+    else if (timeOrHour.includes(":")) {
+      const parsed = parseInt(timeOrHour.split(":")[0], 10);
+      if (!isNaN(parsed)) hour = parsed;
+    }
+  }
+
+  let result = caption;
+
+  // If scheduled 12:00 or later (afternoon / evening / late night) -> Purge ALL morning greetings!
+  if (hour >= 12) {
+    const isLateNight = hour >= 22 || hour < 5;
+    const isEvening = hour >= 18 && hour < 22;
+
+    const greeting = isLateNight
+      ? "Gute Nacht meine Lieben"
+      : isEvening
+      ? "Guten Abend meine Lieben"
+      : "Hallo meine Lieben";
+
+    const shortGreeting = isLateNight
+      ? "Später Gruß!"
+      : isEvening
+      ? "Guten Abend!"
+      : "Hallo ihr Lieben!";
+
+    result = result
+      .replace(/Guten Morgen meine Lieben\b/gi, greeting)
+      .replace(/Guten Morgen ihr Lieben\b/gi, greeting)
+      .replace(/Guten Morgen ihr Süßen\b/gi, isEvening ? "Guten Abend ihr Süßen" : "Hallo ihr Süßen")
+      .replace(/Guten Morgen allerseits\b/gi, isEvening ? "Guten Abend allerseits" : "Hallo allerseits")
+      .replace(/Guten Morgen\s*!/gi, shortGreeting)
+      .replace(/Guten Morgen\b/gi, isEvening ? "Guten Abend" : (isLateNight ? "Gute Nacht" : "Hallo"))
+      .replace(/Morgengruß\b/gi, isEvening ? "Abendgruß" : (isLateNight ? "Nachtgruß" : "Gruß zwischendurch"))
+      .replace(/Start in den Tag\b/gi, isEvening ? "schönen Feierabend" : (isLateNight ? "eine gute Nacht" : "schönen Nachmittag"))
+      .replace(/Start in die neue Woche\b/gi, isEvening ? "schönen Feierabend" : "schönen Nachmittag")
+      .replace(/in den Tag gestartet\b/gi, isEvening ? "durch den Tag gekommen" : "durch den Tag gekommen")
+      .replace(/Direkt nach dem Aufstehen\b/gi, isEvening ? "Ganz entspannt zum Feierabend" : "Kleine Pause zwischendurch")
+      .replace(/nach dem Aufstehen\b/gi, isEvening ? "zum Feierabend" : "in der Pause")
+      .replace(/erstmal drei Kaffee\b/gi, isEvening ? "erstmal gemütlich Feierabend" : "eine kleine Auszeit")
+      .replace(/ohne Wecker aufgewacht\b/gi, isEvening ? "endlich Feierabend machen können" : "kurz entspannt durchatmen")
+      .replace(/bereit für den Tag\b/gi, isEvening ? "bereit für den Abend" : "bereit für den Nachmittag")
+      .replace(/für euren Start in den Tag\b/gi, isEvening ? "für euren Feierabend" : "für euren Nachmittag");
+  } else {
+    // If scheduled before 12:00 (morning) -> Purge ALL evening/night greetings!
+    result = result
+      .replace(/Guten Abend meine Lieben\b/gi, "Guten Morgen meine Lieben")
+      .replace(/Guten Abend ihr Lieben\b/gi, "Guten Morgen ihr Lieben")
+      .replace(/Guten Abend\b/gi, "Guten Morgen")
+      .replace(/Schönen Feierabend\b/gi, "Schönen guten Morgen")
+      .replace(/Feierabend-Modus\b/gi, "Morgen-Modus")
+      .replace(/Feierabend\b/gi, "Start in den Tag")
+      .replace(/Gute Nacht meine Lieben\b/gi, "Guten Morgen meine Lieben")
+      .replace(/Gute Nacht\b/gi, "Guten Morgen")
+      .replace(/Late Night\b/gi, "Morning")
+      .replace(/kann noch nicht schlafen\b/gi, "bin schon hellwach")
+      .replace(/heute Nacht\b/gi, "heute Morgen");
+  }
+
+  return result;
 }
 
 /**
@@ -380,13 +534,14 @@ export function sanitizeCaptionForMediaType(
 }
 
 /**
- * Returns a high-quality default caption matching both media format and tier.
+ * Returns a high-quality default caption matching both media format, tier, and scheduled time.
  */
 export function getFormatAwareDefaultCaption(
   mediaType: "PHOTO" | "VIDEO" | "TEXT" | string | null | undefined,
   explicitLevel: "TEASER" | "SOFT" | "PPV" | string,
   theme?: string | null,
-  durationFormatted?: string | null
+  durationFormatted?: string | null,
+  timeOrHour?: string | number
 ): string {
   const isVideo = mediaType === "VIDEO";
   const themeTag = theme && theme !== "Unklassifiziert" && theme !== "Allgemein" ? `[${theme}] ` : "";
@@ -409,9 +564,15 @@ export function getFormatAwareDefaultCaption(
   }
 
   // TEASER
+  let rawCaption = "";
   if (isVideo) {
-    return "Guten Morgen meine Lieben! 💕 Kleiner Grußclip für euren Start in den Tag. Lasst mir gerne ein Like da ✨";
+    rawCaption = "Guten Morgen meine Lieben! 💕 Kleiner Grußclip für euren Start in den Tag. Lasst mir gerne ein Like da ✨";
   } else {
-    return "Guten Morgen meine Lieben! 💕 Kleiner Gruß für euren Start in den Tag. Was habt ihr heute Schönes vor? 🥰";
+    rawCaption = "Guten Morgen meine Lieben! 💕 Kleiner Gruß für euren Start in den Tag. Was habt ihr heute Schönes vor? 🥰";
   }
+
+  if (timeOrHour !== undefined) {
+    return ensureCaptionTimeConsistency(rawCaption, timeOrHour);
+  }
+  return rawCaption;
 }

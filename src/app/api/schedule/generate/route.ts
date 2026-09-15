@@ -3,6 +3,8 @@ import { generateGrokSchedule } from "@/lib/grok";
 import { prisma } from "@/lib/prisma";
 import { getAssetVideoDuration } from "@/lib/video-metadata";
 
+import { PostStatus } from "@prisma/client";
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Allow up to 60s for high-quality AI copy & schedule generation
 
@@ -20,8 +22,22 @@ export async function POST(req: Request) {
 
     // Fetch database asset records to retrieve full notes, fileUrls, and accurate types
     const assetIds = availableAssets.map((a: any) => a.id).filter(Boolean);
+
+    // Find any assets that are already scheduled or published
+    const existingPosts = await prisma.post.findMany({
+      where: {
+        assetId: { in: assetIds },
+        status: { in: [PostStatus.SCHEDULED, PostStatus.PENDING, PostStatus.PUBLISHED] },
+      },
+      select: { assetId: true },
+    });
+    const scheduledAssetIds = new Set(existingPosts.map((p) => p.assetId).filter(Boolean));
+
     const dbAssets = await prisma.asset.findMany({
-      where: { id: { in: assetIds } },
+      where: {
+        id: { in: assetIds },
+        isUsed: false,
+      },
       select: {
         id: true,
         title: true,
@@ -33,21 +49,28 @@ export async function POST(req: Request) {
         tags: true,
       },
     });
-    const dbMap = new Map(dbAssets.map((a) => [a.id, a]));
 
-    // Enrich all assets with visual context and video duration
+    const unusedDbAssets = dbAssets.filter((a) => !scheduledAssetIds.has(a.id));
+
+    if (unusedDbAssets.length === 0) {
+      return NextResponse.json(
+        { error: "Keine unbenutzten Medien vorhanden. Alle Medien wurden bereits eingeplant oder veröffentlicht." },
+        { status: 400 }
+      );
+    }
+
+    // Enrich all unused assets with visual context and video duration
     const enrichedAssets = await Promise.all(
-      availableAssets.map(async (raw: any) => {
-        const dbAsset = dbMap.get(raw.id) || raw;
-        const type = dbAsset.type || raw.type || "PHOTO";
+      unusedDbAssets.map(async (dbAsset: any) => {
+        const type = dbAsset.type || "PHOTO";
         let duration: number | null = null;
         let durationFormatted: string | null = null;
 
         if (type === "VIDEO") {
           const durInfo = await getAssetVideoDuration({
             type: "VIDEO",
-            notes: dbAsset.notes || raw.notes,
-            fileUrl: dbAsset.fileUrl || raw.fileUrl,
+            notes: dbAsset.notes,
+            fileUrl: dbAsset.fileUrl,
           });
           if (durInfo) {
             duration = durInfo.seconds;
@@ -57,13 +80,13 @@ export async function POST(req: Request) {
 
         return {
           id: dbAsset.id,
-          title: dbAsset.title || raw.title,
-          theme: dbAsset.theme || raw.theme,
-          notes: dbAsset.notes || raw.notes,
-          fileUrl: dbAsset.fileUrl || raw.fileUrl,
+          title: dbAsset.title,
+          theme: dbAsset.theme,
+          notes: dbAsset.notes,
+          fileUrl: dbAsset.fileUrl,
           type,
-          explicitLevel: dbAsset.explicitLevel || raw.explicitLevel || "TEASER",
-          tags: Array.isArray(dbAsset.tags) ? dbAsset.tags : (Array.isArray(raw.tags) ? raw.tags : []),
+          explicitLevel: dbAsset.explicitLevel || "TEASER",
+          tags: Array.isArray(dbAsset.tags) ? dbAsset.tags : [],
           duration,
           durationFormatted,
         };

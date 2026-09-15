@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { postQueue } from "@/lib/queue";
 import { PostStatus } from "@prisma/client";
+import { ensureCaptionTimeConsistency } from "@/lib/captions";
 
 export async function POST(req: Request) {
   try {
@@ -31,16 +32,29 @@ export async function POST(req: Request) {
         ? new Date(now.getTime() + 5 * 60 * 1000)
         : targetDate;
 
-      const post = await prisma.post.create({
-        data: {
-          modelId,
-          assetId: item.assetId,
-          caption: item.caption,
-          starsPrice: item.starsPrice || 0,
-          scheduledFor: finalDate,
-          status: PostStatus.SCHEDULED,
-        },
-      });
+      // Ensure caption is strictly consistent with the scheduled time of day
+      const finalCaption = ensureCaptionTimeConsistency(item.caption || "", item.timeOfDay || "12:00");
+
+      const [post] = await prisma.$transaction([
+        prisma.post.create({
+          data: {
+            modelId,
+            assetId: item.assetId,
+            caption: finalCaption,
+            starsPrice: item.starsPrice || 0,
+            scheduledFor: finalDate,
+            status: PostStatus.SCHEDULED,
+          },
+        }),
+        ...(item.assetId
+          ? [
+              prisma.asset.update({
+                where: { id: item.assetId },
+                data: { isUsed: true },
+              }),
+            ]
+          : []),
+      ]);
 
       // Compute BullMQ job delay in milliseconds
       const delayMs = Math.max(0, finalDate.getTime() - Date.now());

@@ -1759,7 +1759,7 @@ export function ModelDetailClient({
         modelId={model.id}
         modelName={model.name}
         channelTitle={model.channelTitle}
-        availableAssets={model.assets}
+        availableAssets={model.assets.filter((a: any) => !a.isUsed)}
         onScheduleCreated={refreshData}
       />
 

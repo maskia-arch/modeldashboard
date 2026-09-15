@@ -53,7 +53,20 @@ export function GrokSchedulerModal({
   const [error, setError] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
 
+  const unpostedAssets = React.useMemo(() => {
+    return availableAssets.filter((a) => !a.isUsed);
+  }, [availableAssets]);
+
   const handleGenerate = async () => {
+    if (unpostedAssets.length === 0) {
+      setError(
+        language === "de"
+          ? "Keine unbenutzten Medien im Ordner vorhanden. Bitte neue Medien hochladen oder synchronisieren."
+          : "No unused media files available. Please upload or sync new media."
+      );
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     try {
@@ -69,7 +82,7 @@ export function GrokSchedulerModal({
           allowPauseDays,
           postsPerDay,
           modelTone: tone,
-          availableAssets: availableAssets.map((a) => ({
+          availableAssets: unpostedAssets.map((a) => ({
             id: a.id,
             title: a.title,
             theme: a.theme,
@@ -239,20 +252,27 @@ export function GrokSchedulerModal({
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-muted-foreground block mb-1">
-                    {t.grokScheduler.availableMediaLabel}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-semibold text-muted-foreground block">
+                      {t.grokScheduler.availableMediaLabel}
+                    </label>
+                    <span className="text-[10px] text-purple-400 font-medium">
+                      {language === "de" ? "Exakt 1 Post pro Datei" : "Exact 1 Post per File"}
+                    </span>
+                  </div>
                   <div className="h-9 px-3 border rounded-md bg-muted/30 text-xs flex items-center justify-between">
-                    <span className="font-semibold">{availableAssets.length} {language === "de" ? "Medien im Pool" : "Media in Pool"}</span>
+                    <span className="font-semibold">
+                      {unpostedAssets.length} {language === "de" ? "Freie Medien" : "Free Media"}
+                    </span>
                     <div className="flex gap-1">
                       <Badge variant="teaser" className="text-[10px] px-1.5 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "TEASER").length} Teaser
+                        {unpostedAssets.filter((a) => a.explicitLevel === "TEASER").length} Teaser
                       </Badge>
                       <Badge variant="soft" className="text-[10px] px-1.5 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "SOFT").length} Soft
+                        {unpostedAssets.filter((a) => a.explicitLevel === "SOFT").length} Soft
                       </Badge>
                       <Badge variant="ppv" className="text-[10px] px-1.5 py-0">
-                        {availableAssets.filter((a) => a.explicitLevel === "PPV").length} PPV
+                        {unpostedAssets.filter((a) => a.explicitLevel === "PPV").length} PPV
                       </Badge>
                     </div>
                   </div>
@@ -436,7 +456,7 @@ export function GrokSchedulerModal({
           {generatedSchedule.length === 0 ? (
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating || availableAssets.length === 0}
+              disabled={isGenerating || unpostedAssets.length === 0}
               variant="gradient"
               className="gap-2 w-full sm:w-auto"
             >

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus, ExplicitLevel } from "@prisma/client";
 import { getGermanDateParts, createGermanDate } from "@/lib/timezone";
-import { sanitizeCaptionForMediaType, composeStorylineCaption } from "@/lib/captions";
+import { sanitizeCaptionForMediaType, composeStorylineCaption, ensureCaptionTimeConsistency } from "@/lib/captions";
 import { getAssetVideoDuration } from "@/lib/video-metadata";
 
 export const dynamic = "force-dynamic";
@@ -217,7 +217,6 @@ export async function POST(req: Request) {
             }
           }
 
-          // Generate authentic storyline caption tailored to visual analysis & duration
           let caption = composeStorylineCaption({
             asset: {
               ...asset,
@@ -230,6 +229,8 @@ export async function POST(req: Request) {
             modelName: model.name,
             usedCaptionsSet,
           });
+
+          caption = ensureCaptionTimeConsistency(caption, slot === 0 && postsToday === 2 ? "14:30" : "20:15");
 
           await prisma.$transaction([
             prisma.post.create({
