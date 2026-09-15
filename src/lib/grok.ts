@@ -1,11 +1,7 @@
 import { z } from "zod";
 import {
-  PHOTO_TEASER_CAPTIONS,
-  PHOTO_SOFT_CAPTIONS,
-  PHOTO_PPV_CAPTIONS,
-  VIDEO_TEASER_CAPTIONS,
-  VIDEO_SOFT_CAPTIONS,
-  VIDEO_PPV_CAPTIONS,
+  extractAssetVisualContext,
+  composeStorylineCaption,
   sanitizeCaptionForMediaType,
 } from "./captions";
 
@@ -65,6 +61,9 @@ export interface GenerateScheduleParams {
     type: 'PHOTO' | 'VIDEO' | 'TEXT';
     explicitLevel: 'TEASER' | 'SOFT' | 'PPV';
     tags: string[];
+    duration?: number | null;
+    durationFormatted?: string | null;
+    fileUrl?: string | null;
   }>;
 }
 
@@ -82,24 +81,70 @@ export async function generateGrokSchedule(params: GenerateScheduleParams): Prom
     return generateRealisticSchedule(params);
   }
 
-  const systemPrompt = `You are an elite Telegram Creator Content Strategist and Copywriter for Adult & Glamour Models.
-Your goal is to build an engaging, authentic, revenue-maximizing content schedule across ${params.targetDays || 30} days for the creator "${params.modelName}".
-Tone & Persona: ${params.modelTone || "Authentic, alluring, conversational German Telegram channel"}.
-Strategy: ${params.strategy || "REALISTIC"} (Realistic posting rhythm with occasional rest days, peak engagement on weekends).
+  const systemPrompt = `You are the authentic, intimate German creator voice for "${params.modelName}" on Telegram.
+You are designing a narrative-driven, authentic content schedule across ${params.targetDays || 30} days for her Telegram VIP Channel.
+Tone & Persona: ${params.modelTone || "Authentic, intimate, charming, playful, flirty German creator"}.
+Strategy: ${params.strategy || "REALISTIC"} (Realistic posting rhythm with rest days and weekend peaks).
 
-Rules:
-1. For TEASER assets: starsPrice must be 0 (Free promotional content to drive engagement).
-2. For SOFT assets: starsPrice should usually be 0 (engagement) or small tip (5-30 stars).
-3. For PPV (Pay-Per-View) assets: starsPrice must be between 50 and 450 stars depending on allure.
-4. Schedule posts at high-engagement hours (e.g., 09:30, 12:45, 18:30, 21:15, 23:00).
-5. Captions must sound completely natural, seductive, and enticing with emojis, written in German.
-6. Return STRICT valid JSON matching the schema provided. Do not include markdown wraps or extra commentary.
-7. CRITICAL MEDIA FORMAT INTEGRITY:
+CORE PRINCIPLES:
+1. AUTHENTIC FIRST-PERSON MESSAGES (NO MARKETING SPEAK!):
+   - You write exclusively in first-person ("ich", "mein", "euch", "meine Lieben").
+   - It must feel like an intimate personal text message or voice note from the model directly to her subscribers.
+   - NEVER use corporate or marketing phrases like "Exklusiver VIP Content", "Mein persönliches Lieblingsfoto des Monats", "Klickt unten auf den Stern".
+
+2. COHESIVE STORYLINE & NARRATIVE ARC:
+   - Schedule posts that tell an ongoing story across days and hours:
+     * Morning (09:00 - 11:30): Waking up in bed, morning coffee, waking thoughts, checking in on the community ("Guten Morgen ihr Lieben ☕...").
+     * Midday/Afternoon (13:00 - 16:30): Casual lifestyle, workout, errands, outfit check, what she's doing today, asking fans a question.
+     * Evening (18:30 - 20:30): Feierabend, winding down on the couch, relaxing, getting ready to go out, teasing the night ahead.
+     * Late Night / Drop (21:30 - 00:30): Intimate bedtime thoughts, sleeplessness, drops of spicy PPV content, whispering mood ("Kann noch nicht schlafen...").
+     * Weekly flow: Mon/Tue chill start -> Wed/Thu anticipation & sneak peeks -> Fri/Sat peak VIP drops & party/weekend vibe -> Sun relaxed cuddling & recovery.
+
+3. DEEP CONNECTION TO VISUAL ANALYSIS:
+   - For every asset, you are provided with: 'setting', 'clothing', 'perspective', and 'highlights' (e.g. tattoos, shower, wet hair, bed, oversized hoodie).
+   - You MUST explicitly and organically reference what is actually visible in the media:
+     * Setting in Bathroom / Mirror -> mention the bathroom mirror, shower, getting ready, or wet hair.
+     * Setting in Bed / Bedroom -> mention waking up, cuddling under the blanket, sleepless night, pillows.
+     * Clothing Oversized Hoodie -> joke about wearing cozy oversized loungewear and what might (or might not) be underneath.
+     * Tattoos visible -> mention your tattoos, asking how they like the ink on your skin.
+     * Topless / Nude PPV drop -> be intimate, personal and vulnerable, teasing that you dared to share something private.
+
+4. VIDEO DURATION AWARENESS:
+   - For VIDEO assets, you receive 'videoDuration' (e.g. "45 Sekunden" or "2 Min. 15 Sek."):
+     * For short clips (< 45s): Reference it as a spontaneous, moving sneak peek or short video clip ("Ein kleiner 30-Sekunden Vorgeschmack...").
+     * For long videos (> 60s): Emphasize the full uninterrupted length and raw intimacy ("Ganze 2 Minuten und 15 Sekunden komplett ohne Schnitt...").
+
+5. CRITICAL MEDIA FORMAT INTEGRITY:
    - For 'PHOTO' assets: NEVER use words like "Video", "Clip", "Film", "gefilmt", etc. You must use authentic photo words like "Foto", "Bild", "Schnappschuss", "Shooting", "Aufnahme", "Spiegelselfie".
-   - For 'VIDEO' assets: Refer to it accurately as "Video", "Clip", "Aufnahme". Do NOT call it a photo or snapshot.`;
+   - For 'VIDEO' assets: Refer to it accurately as "Video", "Clip", "Aufnahme". Do NOT call it a photo or snapshot.
 
-  const userPrompt = `Assets available for scheduling:
-${JSON.stringify(params.availableAssets.slice(0, 50), null, 2)}
+6. ZERO REPETITION:
+   - Every single caption MUST be unique in wording, emotion, and angle. Never reuse identical hooks or phrases across days.
+
+7. PRICING RULES:
+   - TEASER assets: starsPrice = 0.
+   - SOFT assets: starsPrice = 15 to 50.
+   - PPV assets: starsPrice = 100 to 450.
+   - Return STRICT valid JSON conforming to the schema.`;
+
+  const enrichedAssets = params.availableAssets.slice(0, 50).map((a) => {
+    const vis = extractAssetVisualContext(a);
+    return {
+      assetId: a.id,
+      type: a.type,
+      explicitLevel: a.explicitLevel,
+      title: a.title || "VIP Content",
+      theme: a.theme || "Allgemein",
+      setting: vis.setting,
+      clothing: vis.clothing,
+      perspective: vis.perspective,
+      highlights: vis.highlights.length > 0 ? vis.highlights.join(", ") : undefined,
+      videoDuration: a.type === "VIDEO" ? (a.durationFormatted || (a.duration ? `${a.duration} Sekunden` : "Video-Clip")) : undefined,
+    };
+  });
+
+  const userPrompt = `Assets available for scheduling with rich visual context & duration:
+${JSON.stringify(enrichedAssets, null, 2)}
 
 Create a posting plan over ${params.targetDays || 30} days using the provided asset IDs with strategy: ${params.strategy || "REALISTIC"}, allowPauseDays: ${params.allowPauseDays ?? true}.
 Respond in strict JSON with the following structure:
@@ -109,15 +154,15 @@ Respond in strict JSON with the following structure:
       "timeOffsetDays": 0,
       "timeOfDay": "11:00",
       "assetId": "asset-uuid",
-      "caption": "Teaser caption here...",
+      "caption": "Authentische, persönliche deutsche Bildunterschrift mit direktem Bezug zum Bild...",
       "starsPrice": 0
     }
   ]
 }`;
 
-  // 10s timeout to prevent Nginx Gateway 504 Timeouts
+  // 55s timeout to allow high-quality AI copy generation for full monthly schedule
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -248,28 +293,25 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
 
 
   let assetIndex = 0;
-  let teaserIdx = 0;
-  let softIdx = 0;
-  let ppvIdx = 0;
+  const usedCaptionsSet = new Set<string>();
 
-  const getFormatCaption = (
+  const getStoryCaption = (
     asset: typeof assets[0],
-    level: "TEASER" | "SOFT" | "PPV"
+    level: "TEASER" | "SOFT" | "PPV",
+    timeSlot: "morning" | "afternoon" | "evening" | "latenight",
+    dayIdx: number
   ): string => {
-    const isVideo = asset.type === "VIDEO";
-    let raw = "";
-    if (level === "TEASER") {
-      const bank = isVideo ? VIDEO_TEASER_CAPTIONS : PHOTO_TEASER_CAPTIONS;
-      raw = bank[(teaserIdx++) % bank.length];
-    } else if (level === "SOFT") {
-      const bank = isVideo ? VIDEO_SOFT_CAPTIONS : PHOTO_SOFT_CAPTIONS;
-      raw = bank[(softIdx++) % bank.length];
-    } else {
-      const bank = isVideo ? VIDEO_PPV_CAPTIONS : PHOTO_PPV_CAPTIONS;
-      const themeTag = asset.theme ? `[${asset.theme}] ` : "";
-      raw = bank[(ppvIdx++) % bank.length].replace("[THEME]", themeTag);
-    }
-    return sanitizeCaptionForMediaType(raw, asset.type);
+    return composeStorylineCaption({
+      asset: {
+        ...asset,
+        explicitLevel: level,
+      },
+      dayOfWeek: dayIdx % 7,
+      dayIndex: dayIdx,
+      timeSlot,
+      modelName: params.modelName,
+      usedCaptionsSet,
+    });
   };
 
   for (let day = 0; day < days; day++) {
@@ -353,7 +395,7 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
             ? teaserAssets[assetIndex % teaserAssets.length]
             : assets[assetIndex % assets.length];
           starsPrice = 0;
-          caption = getFormatCaption(chosenAsset, "TEASER");
+          caption = getStoryCaption(chosenAsset, "TEASER", "morning", day);
         } else {
           timeOfDay = (dayOfWeek === 4 || dayOfWeek === 5)
             ? lateNightTimes[(day + p) % lateNightTimes.length]
@@ -362,15 +404,15 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
           if (ppvAssets.length > 0) {
             chosenAsset = ppvAssets[assetIndex % ppvAssets.length];
             starsPrice = 100 + ((day * 35) % 250); // 100 to 350 Stars
-            caption = getFormatCaption(chosenAsset, "PPV");
+            caption = getStoryCaption(chosenAsset, "PPV", "latenight", day);
           } else if (softAssets.length > 0) {
             chosenAsset = softAssets[assetIndex % softAssets.length];
             starsPrice = 50;
-            caption = getFormatCaption(chosenAsset, "SOFT");
+            caption = getStoryCaption(chosenAsset, "SOFT", "latenight", day);
           } else {
             chosenAsset = assets[assetIndex % assets.length];
             starsPrice = 100;
-            caption = getFormatCaption(chosenAsset, "PPV");
+            caption = getStoryCaption(chosenAsset, "PPV", "latenight", day);
           }
         }
       } else {
@@ -386,19 +428,20 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
             ? teaserAssets[assetIndex % teaserAssets.length]
             : assets[assetIndex % assets.length];
           starsPrice = 0;
-          caption = getFormatCaption(chosenAsset, "TEASER");
+          const slot = timeOfDay.startsWith("09") || timeOfDay.startsWith("10") ? "morning" : "afternoon";
+          caption = getStoryCaption(chosenAsset, "TEASER", slot, day);
         } else if (roll < 7 && softAssets.length > 0) {
           // Soft
           chosenAsset = softAssets[assetIndex % softAssets.length];
           starsPrice = (day % 3 === 0) ? 25 : 0;
-          caption = getFormatCaption(chosenAsset, "SOFT");
+          caption = getStoryCaption(chosenAsset, "SOFT", "afternoon", day);
         } else {
           // PPV
           chosenAsset = (ppvAssets.length > 0)
             ? ppvAssets[assetIndex % ppvAssets.length]
             : (softAssets.length > 0 ? softAssets[assetIndex % softAssets.length] : assets[assetIndex % assets.length]);
           starsPrice = 120 + ((day * 20) % 230); // 120 to 350 Stars
-          caption = getFormatCaption(chosenAsset, "PPV");
+          caption = getStoryCaption(chosenAsset, "PPV", "evening", day);
         }
       }
 

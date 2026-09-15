@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus, ExplicitLevel } from "@prisma/client";
 import { getGermanDateParts, createGermanDate } from "@/lib/timezone";
-import { sanitizeCaptionForMediaType } from "@/lib/captions";
+import { sanitizeCaptionForMediaType, composeStorylineCaption } from "@/lib/captions";
+import { getAssetVideoDuration } from "@/lib/video-metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
       let modelCreated = 0;
       let modelPauses = 0;
       let lastDayParts = getGermanDateParts(createGermanDate(modelStartYear, modelStartMonth, modelStartDay, 12, 0));
+      const usedCaptionsSet = new Set<string>();
 
       // Determine pacing strategy based on inventory count:
       // - count <= 6: 1 post every 3 days (pause 2 days)
@@ -191,44 +193,43 @@ export async function POST(req: Request) {
             ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 14, 30)
             : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 20, 15);
 
-          // Generate engaging natural VIP German caption
-          let starsPrice = 0;
-          let caption = "";
-
-          const assetTheme = asset.theme || "VIP Exclusive";
-          const assetTitle = asset.title || "Neuer exklusiver Drop";
-
           const isVideo = asset.type === "VIDEO";
-          if (asset.explicitLevel === ExplicitLevel.PPV) {
-            starsPrice = 50;
-            const itemLabel = isVideo ? "VIP-Clip" : "VIP-Foto";
-            const unlockWord = isVideo ? "das Video" : "das Foto";
-            caption = `🔥 **Privater ${itemLabel} freigeschaltet** 🔥\n\n${asset.notes || `${assetTheme} – Streng limitiert nur für euch!`}\n\n👇 Jetzt ${unlockWord} mit Telegram Stars entsperren:`;
-          } else if (asset.explicitLevel === ExplicitLevel.SOFT) {
-            starsPrice = 15;
-            const formatWord = isVideo ? "dem heutigen Video-Set" : "dem heutigen Foto-Shooting";
-            caption = `✨ *${assetTitle}* ✨\n\n${asset.notes || `Ein kleiner Vorgeschmack aus ${formatWord} zum Thema ${assetTheme}. Wie gefällt es euch? Hinterlasst ein Like ❤️`}`;
-          } else {
-            starsPrice = 0;
-            caption = `Hey ihr Lieben! 💕\n\n${asset.notes || `${assetTitle} aus der neuen ${assetTheme}-Reihe. Schreibt mir mal in die Kommentare, was ihr heute macht! 🥰`}`;
-          }
+          let durationFormatted: string | null = null;
+          let durationSeconds: number | null = null;
 
-          // If Grok 4.1 Vision has classified this asset, use its custom generated caption & stars
-          if (asset.notes && asset.notes.includes('Caption: "')) {
-            const match = asset.notes.match(/Caption: "([^"]+)"/);
-            if (match && match[1]) {
-              caption = match[1];
+          if (isVideo) {
+            const durInfo = await getAssetVideoDuration({
+              type: "VIDEO",
+              notes: asset.notes,
+              fileUrl: asset.fileUrl,
+            });
+            if (durInfo) {
+              durationSeconds = durInfo.seconds;
+              durationFormatted = durInfo.formatted;
             }
           }
-          if (asset.notes && asset.notes.includes('Stars: ')) {
+
+          let starsPrice = asset.explicitLevel === ExplicitLevel.PPV ? 150 : (asset.explicitLevel === ExplicitLevel.SOFT ? 25 : 0);
+          if (asset.notes && asset.notes.includes("Stars: ")) {
             const sMatch = asset.notes.match(/Stars:\s*(\d+)/);
             if (sMatch && sMatch[1]) {
               starsPrice = parseInt(sMatch[1], 10) || starsPrice;
             }
           }
 
-          // Ensure strict format integrity: photo never mentions video/clip, video never mentions photo
-          caption = sanitizeCaptionForMediaType(caption, asset.type);
+          // Generate authentic storyline caption tailored to visual analysis & duration
+          let caption = composeStorylineCaption({
+            asset: {
+              ...asset,
+              duration: durationSeconds,
+              durationFormatted,
+            },
+            dayOfWeek,
+            dayIndex: dayOffset,
+            timeSlot: slot === 0 && postsToday === 2 ? "afternoon" : "evening",
+            modelName: model.name,
+            usedCaptionsSet,
+          });
 
           await prisma.$transaction([
             prisma.post.create({

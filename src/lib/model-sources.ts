@@ -285,11 +285,23 @@ export async function syncMediaFromSourceChannel(
           } else {
             const rawCaption = msg.message ? String(msg.message).trim() : "";
 
+            // Extract video duration from Telegram attributes if present
+            let durationTag = "";
+            if (isVideo) {
+              const docAttrs = (mediaAny.document?.attributes || []) as any[];
+              for (const attr of docAttrs) {
+                if (typeof attr.duration === "number" && attr.duration > 0) {
+                  durationTag = ` | [DURATION:${Math.round(attr.duration)}s]`;
+                  break;
+                }
+              }
+            }
+
             let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
             let assetTheme = "Unklassifiziert";
             let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
             let assetTags = ["quelle", "telegram", model.slug, "unclassified"];
-            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + backupTag + ` | [HASH:${hash}]`;
+            let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + durationTag + backupTag + ` | [HASH:${hash}]`;
 
             // If auto-classify is requested and it's a photo, run Grok 4.1 Vision immediately
             if (autoClassifyPhotos && !isVideo) {

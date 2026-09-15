@@ -1,72 +1,295 @@
 /**
- * Format-Aware Captions & Sanitization for Photos and Videos.
- * Guarantees that Photos never mention "Video", "Clip", etc.,
- * and Videos never mention "Schnappschuss", "Foto", etc.
+ * Format-Aware Captions, Visual-Context Extraction & Storyline Generation.
+ * Produces authentic, natural creator messages in intimate German creator voice,
+ * directly referencing visual image analysis (outfits, settings, poses, tattoos)
+ * and video durations, with zero annoying marketing repetitions.
  */
 
-export const PHOTO_TEASER_CAPTIONS = [
-  "Guten Morgen meine Lieben! 💕 Kleiner Schnappschuss für euren Start in den Tag. Was habt ihr heute Schönes vor?",
-  "Kurzer Gruß aus dem Bett ☕ Hoffe eure Woche läuft gut! Lasst mir gerne ein Like da ✨",
-  "Shooting-Tag heute 📸 Welches Outfit gefällt euch besser? Freue mich riesig auf euer Feedback in den Kommentaren!",
-  "Endlich Wochenende! Habt ihr schon Pläne? Ich mach's mir heute gemütlich... 💋",
-  "Spontanes Spiegelselfie vor dem Ausgehen ✨ Wie findet ihr den Look?",
-  "Frisch geduscht und bereit für den Tag 🌸 Schicke euch ganz viel Liebe und positive Energie!",
-  "Ein kleiner Vorgeschmack auf das, was diese Woche noch kommt... Seid ihr bereit? 😉🔥",
-  "Einfach mal die Seele baumeln lassen ☀️ Wünsche euch allen einen entspannten Tag!",
-  "Wer von euch ist heute auch noch so müde wie ich? Kuscheln wäre jetzt perfekt... 🧸💕",
-  "Ein kleiner Schnappschuss zwischendurch nur für euch 😘 Wie verbringt ihr euren Feierabend?",
-];
+export interface AssetVisualContext {
+  setting: string;
+  clothing: string;
+  perspective: string;
+  highlights: string[];
+  isMirrorSelfie: boolean;
+  hasTattoo: boolean;
+  isWetOrShower: boolean;
+  isBedOrCozy: boolean;
+  isCouchOrChill: boolean;
+}
 
-export const PHOTO_SOFT_CAPTIONS = [
-  "Ein kleiner Teaser von meinem heutigen VIP-Shooting ✨ Gefällt es euch? Hinterlasst ein Herz oder schaltet das volle Set frei! 💕",
-  "Hinter den Kulissen... 🤫 Manchmal geht es bei mir heißer her als gedacht. Mehr dazu unten!",
-  "Nur für meine treuen Abonnenten hier ein kleiner exklusiver Einblick 🔥 Wie gefällt euch diese Pose?",
-  "Wollte euch dieses Foto nicht vorenthalten 🙈 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!",
-  "Ein Hauch von Verführung für eure Timeline ✨ Schönen Feierabend euch allen!",
-  "Preview auf mein neues Foto-Set... Das Beste seht ihr natürlich im VIP-Bereich 💋",
-  "Kleine Aufmerksamkeit für euch 🌸 Ich hoffe ihr hattet einen wundervollen Tag!",
-];
+export interface StorylineOptions {
+  asset: {
+    id: string;
+    title?: string | null;
+    theme?: string | null;
+    notes?: string | null;
+    type: "PHOTO" | "VIDEO" | "TEXT" | string;
+    explicitLevel: "TEASER" | "SOFT" | "PPV" | string;
+    tags?: string[];
+    duration?: number | null;
+    durationFormatted?: string | null;
+  };
+  dayOfWeek?: number; // 0 = Mon, 6 = Sun
+  dayIndex?: number;
+  timeSlot?: "morning" | "afternoon" | "evening" | "latenight";
+  modelName?: string;
+  usedCaptionsSet?: Set<string>;
+}
 
-export const PHOTO_PPV_CAPTIONS = [
-  "Exklusiver VIP Content für euch 🔥 [THEME]Schaltet das Foto unten frei mit Telegram Stars! 🌟",
-  "Das bisher heißeste Foto-Set aus meiner Privatsammlung... 🤫 Komplett unzensiert und nur für euch! Jetzt freischalten 🔓✨",
-  "Habe mich getraut und etwas ganz Besonderes fotografiert 🙈 Streng geheimer Schnappschuss – exklusiv hier im VIP-Channel! 🌟",
-  "Mein persönliches Lieblingsfoto des Monats 🔥 Klickt unten auf den Stern um das volle Foto sofort freizuschalten!",
-  "Für alle, die das Besondere suchen 💎 Volle Auflösung, kristallklar und intim. Gönnt euch diesen exklusiven Einblick 🌟",
-  "Late Night Special 🌙 Dieses Foto bleibt nur für begrenzte Zeit verfügbar. Schaltet es frei, bevor es im Archiv landet!",
-  "Unwiderstehlich & intensiv... 💋 Holt euch diesen brandneuen Schnappschuss direkt in euren Telegram Chat!",
-];
+/**
+ * Extracts structured visual context from an asset's notes, title, theme, and tags.
+ */
+export function extractAssetVisualContext(asset: {
+  title?: string | null;
+  theme?: string | null;
+  notes?: string | null;
+  tags?: string[];
+  type?: string | null;
+}): AssetVisualContext {
+  const text = `${asset.title || ""} ${asset.theme || ""} ${asset.notes || ""} ${(asset.tags || []).join(" ")}`.toLowerCase();
 
-export const VIDEO_TEASER_CAPTIONS = [
-  "Guten Morgen meine Lieben! 💕 Kleiner Grußclip für euren Start in den Tag. Was habt ihr heute Schönes vor?",
-  "Kurzes Video aus dem Bett ☕ Hoffe eure Woche läuft gut! Lasst mir gerne ein Like da ✨",
-  "Shooting-Tag heute 🎥 Ein kleiner Bewegtbild-Einblick hinter die Kulissen! Freue mich riesig auf euer Feedback!",
-  "Endlich Wochenende! Habt ihr schon Pläne? Ich sende euch einen kleinen Video-Kuss... 💋",
-  "Spontanes kurzes Video vor dem Ausgehen ✨ Wie findet ihr den Look?",
-  "Frisch geduscht und bereit für den Tag 🌸 Kurzer Clip mit ganz viel Liebe und positiver Energie!",
-  "Ein kleiner Video-Vorgeschmack auf das, was diese Woche noch kommt... Seid ihr bereit? 😉🔥",
-  "Kurzer Grußclip für euch ☀️ Wünsche euch allen einen wundervollen Tag!",
-];
+  // Setting
+  let setting = "Zuhause";
+  let isMirrorSelfie = text.includes("spiegel") || text.includes("mirror");
+  let isWetOrShower = text.includes("dusche") || text.includes("shower") || text.includes("bad") || text.includes("bath") || text.includes("nass");
+  let isBedOrCozy = text.includes("bett") || text.includes("bed") || text.includes("kissen") || text.includes("schlafzimmer") || text.includes("kuschel");
+  let isCouchOrChill = text.includes("couch") || text.includes("sofa") || text.includes("wohnzimmer");
+  const hasTattoo = text.includes("tattoo") || text.includes("tätowier");
 
-export const VIDEO_SOFT_CAPTIONS = [
-  "Ein kleiner Teaser-Clip von meinem heutigen VIP-Shooting ✨ Gefällt es euch? Hinterlasst ein Herz oder schaltet das volle Video frei! 💕",
-  "Hinter den Kulissen... 🤫 Kurzer Video-Ausschnitt, mehr seht ihr im VIP-Bereich!",
-  "Nur für meine treuen Abonnenten hier ein kurzer Clip 🔥 Wie gefällt euch diese Bewegung?",
-  "Wollte euch diesen Clip nicht vorenthalten 🙈 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!",
-  "Ein Hauch von Bewegung & Verführung für eure Timeline ✨ Schönen Feierabend euch allen!",
-  "Preview auf mein neues Video... Die volle Version seht ihr natürlich im VIP-Bereich 💋",
-  "Kleiner Grußclip für euch 🌸 Ich hoffe ihr hattet einen wundervollen Tag!",
-];
+  if (isWetOrShower) {
+    setting = "Badezimmer vor dem Spiegel";
+  } else if (isBedOrCozy) {
+    setting = "Im Bett / Schlafzimmer";
+  } else if (isCouchOrChill) {
+    setting = "Gemütlich auf der Couch";
+  } else if (text.includes("outdoor") || text.includes("strand") || text.includes("beach") || text.includes("balkon")) {
+    setting = "Draußen / Balkon";
+  } else if (text.includes("gym") || text.includes("sport") || text.includes("fitness")) {
+    setting = "Gym / Workout";
+  } else if (isMirrorSelfie) {
+    setting = "Vor dem Spiegel";
+  }
 
-export const VIDEO_PPV_CAPTIONS = [
-  "Exklusiver VIP Content für euch 🔥 [THEME]Schaltet das Video unten frei mit Telegram Stars! 🌟",
-  "Der bisher heißeste Clip aus meiner Privatsammlung... 🤫 Komplett unzensiert und nur für euch! Jetzt freischalten 🔓✨",
-  "Habe mich getraut und etwas ganz Besonderes aufgenommen 🙈 Streng geheimer Clip – exklusiv hier im VIP-Channel! 🌟",
-  "Mein persönliches Lieblingsvideo des Monats 🔥 Klickt unten auf den Stern um den vollen Clip sofort freizuschalten!",
-  "Für alle, die das Besondere suchen 💎 Volle Länge, beste Videoauflösung. Gönnt euch den exklusiven Einblick 🌟",
-  "Late Night Special 🌙 Dieser Clip bleibt nur für begrenzte Zeit verfügbar. Schaltet ihn frei, bevor er im Archiv landet!",
-  "Unwiderstehlich & intensiv in Bewegung... 💋 Holt euch diesen brandneuen Clip direkt in euren Telegram Chat!",
-];
+  // Clothing
+  let clothing = "Casual";
+  if (text.includes("hoodie") || text.includes("pulli") || text.includes("pullover") || text.includes("oversize")) {
+    clothing = "Oversized Hoodie";
+  } else if (text.includes("t-shirt") || text.includes("shirt") || text.includes("streetwear")) {
+    clothing = "Casual T-Shirt Look";
+  } else if (text.includes("bikini") || text.includes("badeanzug") || text.includes("swim")) {
+    clothing = "Knapper Bikini";
+  } else if (text.includes("dessous") || text.includes("lingerie") || text.includes("spitze") || text.includes("bh") || text.includes("slip")) {
+    clothing = "Feine Spitzen-Lingerie";
+  } else if (text.includes("topless") || text.includes("oben-ohne") || text.includes("oben ohne") || text.includes("teilakt")) {
+    clothing = "Oben-ohne / Teilakt";
+  } else if (text.includes("vollakt") || text.includes("full nude") || text.includes("nackt") || text.includes("spreiz")) {
+    clothing = "Hüllenlos / Vollakt";
+  }
+
+  // Perspective
+  let perspective = "Selfie";
+  if (isMirrorSelfie) perspective = "Spiegelselfie";
+  else if (text.includes("pov")) perspective = "POV-Perspektive";
+  else if (text.includes("rücken") || text.includes("back") || text.includes("po") || text.includes("booty")) perspective = "Blick über die Schulter";
+  else if (text.includes("nahaufnahme") || text.includes("close")) perspective = "Intime Nahaufnahme";
+
+  const highlights: string[] = [];
+  if (hasTattoo) highlights.push("Tattoos sichtbar");
+  if (isWetOrShower) highlights.push("nasse Haare / frisch aus der Dusche");
+  if (isBedOrCozy) highlights.push("verschlafen im Bett");
+  if (clothing.includes("Hoodie")) highlights.push("gemütlich im Oversized Hoodie");
+
+  return {
+    setting,
+    clothing,
+    perspective,
+    highlights,
+    isMirrorSelfie,
+    hasTattoo,
+    isWetOrShower,
+    isBedOrCozy,
+    isCouchOrChill,
+  };
+}
+
+/**
+ * Generates an authentic, narrative-driven caption tailored to:
+ * - Time of day (morning / afternoon / evening / late night)
+ * - Day of week (storyline progression from weekday to weekend)
+ * - Visual details (outfit, setting, tattoos, mirror selfie)
+ * - Video duration (if video)
+ * - Creator voice (warm, conversational, flirty, natural)
+ */
+export function composeStorylineCaption(opts: StorylineOptions): string {
+  const { asset, dayOfWeek = 0, dayIndex = 0, timeSlot = "evening", modelName, usedCaptionsSet } = opts;
+  const isVideo = asset.type === "VIDEO";
+  const explicit = asset.explicitLevel;
+  const visual = extractAssetVisualContext(asset);
+
+  const durationStr = asset.durationFormatted
+    ? asset.durationFormatted
+    : asset.duration
+    ? `${asset.duration} Sekunden`
+    : isVideo
+    ? "kurzer Clip"
+    : "";
+
+  const candidates: string[] = [];
+
+  // ==========================================
+  // 1. TEASER POSTS (Free / Engagement)
+  // ==========================================
+  if (explicit === "TEASER") {
+    if (timeSlot === "morning" || visual.isBedOrCozy) {
+      candidates.push(
+        "Guten Morgen meine Lieben ☕ Direkt nach dem Aufstehen... Wer von euch braucht heute auch erstmal drei Kaffee? Lasst mir ein Herz da 💕",
+        "Noch ganz verschlafen im Bett 🙈 Hoffe ihr seid gut in die neue Woche gestartet! Was habt ihr heute Schönes vor?",
+        "Kurzer Morgengruß nur für euch ☀️ Wer von euch würde jetzt auch noch am liebsten gemütlich im Bett liegen bleiben? 🧸",
+        "Einfach mal ohne Wecker aufgewacht... ✨ Wünsche euch allen einen entspannten und erfolgreichen Tag! Lasst Liebe da 💖"
+      );
+    } else if (visual.isWetOrShower) {
+      candidates.push(
+        "Frisch geduscht und bereit für den Tag 🌸 Schicke euch ganz viel positive Energie und einen dicken Kuss! ✨",
+        "Kurzer Schnappschuss nach der Dusche vor dem Spiegel 🛁 Wie gefällt euch der Look? Schreibt mir mal in die Kommentare 😘"
+      );
+    } else if (visual.clothing.includes("Hoodie") || visual.isCouchOrChill) {
+      candidates.push(
+        "Heute ganz entspannt im gemütlichen Hoodie auf der Couch 🧸 Manchmal braucht man einfach einen ruhigen Tag... Wer leistet mir Gesellschaft? 💋",
+        "Schlabberlook & Kuschelzeit ☕ Wie verbringt ihr heute euren Feierabend? Schreibt es mir mal unten! 💕"
+      );
+    } else if (visual.isMirrorSelfie) {
+      candidates.push(
+        "Spontanes Spiegelselfie vor dem Ausgehen ✨ Wie findet ihr das Outfit heute? Freue mich riesig auf euer Feedback!",
+        "Konnte an keinem Spiegel vorbeigehen ohne kurz an euch zu denken... 📸 Wünsche euch einen wundervollen Tag! 💋"
+      );
+    } else {
+      // General Teasers
+      candidates.push(
+        "Kleiner Gruß zwischendurch nur für euch 😘 Wie läuft eure Woche bisher? Lasst mir gerne ein Like da ✨",
+        "Shooting-Tag heute 📸 Welches Outfit gefällt euch an mir am besten? Schreibt es mir in die Kommentare! 💕",
+        "Ein kleiner Vorgeschmack auf das, was diese Woche noch auf euch wartet... Seid ihr bereit? 😉🔥",
+        "Einfach mal die Seele baumeln lassen ☀️ Hoffe ihr hattet einen richtig schönen Tag!"
+      );
+    }
+
+    if (isVideo) {
+      const vidDurationText = durationStr ? `(${durationStr})` : "";
+      candidates.push(
+        `Guten Morgen! 💕 Kleiner Grußclip ${vidDurationText} für euren Start in den Tag. Lasst mir ein Like da ✨`,
+        `Kurzer Video-Einblick hinter die Kulissen 🎥 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!`
+      );
+    }
+  }
+
+  // ==========================================
+  // 2. SOFT POSTS (Preview / Sensual Tease)
+  // ==========================================
+  else if (explicit === "SOFT") {
+    if (visual.isWetOrShower) {
+      candidates.push(
+        "Frisch aus dem Bad und die Haare noch nass 🛁... Konnte es nicht lassen, kurz diesen Einblick festzuhalten 🙈 Mehr seht ihr unten!",
+        "Hinter den Kulissen nach der Dusche... 🤫 Gefällt euch dieser Anblick? Reagiert mit 🔥 für mehr!"
+      );
+    } else if (visual.hasTattoo) {
+      candidates.push(
+        "Mag diese Perspektive hier so sehr... und man sieht meine Tattoos perfekt ✨ Wer von euch steht auch so auf Tattoos? 💋",
+        "Kleiner Einblick aus meinem heutigen Shooting 🔥 Wie gefällt euch die Pose? Hinterlasst ein Herz!"
+      );
+    } else if (visual.isBedOrCozy) {
+      candidates.push(
+        "Kuschelzeit im Bett... 🧸 Aber ganz allein ist es irgendwie langweilig. Wer würde mir jetzt Gesellschaft leisten? 💋",
+        "Ein kleiner intimer Vorgeschmack aus meinem Schlafzimmer ✨ Das volle Set seht ihr unten!"
+      );
+    } else {
+      candidates.push(
+        "Nur für meine treuen VIPs hier ein kleiner exklusiver Einblick 🔥 Wie gefällt euch dieser Look?",
+        "Hinter den Kulissen vom heutigen VIP-Set... 🤫 Manchmal geht es bei mir heißer her als gedacht!",
+        "Wollte euch diesen Einblick nicht vorenthalten 🙈 Reagiert mit 🔥 wenn ihr heute Nacht noch mehr wollt!"
+      );
+    }
+
+    if (isVideo) {
+      const lengthNotice = durationStr ? `mit ${durationStr}` : "voller Bewegung";
+      candidates.push(
+        `Ein kleiner Teaser-Clip ${lengthNotice} aus meinem heutigen Set ✨ Gefällt es euch? Schaltet das volle Video frei! 💕`,
+        `Nur für meine VIPs: kurzer Vorgeschmack in Bewegung 🔥 Schreibt mir mal wie es euch gefällt!`
+      );
+    }
+  }
+
+  // ==========================================
+  // 3. PPV POSTS (Paid / Intimate / Drop)
+  // ==========================================
+  else {
+    // Highly authentic, intimate creator paywall lines (NO robotic slogans)
+    if (visual.isWetOrShower) {
+      candidates.push(
+        "Frisch aus der Dusche und noch feuchte Haut... 🛁 Habe mich heute getraut und dieses komplett unzensierte Set für euch festgehalten 🙈 Direkt unten freischalten 🔓✨",
+        "Spiegelselfie im Bad nach dem Baden 🤫 Ganz intim und ohne jedes Tabu. Gönnt euch diesen privaten Moment 🌟"
+      );
+    } else if (visual.hasTattoo) {
+      candidates.push(
+        "Das bisher heißeste Foto mit meinen Tattoos im Fokus... 🔥 Komplett hüllenlos und intim nur für meine treuesten VIPs 🤫 Jetzt unten freischalten 🔓✨",
+        "Liebe diese Perspektive... und man sieht wirklich jedes einzelne Detail ✨ Unzensiert direkt in euren Chat 🌟"
+      );
+    } else if (visual.isBedOrCozy) {
+      candidates.push(
+        "Kann heute Nacht irgendwie noch gar nicht schlafen... 🌙 Liege hier im Bett und habe mir was ganz Besonderes für euch getraut 🙈 Jetzt unzensiert freischalten 🔓✨",
+        "Ganz intim zwischen den Bettdecken... 🧸 Das vielleicht persönlichste Set aus meiner privaten Sammlung 🤫 Schaltet es euch unten frei 🌟"
+      );
+    } else if (visual.clothing.includes("Vollakt") || visual.clothing.includes("Hüllenlos")) {
+      candidates.push(
+        "Komplett hüllenlos und so nah wie noch nie zuvor... 🤫 Streng limitiert und ohne jeden Filter nur für diesen Channel! Jetzt freischalten 🔓✨",
+        "Habe lange überlegt ob ich diese Aufnahme wirklich teile 🙈 Aber für meine VIPs mache ich eine Ausnahme... Gönnt euch den unzensierten Einblick 🌟"
+      );
+    } else {
+      candidates.push(
+        "Das bisher aufregendste Set aus meiner persönlichen Sammlung... 🤫 Komplett unzensiert und nur für euch! Jetzt freischalten 🔓✨",
+        "Habe mich heute getraut und etwas ganz Besonderes festgehalten 🙈 Exklusiv und ohne Filter hier im VIP-Channel 🌟",
+        "Für alle, die mir schon so lange die Treue halten 💎 Ein intimer Einblick, den es so nirgendwo anders gibt. Gönnt euch diesen Moment 🔓✨",
+        "Late Night Special 🌙 Diese Aufnahme bleibt nur für begrenzte Zeit verfügbar. Schaltet sie frei bevor sie im Archiv landet 💋"
+      );
+    }
+
+    if (isVideo) {
+      const dur = asset.duration || 0;
+      if (dur >= 90) {
+        // Long video
+        candidates.push(
+          `Über ${durationStr} pure Intimität komplett ohne Schnitt... 🔥 Da ist wirklich alles drauf! Schaltet das volle Video unten frei 🔓✨`,
+          `Ganze ${durationStr} in bester Auflösung 🤫 Habe die Kamera einfach laufen lassen. Holt euch den unzensierten Clip direkt in den Chat 🌟`
+        );
+      } else if (dur > 0) {
+        // Medium/Short video with duration
+        candidates.push(
+          `Habe heute einen intimen ${durationStr}-Clip für euch aufgenommen 🙈 Voll in Bewegung und unzensiert! Jetzt unten freischalten 🔓✨`,
+          `${durationStr} purer VIP-Content in Bewegung 🔥 Schaut mal ganz genau hin... Direkt unten entsperren 🌟`
+        );
+      } else {
+        candidates.push(
+          `Der bisher intensivste Clip aus meiner Privatsammlung... 🤫 Komplett unzensiert und in voller Bewegung! Jetzt unten freischalten 🔓✨`,
+          `Unwiderstehlich & intim in Bewegung... 💋 Holt euch diesen brandneuen Clip direkt in euren Telegram Chat 🌟`
+        );
+      }
+    }
+  }
+
+  // Filter out any candidates already used in this schedule
+  let selected = candidates[0];
+  if (usedCaptionsSet) {
+    const unused = candidates.filter((c) => !usedCaptionsSet.has(c));
+    if (unused.length > 0) {
+      selected = unused[dayIndex % unused.length];
+    } else {
+      selected = candidates[dayIndex % candidates.length];
+    }
+    usedCaptionsSet.add(selected);
+  } else {
+    selected = candidates[dayIndex % candidates.length];
+  }
+
+  return sanitizeCaptionForMediaType(selected, asset.type);
+}
 
 /**
  * Sanitizes captions so that PHOTO assets NEVER contain video terms (video, clip, etc.)
@@ -83,7 +306,6 @@ export function sanitizeCaptionForMediaType(
   if (!isVideo) {
     // Media is PHOTO or TEXT: Strip out ALL video and clip references
     result = result
-      // Specific phrases first
       .replace(/Mein persönliches Lieblingsvideo des Monats/gi, "Mein persönliches Lieblingsfoto des Monats")
       .replace(/Lieblingsvideo des Monats/gi, "Lieblingsfoto des Monats")
       .replace(/Lieblingsvideo/gi, "Lieblingsfoto")
@@ -116,7 +338,6 @@ export function sanitizeCaptionForMediaType(
       .replace(/Video-Set/gi, "Foto-Set")
       .replace(/Videoclip/gi, "Schnappschuss")
       .replace(/Videoclips/gi, "Schnappschüsse")
-      // Standalone words with word boundary
       .replace(/\bVideos\b/g, "Fotos")
       .replace(/\bvideos\b/g, "Fotos")
       .replace(/\bVideo\b/g, "Foto")
@@ -164,24 +385,26 @@ export function sanitizeCaptionForMediaType(
 export function getFormatAwareDefaultCaption(
   mediaType: "PHOTO" | "VIDEO" | "TEXT" | string | null | undefined,
   explicitLevel: "TEASER" | "SOFT" | "PPV" | string,
-  theme?: string | null
+  theme?: string | null,
+  durationFormatted?: string | null
 ): string {
   const isVideo = mediaType === "VIDEO";
-  const themeTag = theme ? `[${theme}] ` : "";
+  const themeTag = theme && theme !== "Unklassifiziert" && theme !== "Allgemein" ? `[${theme}] ` : "";
 
   if (explicitLevel === "PPV") {
     if (isVideo) {
-      return `Exklusiver VIP Content für euch 🔥 ${themeTag}Schaltet das Video unten frei mit Telegram Stars! 🌟`;
+      const dur = durationFormatted ? ` (${durationFormatted})` : "";
+      return `Habe mich getraut und diesen intimen Clip${dur} für euch festgehalten 🙈 ${themeTag}Jetzt unzensiert unten freischalten 🔓✨`;
     } else {
-      return `Exklusiver VIP Content für euch 🔥 ${themeTag}Schaltet das Foto unten frei mit Telegram Stars! 🌟`;
+      return `Das bisher heißeste Set aus meiner persönlichen Sammlung... 🤫 ${themeTag}Komplett unzensiert direkt unten freischalten 🔓✨`;
     }
   }
 
   if (explicitLevel === "SOFT") {
     if (isVideo) {
-      return `Ein kleiner Einblick hinter die Kulissen ✨ ${themeTag}Wie gefällt euch der Clip? Reagiert mit 🔥 wenn ihr mehr wollt!`;
+      return `Ein kleiner Einblick hinter die Kulissen ✨ ${themeTag}Wie gefällt euch die Bewegung? Reagiert mit 🔥 für mehr!`;
     } else {
-      return `Ein kleiner Einblick hinter die Kulissen ✨ ${themeTag}Wie gefällt euch dieses Bild? Hinterlasst ein Herz ❤️`;
+      return `Ein kleiner Einblick hinter die Kulissen ✨ ${themeTag}Wie gefällt euch dieser Schnappschuss? Hinterlasst ein Herz ❤️`;
     }
   }
 
@@ -189,6 +412,6 @@ export function getFormatAwareDefaultCaption(
   if (isVideo) {
     return "Guten Morgen meine Lieben! 💕 Kleiner Grußclip für euren Start in den Tag. Lasst mir gerne ein Like da ✨";
   } else {
-    return "Guten Morgen meine Lieben! 💕 Kleiner Schnappschuss für euren Start in den Tag. Lasst mir gerne ein Like da ✨";
+    return "Guten Morgen meine Lieben! 💕 Kleiner Gruß für euren Start in den Tag. Was habt ihr heute Schönes vor? 🥰";
   }
 }
