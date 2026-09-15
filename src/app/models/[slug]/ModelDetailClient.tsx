@@ -61,7 +61,7 @@ import { DirectPublishModal } from "@/components/DirectPublishModal";
 import { ManualClassifyModal } from "@/components/ManualClassifyModal";
 import { ScheduleAssetModal } from "@/components/ScheduleAssetModal";
 import { SourceChannelModal } from "@/components/SourceChannelModal";
-import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl } from "@/lib/utils";
+import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl, cn } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
 import { formatGermanDateTime } from "@/lib/timezone";
@@ -173,6 +173,127 @@ export function ModelDetailClient({
 
   const [assetToDelete, setAssetToDelete] = useState<any>(null);
   const [isDeletingAsset, setIsDeletingAsset] = useState(false);
+
+  // Multi-selection & Bulk Actions State
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+  const [isBulkEditing, setIsBulkEditing] = useState(false);
+  const [bulkEditTheme, setBulkEditTheme] = useState("");
+  const [bulkEditExplicitLevel, setBulkEditExplicitLevel] = useState<string>("KEEP");
+  const [bulkEditTags, setBulkEditTags] = useState("");
+
+  const toggleSelectAsset = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllAssets = () => {
+    const allIds = (model.assets || []).map((a: any) => a.id);
+    setSelectedAssetIds(new Set(allIds));
+  };
+
+  const deselectAllAssets = () => {
+    setSelectedAssetIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedAssetIds.size === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await fetch("/api/assets/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetIds: Array.from(selectedAssetIds) }),
+      });
+      const data = await safeJson(res);
+      if (res.ok) {
+        setIsBulkDeleteModalOpen(false);
+        setSelectedAssetIds(new Set());
+        await refreshData();
+      } else {
+        alert(data.error || "Fehler beim Löschen der Medien");
+      }
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Löschen");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedAssetIds.size === 0) return;
+    setIsBulkEditing(true);
+
+    try {
+      const payload: any = {
+        assetIds: Array.from(selectedAssetIds),
+      };
+
+      if (bulkEditTheme.trim()) {
+        payload.theme = bulkEditTheme.trim();
+      }
+
+      if (bulkEditExplicitLevel && bulkEditExplicitLevel !== "KEEP") {
+        payload.explicitLevel = bulkEditExplicitLevel;
+      }
+
+      if (bulkEditTags.trim()) {
+        payload.addTags = bulkEditTags
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean);
+      }
+
+      const res = await fetch("/api/assets/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await safeJson(res);
+      if (res.ok) {
+        setIsBulkEditModalOpen(false);
+        setBulkEditTheme("");
+        setBulkEditExplicitLevel("KEEP");
+        setBulkEditTags("");
+        setSelectedAssetIds(new Set());
+        await refreshData();
+      } else {
+        alert(data.error || "Fehler beim Bearbeiten der Medien");
+      }
+    } catch (err: any) {
+      alert(err.message || "Fehler beim Bearbeiten");
+    } finally {
+      setIsBulkEditing(false);
+    }
+  };
+
+  const handleBulkGrokClassify = async () => {
+    if (selectedAssetIds.size === 0) return;
+    const selectedPhotos = (model.assets || []).filter(
+      (a: any) => selectedAssetIds.has(a.id) && a.type === "PHOTO"
+    );
+
+    if (selectedPhotos.length === 0) {
+      alert(
+        language === "de"
+          ? "Unter den ausgewählten Medien wurden keine Fotos gefunden (nur Fotos können mit Grok bewertet werden)."
+          : "No photos found among selected media."
+      );
+      return;
+    }
+
+    handleBatchGrokClassify(true, selectedPhotos);
+  };
 
   const handleDeleteSingleAsset = async () => {
     if (!assetToDelete) return;
@@ -363,9 +484,10 @@ export function ModelDetailClient({
     }
   };
 
-  const handleBatchGrokClassify = async (force: boolean = false) => {
+  const handleBatchGrokClassify = async (force: boolean = false, targetAssets?: any[]) => {
     // Collect eligible photo assets
-    const eligiblePhotos = (model.assets || []).filter((a: any) => {
+    const pool = targetAssets || model.assets || [];
+    const eligiblePhotos = pool.filter((a: any) => {
       if (a.type !== "PHOTO" || !a.fileUrl) return false;
       if (force) return true;
       const isUnclassifiedTag = a.tags?.includes("unclassified");
@@ -1093,17 +1215,138 @@ export function ModelDetailClient({
             </Card>
           )}
 
+          {/* Vault Multi-Select & Action Toolbar */}
+          <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-card/70 border flex-wrap">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs font-semibold gap-1.5"
+                onClick={selectedAssetIds.size === (model.assets || []).length ? deselectAllAssets : selectAllAssets}
+              >
+                <CheckCircle2
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    selectedAssetIds.size > 0 ? "text-indigo-400" : "text-muted-foreground"
+                  )}
+                />
+                <span>
+                  {selectedAssetIds.size === (model.assets || []).length
+                    ? (language === "de" ? "Alle abwählen" : "Deselect all")
+                    : (language === "de"
+                        ? `Alle auswählen (${(model.assets || []).length})`
+                        : `Select all (${(model.assets || []).length})`)}
+                </span>
+              </Button>
+
+              {selectedAssetIds.size > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={deselectAllAssets}
+                >
+                  {language === "de" ? "Auswahl aufheben" : "Clear selection"}
+                </Button>
+              )}
+
+              <span className="text-xs text-muted-foreground ml-1">
+                {selectedAssetIds.size > 0 ? (
+                  <span className="text-indigo-400 font-bold">
+                    {selectedAssetIds.size} von {(model.assets || []).length} Medien ausgewählt
+                  </span>
+                ) : (
+                  <span>{(model.assets || []).length} Medien im Vault</span>
+                )}
+              </span>
+            </div>
+
+            {selectedAssetIds.size > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs font-bold gap-1 bg-rose-600 hover:bg-rose-500 text-white shadow-sm"
+                  onClick={() => setIsBulkDeleteModalOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>{language === "de" ? `Löschen (${selectedAssetIds.size})` : `Delete (${selectedAssetIds.size})`}</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-xs font-bold gap-1 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
+                  onClick={() => setIsBulkEditModalOpen(true)}
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>{language === "de" ? `Bearbeiten (${selectedAssetIds.size})` : `Edit (${selectedAssetIds.size})`}</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs font-bold gap-1 border-purple-500/40 text-purple-300 hover:bg-purple-950/40 shadow-sm"
+                  onClick={handleBulkGrokClassify}
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                  <span>{language === "de" ? "Mit Grok AI bewerten" : "Classify with Grok"}</span>
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {model.assets.map((asset: any) => {
+              const isSelected = selectedAssetIds.has(asset.id);
               const isUnclassified =
                 asset.tags?.includes("unclassified") ||
                 (asset.tags?.includes("quelle") && (!asset.theme || asset.theme === "Allgemein" || asset.theme === "Unklassifiziert" || asset.title?.startsWith("Quell-Medium")));
               const tierBadge = getTierBadgeInfo(asset.tags || []);
 
               return (
-                <Card key={asset.id} className="overflow-hidden border group bg-card/60 flex flex-col justify-between">
+                <Card
+                  key={asset.id}
+                  className={cn(
+                    "overflow-hidden border group bg-card/60 flex flex-col justify-between transition-all duration-150 relative",
+                    isSelected
+                      ? "ring-2 ring-indigo-500 border-indigo-500 bg-indigo-950/20 shadow-lg shadow-indigo-500/20"
+                      : "hover:border-border/80"
+                  )}
+                >
                   <div>
                     <div className="relative aspect-square bg-muted flex flex-col items-center justify-center p-3 text-center border-b">
+                      {/* Top Right: Always Reachable Quick Actions (Trash + Multi-Select Checkbox) */}
+                      <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 rounded-md bg-black/75 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/50 backdrop-blur-md shadow-md transition-all flex items-center justify-center cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAssetToDelete(asset);
+                          }}
+                          title={language === "de" ? "Diesen Content von der Festplatte löschen" : "Delete asset from disk"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+
+                        <button
+                          type="button"
+                          className={cn(
+                            "h-7 w-7 rounded-md border flex items-center justify-center backdrop-blur-md shadow-md transition-all cursor-pointer",
+                            isSelected
+                              ? "bg-indigo-600 border-indigo-400 text-white shadow-indigo-500/30"
+                              : "bg-black/75 border-white/40 text-transparent hover:border-white hover:bg-black/90"
+                          )}
+                          onClick={(e) => toggleSelectAsset(asset.id, e)}
+                          title={isSelected ? (language === "de" ? "Auswahl aufheben" : "Deselect") : (language === "de" ? "Medium auswählen" : "Select media")}
+                        >
+                          <CheckCircle2 className={cn("h-4 w-4", isSelected ? "text-white opacity-100" : "opacity-0 hover:opacity-70 text-white")} />
+                        </button>
+                      </div>
+
                       {asset.fileUrl ? (
                         asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
                           <video
@@ -1167,7 +1410,7 @@ export function ModelDetailClient({
                         </div>
                       )}
 
-                      <div className="absolute top-2 left-2 flex gap-1 flex-wrap items-center">
+                      <div className="absolute top-2 left-2 flex gap-1 flex-wrap items-center z-10 max-w-[55%]">
                         {isUnclassified ? (
                           <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 text-[10px] font-bold gap-1 shadow-sm backdrop-blur-sm">
                             <Sparkles className="h-3 w-3 text-amber-400" />
@@ -1187,7 +1430,7 @@ export function ModelDetailClient({
                         )}
                       </div>
 
-                      <div className="absolute bottom-2 right-2 flex flex-col gap-1 items-end">
+                      <div className="absolute bottom-2 right-2 flex flex-col gap-1 items-end z-10">
                         {asset.fileUrl?.startsWith("/uploads/") && (
                           <Badge variant="outline" className="bg-purple-950/80 text-[9px] text-purple-300 border-purple-500/40">
                             📁 Festplatte
@@ -1227,7 +1470,7 @@ export function ModelDetailClient({
                     </CardContent>
                   </div>
 
-                  {/* Card Action Buttons (Direct Publish, Grok Classify, Manual Classify, Schedule) */}
+                  {/* Card Action Buttons (Direct Publish, Grok Classify, Manual Classify, Schedule, Delete) */}
                   {!asset.isUsed && (
                     <div className="p-2.5 pt-0 border-t border-border/40 mt-1 flex items-center justify-between gap-1 flex-wrap">
                       <Button
@@ -1243,7 +1486,7 @@ export function ModelDetailClient({
                         <Send className="h-2.5 w-2.5" />
                         {t.modelDetail.directPostButton}
                       </Button>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
                         {asset.type === "PHOTO" && (
                           isUnclassified ? (
                             <Button
@@ -1307,11 +1550,12 @@ export function ModelDetailClient({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-6 w-6 p-0 border-rose-500/30 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40"
+                          className="h-6 text-[10px] px-1.5 border-rose-500/30 text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 gap-1 font-medium"
                           onClick={() => setAssetToDelete(asset)}
                           title={language === "de" ? "Content von Festplatte löschen" : "Delete asset from disk"}
                         >
                           <Trash2 className="h-2.5 w-2.5" />
+                          <span className="hidden sm:inline">{language === "de" ? "Löschen" : "Delete"}</span>
                         </Button>
                       </div>
                     </div>
@@ -2515,6 +2759,245 @@ export function ModelDetailClient({
                 {language === "de" ? "Endgültig löschen" : "Delete permanently"}
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Floating Bulk Action Bar */}
+      {selectedAssetIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-background/95 backdrop-blur-md border border-indigo-500/40 rounded-xl shadow-2xl p-2.5 px-4 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-5 max-w-[95vw] flex-wrap justify-center">
+          <div className="flex items-center gap-2 border-r border-border/60 pr-3">
+            <Badge className="bg-indigo-600 text-white font-bold text-xs px-2.5 py-0.5 shadow-sm">
+              {selectedAssetIds.size}
+            </Badge>
+            <span className="text-xs font-semibold text-foreground whitespace-nowrap">
+              {language === "de" ? "Medien ausgewählt" : "media selected"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Bulk Delete */}
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 text-xs font-bold gap-1.5 shadow-md bg-rose-600 hover:bg-rose-500 text-white"
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{language === "de" ? "Ausgewählte löschen" : "Delete selected"}</span>
+            </Button>
+
+            {/* Bulk Edit */}
+            <Button
+              size="sm"
+              variant="default"
+              className="h-8 text-xs font-bold gap-1.5 shadow-md bg-indigo-600 hover:bg-indigo-500 text-white"
+              onClick={() => setIsBulkEditModalOpen(true)}
+            >
+              <Sliders className="h-3.5 w-3.5" />
+              <span>{language === "de" ? "Bearbeiten" : "Bulk edit"}</span>
+            </Button>
+
+            {/* Bulk Grok Classify */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs font-bold gap-1.5 shadow-md border-purple-500/40 text-purple-300 hover:bg-purple-950/40"
+              onClick={handleBulkGrokClassify}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+              <span>{language === "de" ? "Mit Grok AI bewerten" : "Classify with Grok"}</span>
+            </Button>
+
+            {/* Clear Selection */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 text-xs text-muted-foreground hover:text-foreground gap-1"
+              onClick={deselectAllAssets}
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>{language === "de" ? "Abwählen" : "Deselect"}</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Asset Deletion Confirmation Dialog */}
+      {isBulkDeleteModalOpen && (
+        <Dialog
+          open={isBulkDeleteModalOpen}
+          onOpenChange={(open) => !open && setIsBulkDeleteModalOpen(false)}
+        >
+          <DialogContent className="max-w-md bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold text-rose-400">
+                    {language === "de"
+                      ? `${selectedAssetIds.size} Medien unwiderruflich löschen`
+                      : `Delete ${selectedAssetIds.size} media items`}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {language === "de"
+                      ? "Sammellöschung von Content und Dateien von der Festplatte"
+                      : "Bulk deletion of content and files from disk"}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-500/30 text-rose-300 space-y-1.5">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                  <span>
+                    {language === "de"
+                      ? "Achtung: Unwiderrufliche Löschung!"
+                      : "Warning: Permanent deletion!"}
+                  </span>
+                </p>
+                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                  {language === "de"
+                    ? `Sie sind dabei, ${selectedAssetIds.size} ausgewählte Medien inklusive ihrer physischen Dateien unwiderruflich von der Festplatte und aus der Datenbank zu entfernen. Geplante Entwürfe für diese Medien werden automatisch storniert.`
+                    : `You are about to permanently delete ${selectedAssetIds.size} selected media items and their files from disk and database. Scheduled drafts referencing these media will be cancelled.`}
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsBulkDeleteModalOpen(false)}
+                disabled={isBulkDeleting}
+                className="text-xs"
+              >
+                {language === "de" ? "Abbrechen" : "Cancel"}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="text-xs font-bold gap-1.5 bg-rose-600 hover:bg-rose-500"
+              >
+                {isBulkDeleting ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {language === "de"
+                  ? `Ja, alle ${selectedAssetIds.size} löschen`
+                  : `Yes, delete all ${selectedAssetIds.size}`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Bulk Asset Edit Dialog */}
+      {isBulkEditModalOpen && (
+        <Dialog
+          open={isBulkEditModalOpen}
+          onOpenChange={(open) => !open && setIsBulkEditModalOpen(false)}
+        >
+          <DialogContent className="max-w-md bg-card border-border shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-lg bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                  <Sliders className="h-5 w-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base font-bold">
+                    {language === "de"
+                      ? `${selectedAssetIds.size} Medien gemeinsam bearbeiten`
+                      : `Edit ${selectedAssetIds.size} media items`}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    {language === "de"
+                      ? "Kategorie, Erotik-Stufe und Tags für alle ausgewählten Inhalte anpassen"
+                      : "Update category, explicit level and tags for all selected items"}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <form onSubmit={handleBulkEdit} className="space-y-3.5 py-1 text-xs">
+              <div className="space-y-1">
+                <label className="font-semibold text-foreground block">
+                  {language === "de" ? "Kategorie / Thema:" : "Category / Theme:"}
+                </label>
+                <Input
+                  type="text"
+                  placeholder={language === "de" ? "z. B. Strand, Dessous, Lifestyle (leer = unverändert)" : "e.g. Beach, Lingerie, Lifestyle (empty = unchanged)"}
+                  value={bulkEditTheme}
+                  onChange={(e) => setBulkEditTheme(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-foreground block">
+                  {language === "de" ? "Erotik-Stufe (Explicit Level):" : "Explicit Level:"}
+                </label>
+                <select
+                  value={bulkEditExplicitLevel}
+                  onChange={(e) => setBulkEditExplicitLevel(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="KEEP">
+                    {language === "de" ? "— Unverändert lassen —" : "— Keep unchanged —"}
+                  </option>
+                  <option value="TEASER">TEASER (Frei / Teaser / SFW / Bademode)</option>
+                  <option value="SOFT">SOFT (Teilakt / Topless / Lingerie)</option>
+                  <option value="PPV">PPV (Vollakt / Explizit / Stars Paywall)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-foreground block">
+                  {language === "de" ? "Tags hinzufügen (kommagetrennt):" : "Add Tags (comma-separated):"}
+                </label>
+                <Input
+                  type="text"
+                  placeholder={language === "de" ? "z. B. sommer, bikini, highlight (leer = unverändert)" : "e.g. summer, bikini, highlight (empty = unchanged)"}
+                  value={bulkEditTags}
+                  onChange={(e) => setBulkEditTags(e.target.value)}
+                  className="text-xs h-9"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsBulkEditModalOpen(false)}
+                  disabled={isBulkEditing}
+                  className="text-xs"
+                >
+                  {language === "de" ? "Abbrechen" : "Cancel"}
+                </Button>
+                <Button
+                  type="submit"
+                  variant="default"
+                  size="sm"
+                  disabled={isBulkEditing}
+                  className="text-xs font-bold gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white"
+                >
+                  {isBulkEditing ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
+                  {language === "de" ? "Änderungen speichern" : "Save changes"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       )}
