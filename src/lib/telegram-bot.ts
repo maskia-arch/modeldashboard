@@ -177,6 +177,8 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
         }
       }
 
+      // For videos: Telegram MTProto requires pure video attributes (WITHOUT DocumentAttributeFilename,
+      // which would mark it as a generic document/file) and a valid thumbnail for paid media previews.
       const videoAttributes = isVideo
         ? [
             new Api.DocumentAttributeVideo({
@@ -184,9 +186,6 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
               w: 720,
               h: 1280,
               supportsStreaming: true,
-            }),
-            new Api.DocumentAttributeFilename({
-              fileName: path.basename(localPath),
             }),
           ]
         : undefined;
@@ -202,18 +201,41 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             workers: 4,
           });
 
+          // Upload video thumbnail if video: required by Telegram to generate messageExtendedMediaPreview
+          let uploadedThumb: any = undefined;
+          if (isVideo) {
+            try {
+              const possibleThumbPath = localPath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
+              let thumbBuf: Buffer;
+              if (fs.existsSync(possibleThumbPath)) {
+                thumbBuf = fs.readFileSync(possibleThumbPath);
+              } else {
+                // Minimal valid JPEG buffer for video preview
+                const defaultJpegBase64 =
+                  "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+                thumbBuf = Buffer.from(defaultJpegBase64, "base64");
+              }
+              const thumbCustomFile = new CustomFile("thumb.jpg", thumbBuf.length, "", thumbBuf);
+              uploadedThumb = await client.uploadFile({
+                file: thumbCustomFile,
+                workers: 1,
+              });
+            } catch (thumbErr: any) {
+              console.warn(`[Userbot Publisher] Thumbnail upload notice: ${thumbErr.message}`);
+            }
+          }
+
           const rawMediaItem = isVideo
             ? new Api.InputMediaUploadedDocument({
                 file: uploadedFile,
+                thumb: uploadedThumb,
                 mimeType: "video/mp4",
                 attributes: videoAttributes!,
-                nosoundVideo: false,
               })
             : new Api.InputMediaUploadedPhoto({ file: uploadedFile });
 
           // Telegram MTProto strictly requires items inside InputMediaPaidMedia (extended_media)
           // to be registered as an InputMediaPhoto or InputMediaDocument (not raw InputMediaUploaded*).
-          // Passing raw InputMediaUploaded* causes Telegram RPC error: 400 EXTENDED_MEDIA_TYPE_INVALID.
           console.log(`[Userbot Publisher] Registering uploaded media with Telegram via messages.UploadMedia...`);
           const uploadedResult = await client.invoke(
             new Api.messages.UploadMedia({
@@ -240,14 +262,35 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             extendedMedia: [mediaItem],
           });
 
-          sentResult = await client.invoke(
-            new Api.messages.SendMedia({
-              peer,
-              media: paidMedia,
-              message: params.caption || "",
-              randomId: helpers.generateRandomLong(),
-            })
-          );
+          try {
+            sentResult = await client.invoke(
+              new Api.messages.SendMedia({
+                peer,
+                media: paidMedia,
+                message: params.caption || "",
+                randomId: helpers.generateRandomLong(),
+              })
+            );
+          } catch (invokeErr: any) {
+            const errMsg = String(invokeErr?.message || invokeErr);
+            if (errMsg.includes("EXTENDED_MEDIA_TYPE_INVALID")) {
+              console.warn("[Userbot Publisher] Trying direct InputMediaUploadedDocument in extended_media as fallback...");
+              const directPaidMedia = new Api.InputMediaPaidMedia({
+                starsAmount: BigInt(params.starsPrice) as any,
+                extendedMedia: [rawMediaItem],
+              });
+              sentResult = await client.invoke(
+                new Api.messages.SendMedia({
+                  peer,
+                  media: directPaidMedia,
+                  message: params.caption || "",
+                  randomId: helpers.generateRandomLong(),
+                })
+              );
+            } else {
+              throw invokeErr;
+            }
+          }
         } catch (paidErr: any) {
           console.warn(`[Userbot Publisher] Paid media send via Userbot failed: ${paidErr.message}`);
 
