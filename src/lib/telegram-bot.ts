@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { Api } from "telegram";
-import { TelegramClient } from "telegram";
+import { Api, TelegramClient, helpers } from "telegram";
 import { CustomFile } from "telegram/client/uploads";
 import { createTelegramClient, resolveChannelPeer } from "./telegram-stars";
 import { getAssetLocalPath } from "./assets";
+import { extractMp4DurationFromFile } from "./video-metadata";
 
 export interface SendMediaParams {
   channelId: string;
@@ -59,8 +59,18 @@ export function normalizeTelegramChatId(input: string): string {
  */
 function translateUserbotError(err: any, channelId: string): string {
   const msg = (err?.errorMessage || err?.message || String(err)).toLowerCase();
+
+  if (msg.includes("extended_media_peer_invalid")) {
+    return `Kanal-Einstellungsfehler (EXTENDED_MEDIA_PEER_INVALID): In diesem Telegram-Kanal (${channelId}) sind bezahlte Medien (Telegram Stars) noch nicht aktiviert oder dem ausführenden Account fehlen die Rechte für bezahlte Inhalte. Bitte stellen Sie in den Kanal-Einstellungen in Telegram sicher, dass das Konto Administratorrechte besitzt und bezahlte Inhalte aktiviert sind. Aus Sicherheitsgründen wurde der VIP-Beitrag NICHT kostenlos veröffentlicht.`;
+  }
+  if (msg.includes("extended_media_invalid")) {
+    return `Telegram-Fehler (EXTENDED_MEDIA_INVALID): Die Mediendatei oder die Parameter für bezahlte Inhalte wurden von Telegram abgelehnt. Bitte stellen Sie sicher, dass das Video ein gültiges Format hat und die Dauer größer als 0 Sekunden ist. Aus Sicherheitsgründen wurde der VIP-Beitrag NICHT kostenlos veröffentlicht.`;
+  }
+  if (msg.includes("stars_amount_invalid") || msg.includes("extended_media_amount_invalid")) {
+    return `Ungültiger Sternepreis: Der Preis für kostenpflichtige Medien muss zwischen 1 und 25.000 Sternen liegen.`;
+  }
   if (msg.includes("chat_admin_required") || msg.includes("admin_rank_invalid") || msg.includes("rights")) {
-    return `Userbot-Fehler: Dem Userbot fehlen Administrator- oder Schreibrechte im Kanal (${channelId}). Bitte stellen Sie sicher, dass das Userbot-Konto Administrator mit Schreibrechten im Kanal ist.`;
+    return `Userbot-Fehler: Dem Userbot fehlen Administrator- oder Schreibrechte im Kanal (${channelId}). Bitte stellen Sie sicher, dass das Userbot-Konto Administrator mit vollen Schreib- und Medienrechten im Kanal ist.`;
   }
   if (msg.includes("chat_write_forbidden") || msg.includes("user_banned_in_channel")) {
     return `Userbot-Fehler: Das Userbot-Konto darf in diesem Kanal (${channelId}) keine Nachrichten posten (Schreibrechte verweigert).`;
@@ -153,10 +163,35 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
 
     // 1. File Upload (Photo or Video)
     if (isLocal && localPath) {
+      const isVideo = params.type === "VIDEO" || Boolean(localPath.match(/\.(mp4|mov|mkv|avi|webm)$/i));
+
+      // Extract accurate video duration so Telegram never converts it into a looping GIF
+      let durationSec = 10;
+      if (isVideo) {
+        const extracted = await extractMp4DurationFromFile(localPath);
+        if (extracted && extracted > 0) {
+          durationSec = extracted;
+        }
+      }
+
+      const videoAttributes = isVideo
+        ? [
+            new Api.DocumentAttributeVideo({
+              duration: durationSec,
+              w: 720,
+              h: 1280,
+              supportsStreaming: true,
+            }),
+            new Api.DocumentAttributeFilename({
+              fileName: path.basename(localPath),
+            }),
+          ]
+        : undefined;
+
       // 1a. Paid Media Paywall (> 0 Stars)
       if (params.starsPrice && params.starsPrice > 0) {
+        console.log(`[Userbot Publisher] Uploading paid media (${params.starsPrice} Stars, isVideo=${isVideo}, duration=${durationSec}s) to ${channelId}...`);
         try {
-          console.log(`[Userbot Publisher] Uploading paid media (${params.starsPrice} Stars) to ${channelId}...`);
           const stat = fs.statSync(localPath);
           const customFile = new CustomFile(path.basename(localPath), stat.size, localPath);
           const uploadedFile = await client.uploadFile({
@@ -164,19 +199,12 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             workers: 1,
           });
 
-          const isVideo = params.type === "VIDEO" || localPath.match(/\.(mp4|mov|mkv|avi)$/i);
           const mediaItem = isVideo
             ? new Api.InputMediaUploadedDocument({
                 file: uploadedFile,
                 mimeType: "video/mp4",
-                attributes: [
-                  new Api.DocumentAttributeVideo({
-                    duration: 0,
-                    w: 720,
-                    h: 1280,
-                    supportsStreaming: true,
-                  }),
-                ],
+                attributes: videoAttributes!,
+                nosoundVideo: false,
               })
             : new Api.InputMediaUploadedPhoto({ file: uploadedFile });
 
@@ -190,38 +218,40 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
               peer,
               media: paidMedia,
               message: params.caption || "",
-              randomId: BigInt(Math.floor(Math.random() * 1000000000)) as any,
+              randomId: helpers.generateRandomLong(),
             })
           );
         } catch (paidErr: any) {
-          console.warn("[Userbot Publisher] Paid media send failed, falling back to standard sendFile:", paidErr.message);
-          // Fallback to standard file upload if channel does not have stars paid media enabled
-          try {
-            sentResult = await client.sendFile(peer, {
-              file: localPath,
-              caption: params.caption || "",
-              parseMode: "html",
-              forceDocument: false,
-              workers: 1,
-            });
-          } catch {
-            sentResult = await client.sendFile(peer, {
-              file: localPath,
-              caption: params.caption || "",
-              forceDocument: false,
-              workers: 1,
-            });
+          console.warn(`[Userbot Publisher] Paid media send via Userbot failed: ${paidErr.message}`);
+
+          // If Telegram Bot Token is configured, attempt fallback to Telegram Bot API sendPaidMedia
+          const hasBotToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== "demo_token");
+          if (hasBotToken) {
+            console.log(`[Userbot Publisher] Attempting paid media fallback via Telegram Bot API sendPaidMedia...`);
+            const botFallbackResult = await publishPaidMediaViaBotApi(params, localPath, isVideo);
+            if (botFallbackResult.success) {
+              return botFallbackResult;
+            }
+            console.warn(`[Userbot Publisher] Bot API paid fallback also failed: ${botFallbackResult.error}`);
           }
+
+          // CRITICAL: NEVER drop the paywall! Under NO circumstances post paid VIP content for free!
+          return {
+            success: false,
+            error: translateUserbotError(paidErr, channelId),
+          };
         }
       } else {
         // 1b. Standard Free Media (Photo or Video)
-        console.log(`[Userbot Publisher] Sending free media via sendFile to ${channelId}...`);
+        console.log(`[Userbot Publisher] Sending free media via sendFile (isVideo=${isVideo}, duration=${durationSec}s) to ${channelId}...`);
         try {
           sentResult = await client.sendFile(peer, {
             file: localPath,
             caption: params.caption || "",
             parseMode: "html",
             forceDocument: false,
+            supportsStreaming: isVideo,
+            attributes: videoAttributes,
             workers: 1,
           });
         } catch (parseErr: any) {
@@ -230,6 +260,8 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             file: localPath,
             caption: params.caption || "",
             forceDocument: false,
+            supportsStreaming: isVideo,
+            attributes: videoAttributes,
             workers: 1,
           });
         }
@@ -271,6 +303,52 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
 }
 
 /**
+ * Helper to publish Paid Media (> 0 Stars) via Telegram Bot API (sendPaidMedia).
+ */
+async function publishPaidMediaViaBotApi(
+  params: SendMediaParams,
+  localPath: string,
+  isVideo: boolean
+): Promise<TelegramPublishResult> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || token === "demo_token") {
+    return { success: false, error: "Kein Bot-Token konfiguriert." };
+  }
+
+  const chatId = normalizeTelegramChatId(params.channelId);
+  const baseUrl = `https://api.telegram.org/bot${token}`;
+
+  try {
+    const fileBuffer = await fs.promises.readFile(localPath);
+    const fileName = path.basename(localPath);
+    const formData = new FormData();
+    formData.append("chat_id", chatId);
+    formData.append("star_count", String(Math.max(1, params.starsPrice || 100)));
+
+    const mediaItem = {
+      type: isVideo ? "video" : "photo",
+      media: `attach://${fileName}`,
+      ...(isVideo ? { supports_streaming: true } : {}),
+    };
+    formData.append("media", JSON.stringify([mediaItem]));
+    if (params.caption) {
+      formData.append("caption", params.caption);
+    }
+    formData.append(fileName, new Blob([fileBuffer]), fileName);
+
+    const res = await fetch(`${baseUrl}/sendPaidMedia`, { method: "POST", body: formData });
+    const data = await res.json();
+    if (!data.ok) {
+      return { success: false, error: data.description || "sendPaidMedia failed" };
+    }
+    const messageId = String(data.result?.message_id || data.result?.[0]?.message_id || "");
+    return { success: true, messageId };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Fallback implementation using Telegram Bot API (HTTP) if Bot Token is provided.
  */
 async function publishViaBotApi(params: SendMediaParams): Promise<TelegramPublishResult> {
@@ -290,16 +368,31 @@ async function publishViaBotApi(params: SendMediaParams): Promise<TelegramPublis
     const isLocal = !!localPath && fs.existsSync(localPath);
 
     if (isLocal && localPath) {
+      const isVideo = params.type === "VIDEO" || Boolean(localPath.match(/\.(mp4|mov|mkv|avi|webm)$/i));
+
+      // If Paid Media is requested, use sendPaidMedia
+      if (params.starsPrice && params.starsPrice > 0) {
+        return publishPaidMediaViaBotApi(params, localPath, isVideo);
+      }
+
+      // Otherwise standard free media
       const fileBuffer = await fs.promises.readFile(localPath);
       const fileName = path.basename(localPath);
       const formData = new FormData();
       formData.append("chat_id", chatId);
-      formData.append("caption", params.caption);
-      formData.append("photo", new Blob([fileBuffer]), fileName);
+      formData.append("caption", params.caption || "");
 
-      const res = await fetch(`${baseUrl}/sendPhoto`, { method: "POST", body: formData });
+      const endpoint = isVideo ? "sendVideo" : "sendPhoto";
+      const fileField = isVideo ? "video" : "photo";
+
+      if (isVideo) {
+        formData.append("supports_streaming", "true");
+      }
+      formData.append(fileField, new Blob([fileBuffer]), fileName);
+
+      const res = await fetch(`${baseUrl}/${endpoint}`, { method: "POST", body: formData });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.description || "sendPhoto failed");
+      if (!data.ok) throw new Error(data.description || `${endpoint} failed`);
       return { success: true, messageId: String(data.result?.message_id) };
     } else {
       const res = await fetch(`${baseUrl}/sendMessage`, {
