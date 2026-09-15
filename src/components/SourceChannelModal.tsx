@@ -77,16 +77,11 @@ export function SourceChannelModal({
           setIsSyncing(false);
           setSyncProgress("");
 
-          let summary = "";
-          if (state.totalImported === 0 && state.totalSkipped > 0) {
-            summary = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${state.totalSkipped} bereits im Dashboard vorhanden).`;
-          } else if (state.totalImported > 0 && state.totalSkipped > 0) {
-            summary = `Erfolg: ${state.totalImported} neue Medien heruntergeladen (${state.totalSkipped} bereits vorhandene übersprungen)!`;
-          } else if (state.totalImported > 0) {
-            summary = `Erfolg: ${state.totalImported} Medien erfolgreich auf die Festplatte gespeichert!`;
-          } else {
-            summary = state.progressMessage || "Keine neuen Medien im Quellkanal gefunden.";
-          }
+          const summary = state.progressMessage || (
+            state.totalImported > 0
+              ? `Erfolg: ${state.totalImported} neue Medien heruntergeladen!`
+              : "Quellkanal ist aktuell: Keine neuen Medien gefunden."
+          );
 
           setStatusMessage({
             type: "success",

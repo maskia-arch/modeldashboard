@@ -79,6 +79,8 @@ export interface SourceSyncState {
   progressMessage: string;
   totalImported: number;
   totalSkipped: number;
+  duplicateCount?: number;
+  alreadyImportedCount?: number;
   hasMore?: boolean;
   nextOffsetId?: number | null;
   error?: string;
@@ -145,6 +147,8 @@ export function startBackgroundSourceSync(
       state.status = result.success ? "completed" : "error";
       state.totalImported = result.importedCount;
       state.totalSkipped = result.skippedCount || 0;
+      state.duplicateCount = (result as any).duplicateCount || 0;
+      state.alreadyImportedCount = (result as any).alreadyImportedCount || 0;
       state.progressMessage = result.message;
       state.hasMore = result.hasMore;
       state.nextOffsetId = result.nextOffsetId;
@@ -191,6 +195,8 @@ async function syncMediaFromSourceChannelInternal(
   success: boolean;
   importedCount: number;
   skippedCount?: number;
+  duplicateCount?: number;
+  alreadyImportedCount?: number;
   hasMore?: boolean;
   nextOffsetId?: number | null;
   message: string;
@@ -280,6 +286,7 @@ async function syncMediaFromSourceChannelInternal(
 
     let importedCount = 0;
     let skippedExistingCount = 0;
+    let duplicateContentCount = 0;
     let consecutiveExistingCount = 0;
     let hasMore = false;
     let nextOffsetId: number | null = null;
@@ -359,12 +366,13 @@ async function syncMediaFromSourceChannelInternal(
 
       if (onProgress) {
         const typeLabel = assetType === "VIDEO" ? "Video" : "Foto";
+        const totalSkipped = skippedExistingCount + duplicateContentCount;
         const progressMessage = isAll
-          ? `📥 Lade ${typeLabel} #${msg.id} auf Festplatte (${importedCount + 1} geladen, ${skippedExistingCount} übersprungen)...`
+          ? `📥 Lade ${typeLabel} #${msg.id} auf Festplatte (${importedCount + 1} geladen, ${totalSkipped} übersprungen)...`
           : `📥 Lade ${typeLabel} #${msg.id} auf Festplatte (${importedCount + 1}/${targetLimit})...`;
         onProgress({
           importedCount,
-          skippedCount: skippedExistingCount,
+          skippedCount: totalSkipped,
           message: progressMessage,
         });
       }
@@ -419,7 +427,7 @@ async function syncMediaFromSourceChannelInternal(
           console.log(`[SourceChannel] Message #${msg.id}: duplicate content detected (matches asset #${duplicate.id}). Skipping.`);
           await fs.promises.unlink(filePath).catch(() => {});
           existingMsgIds.add(msg.id);
-          skippedExistingCount++;
+          duplicateContentCount++;
           lastProcessedMsgId = msg.id;
           continue;
         }
@@ -523,22 +531,39 @@ async function syncMediaFromSourceChannelInternal(
       totalImported: (sourceConfig.totalImported || 0) + importedCount,
     });
 
+    const totalSkipped = skippedExistingCount + duplicateContentCount;
     let message = "";
-    if (importedCount === 0 && skippedExistingCount > 0) {
-      message = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${skippedExistingCount} bereits im Dashboard vorhanden).`;
-    } else if (importedCount > 0 && skippedExistingCount > 0) {
-      message = `Erfolg: ${importedCount} neue Medien erfolgreich heruntergeladen (${skippedExistingCount} bereits vorhandene übersprungen)!`;
+    if (importedCount === 0 && totalSkipped > 0) {
+      if (duplicateContentCount > 0 && skippedExistingCount === 0) {
+        message = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${duplicateContentCount} Inhalts-Duplikate im Kanal übersprungen).`;
+      } else {
+        message = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${skippedExistingCount} bereits im Dashboard vorhanden${duplicateContentCount > 0 ? `, ${duplicateContentCount} Inhalts-Duplikate im Kanal` : ""}).`;
+      }
     } else if (importedCount > 0) {
-      message = `Erfolg: ${importedCount} Medien erfolgreich auf die Festplatte gespeichert!`;
+      const skipNotes: string[] = [];
+      if (duplicateContentCount > 0) {
+        skipNotes.push(`${duplicateContentCount} Inhalts-Duplikate im Kanal übersprungen`);
+      }
+      if (skippedExistingCount > 0) {
+        skipNotes.push(`${skippedExistingCount} bereits vorhandene übersprungen`);
+      }
+
+      if (skipNotes.length > 0) {
+        message = `Erfolg: ${importedCount} neue Medien heruntergeladen (${skipNotes.join(", ")})!`;
+      } else {
+        message = `Erfolg: ${importedCount} Medien erfolgreich auf die Festplatte gespeichert!`;
+      }
     } else {
       message = "Keine Medien im Quell-Kanal gefunden.";
     }
 
-    console.log(`[SourceChannel] Sync finished for ${model.name}: ${importedCount} imported, ${skippedExistingCount} existing skipped.`);
+    console.log(`[SourceChannel] Sync finished for ${model.name}: ${importedCount} imported, ${skippedExistingCount} existing skipped, ${duplicateContentCount} duplicate content skipped.`);
     return {
       success: true,
       importedCount,
-      skippedCount: skippedExistingCount,
+      skippedCount: totalSkipped,
+      duplicateCount: duplicateContentCount,
+      alreadyImportedCount: skippedExistingCount,
       hasMore,
       nextOffsetId,
       message,
