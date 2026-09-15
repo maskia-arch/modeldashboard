@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { Api, TelegramClient, helpers } from "telegram";
+import { Api, TelegramClient, helpers, utils } from "telegram";
 import { CustomFile } from "telegram/client/uploads";
 import { createTelegramClient, resolveChannelPeer } from "./telegram-stars";
 import { getAssetLocalPath } from "./assets";
@@ -60,6 +60,9 @@ export function normalizeTelegramChatId(input: string): string {
 function translateUserbotError(err: any, channelId: string): string {
   const msg = (err?.errorMessage || err?.message || String(err)).toLowerCase();
 
+  if (msg.includes("extended_media_type_invalid")) {
+    return `Telegram-Fehler (EXTENDED_MEDIA_TYPE_INVALID): Der Medientyp wurde von Telegram für bezahlte Inhalte abgelehnt. Bezahlte Medien müssen als verifizierte Telegram-Medien (InputMediaPhoto/InputMediaDocument) übergeben werden. Aus Sicherheitsgründen wurde der VIP-Beitrag NICHT kostenlos veröffentlicht.`;
+  }
   if (msg.includes("extended_media_peer_invalid")) {
     return `Kanal-Einstellungsfehler (EXTENDED_MEDIA_PEER_INVALID): In diesem Telegram-Kanal (${channelId}) sind bezahlte Medien (Telegram Stars) noch nicht aktiviert oder dem ausführenden Account fehlen die Rechte für bezahlte Inhalte. Bitte stellen Sie in den Kanal-Einstellungen in Telegram sicher, dass das Konto Administratorrechte besitzt und bezahlte Inhalte aktiviert sind. Aus Sicherheitsgründen wurde der VIP-Beitrag NICHT kostenlos veröffentlicht.`;
   }
@@ -199,7 +202,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             workers: 4,
           });
 
-          const mediaItem = isVideo
+          const rawMediaItem = isVideo
             ? new Api.InputMediaUploadedDocument({
                 file: uploadedFile,
                 mimeType: "video/mp4",
@@ -207,6 +210,30 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
                 nosoundVideo: false,
               })
             : new Api.InputMediaUploadedPhoto({ file: uploadedFile });
+
+          // Telegram MTProto strictly requires items inside InputMediaPaidMedia (extended_media)
+          // to be registered as an InputMediaPhoto or InputMediaDocument (not raw InputMediaUploaded*).
+          // Passing raw InputMediaUploaded* causes Telegram RPC error: 400 EXTENDED_MEDIA_TYPE_INVALID.
+          console.log(`[Userbot Publisher] Registering uploaded media with Telegram via messages.UploadMedia...`);
+          const uploadedResult = await client.invoke(
+            new Api.messages.UploadMedia({
+              peer,
+              media: rawMediaItem,
+            })
+          );
+
+          let mediaItem: any = null;
+          if (uploadedResult instanceof Api.MessageMediaPhoto && uploadedResult.photo) {
+            mediaItem = utils.getInputMedia(uploadedResult.photo);
+          } else if (uploadedResult instanceof Api.MessageMediaDocument && uploadedResult.document) {
+            mediaItem = utils.getInputMedia(uploadedResult.document);
+          } else {
+            mediaItem = utils.getInputMedia(uploadedResult as any);
+          }
+
+          if (!mediaItem) {
+            throw new Error("Konnte das Medium nicht als Telegram-Objekt registrieren (UploadMedia gab ein unerwartetes Format zurück).");
+          }
 
           const paidMedia = new Api.InputMediaPaidMedia({
             starsAmount: BigInt(params.starsPrice) as any,
