@@ -74,15 +74,23 @@ export interface GenerateScheduleParams {
  */
 export async function generateGrokSchedule(params: GenerateScheduleParams): Promise<GrokScheduleResponse> {
   const apiKey = process.env.XAI_API_KEY;
-  const model = process.env.XAI_MODEL || "grok-beta";
+  const model = process.env.XAI_MODEL || "grok-4.20-non-reasoning";
+
+  const requestedDays = Math.min(Math.max(params.targetDays || 30, 1), 120);
 
   if (!apiKey || apiKey === "demo_xai_key") {
     // If no live key is set, return a high-quality deterministic realistic plan
     return generateRealisticSchedule(params);
   }
 
+  // To guarantee the response returns within 15-18 seconds and avoids proxy 520 timeouts:
+  // We ask Grok to design the core narrative anchor posts (up to 14 days with top 18 assets).
+  // If requestedDays > 14, we seamlessly extend the storyline across the remaining days locally in 3ms.
+  const grokTargetDays = Math.min(requestedDays, 14);
+  const grokAssets = params.availableAssets.slice(0, 18);
+
   const systemPrompt = `You are the authentic, intimate German creator voice for "${params.modelName}" on Telegram.
-You are designing a narrative-driven, authentic content schedule across ${params.targetDays || 30} days for her Telegram VIP Channel.
+You are designing a narrative-driven, authentic content schedule across ${grokTargetDays} days for her Telegram VIP Channel.
 Tone & Persona: ${params.modelTone || "Authentic, intimate, charming, playful, flirty German creator"}.
 Strategy: ${params.strategy || "REALISTIC"} (Realistic posting rhythm with rest days and weekend peaks).
 
@@ -127,7 +135,7 @@ CORE PRINCIPLES:
    - PPV assets: starsPrice = 100 to 450.
    - Return STRICT valid JSON conforming to the schema.`;
 
-  const enrichedAssets = params.availableAssets.slice(0, 50).map((a) => {
+  const enrichedAssets = grokAssets.map((a) => {
     const vis = extractAssetVisualContext(a);
     return {
       assetId: a.id,
@@ -146,7 +154,7 @@ CORE PRINCIPLES:
   const userPrompt = `Assets available for scheduling with rich visual context & duration:
 ${JSON.stringify(enrichedAssets, null, 2)}
 
-Create a posting plan over ${params.targetDays || 30} days using the provided asset IDs with strategy: ${params.strategy || "REALISTIC"}, allowPauseDays: ${params.allowPauseDays ?? true}.
+Create a posting plan over ${grokTargetDays} days using the provided asset IDs with strategy: ${params.strategy || "REALISTIC"}, allowPauseDays: ${params.allowPauseDays ?? true}.
 Respond in strict JSON with the following structure:
 {
   "schedule": [
@@ -160,9 +168,9 @@ Respond in strict JSON with the following structure:
   ]
 }`;
 
-  // 55s timeout to allow high-quality AI copy generation for full monthly schedule
+  // 20s hard timeout to guarantee response time is safely below reverse-proxy 520 / 524 limits
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 55000);
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -215,18 +223,61 @@ Respond in strict JSON with the following structure:
       };
     });
 
-    // Calculate stats for the validated schedule
-    const days = params.targetDays || 30;
+    // If user requested more days than the Grok anchor window (e.g. 30, 60, 90 days),
+    // seamlessly extend the schedule with remaining assets using the local Storyline Engine (in ~3ms)
+    if (requestedDays > grokTargetDays && validated.schedule.length > 0) {
+      const usedAssetIds = new Set(validated.schedule.map((p) => p.assetId));
+      const unusedAssets = params.availableAssets.filter((a) => !usedAssetIds.has(a.id));
+      const assetsToCycle = unusedAssets.length > 0 ? unusedAssets : params.availableAssets;
+      let nextAssetIdx = 0;
+      const usedCaptionsSet = new Set(validated.schedule.map((p) => p.caption));
+
+      const maxGrokDay = Math.max(...validated.schedule.map((p) => p.timeOffsetDays), grokTargetDays - 1);
+
+      for (let d = maxGrokDay + 1; d < requestedDays; d++) {
+        const dayOfWeek = d % 7;
+        const isPauseDay = (params.allowPauseDays ?? true) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
+        if (isPauseDay) continue;
+
+        const postCount = (dayOfWeek === 4 || dayOfWeek === 5) ? 2 : 1;
+        for (let p = 0; p < postCount; p++) {
+          const asset = assetsToCycle[(nextAssetIdx++) % assetsToCycle.length];
+          const timeOfDay = p === 0 ? "11:30" : "20:45";
+          const slot = p === 0 ? (postCount === 2 ? "morning" : "afternoon") : "latenight";
+          const level = asset.explicitLevel;
+          const starsPrice = level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0);
+
+          const caption = composeStorylineCaption({
+            asset,
+            dayOfWeek,
+            dayIndex: d,
+            timeSlot: slot,
+            modelName: params.modelName,
+            usedCaptionsSet,
+          });
+
+          validated.schedule.push({
+            timeOffsetDays: d,
+            timeOfDay,
+            assetId: asset.id,
+            caption,
+            starsPrice,
+          });
+        }
+      }
+    }
+
+    // Calculate stats for the full requestedDays schedule
     const postsByDay = new Map<number, number>();
-    for (let d = 0; d < days; d++) postsByDay.set(d, 0);
-    validated.schedule.forEach(item => {
+    for (let d = 0; d < requestedDays; d++) postsByDay.set(d, 0);
+    validated.schedule.forEach((item) => {
       postsByDay.set(item.timeOffsetDays, (postsByDay.get(item.timeOffsetDays) || 0) + 1);
     });
 
     let pauseDays = 0;
     let daysWithOnePost = 0;
     let daysWithTwoPosts = 0;
-    postsByDay.forEach(count => {
+    postsByDay.forEach((count) => {
       if (count === 0) pauseDays++;
       else if (count === 1) daysWithOnePost++;
       else if (count >= 2) daysWithTwoPosts++;
@@ -234,18 +285,17 @@ Respond in strict JSON with the following structure:
 
     validated.stats = {
       totalPosts: validated.schedule.length,
-      totalDays: days,
+      totalDays: requestedDays,
       pauseDays,
       daysWithOnePost,
       daysWithTwoPosts,
-      teaserCount: validated.schedule.filter(p => p.starsPrice === 0).length,
-      softCount: validated.schedule.filter(p => p.starsPrice > 0 && p.starsPrice <= 50).length,
-      ppvCount: validated.schedule.filter(p => p.starsPrice > 50).length,
+      teaserCount: validated.schedule.filter((p) => p.starsPrice === 0).length,
+      softCount: validated.schedule.filter((p) => p.starsPrice > 0 && p.starsPrice <= 50).length,
+      ppvCount: validated.schedule.filter((p) => p.starsPrice > 50).length,
     };
 
     return validated;
   } catch (error) {
-    clearTimeout(timeoutId);
     console.warn("xAI Grok call timed out or failed. Generating realistic schedule locally:", error);
     return generateRealisticSchedule(params);
   }

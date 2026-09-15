@@ -86,6 +86,13 @@ export function GrokSchedulerModal({
       try {
         data = JSON.parse(rawText);
       } catch {
+        if (res.status === 520 || res.status === 504 || res.status === 524) {
+          throw new Error(
+            language === "de"
+              ? `Gateway/Proxy Timeout (${res.status}). Die Anfrage hat das Zeitlimit überschritten. Bitte erneut versuchen.`
+              : `Gateway/Proxy Timeout (${res.status}). The request timed out. Please try again.`
+          );
+        }
         throw new Error(
           language === "de"
             ? `Server-Antwort war kein gültiges JSON (${res.status}). Bitte erneut versuchen.`
