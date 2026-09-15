@@ -67,15 +67,20 @@ export async function POST(req: Request) {
         let durationFormatted: string | null = null;
 
         if (type === "VIDEO") {
-          const durInfo = await getAssetVideoDuration({
-            type: "VIDEO",
-            notes: dbAsset.notes,
-            fileUrl: dbAsset.fileUrl,
-          });
-          if (durInfo) {
-            duration = durInfo.seconds;
-            durationFormatted = durInfo.formatted;
-          }
+          try {
+            const durInfo = await Promise.race([
+              getAssetVideoDuration({
+                type: "VIDEO",
+                notes: dbAsset.notes,
+                fileUrl: dbAsset.fileUrl,
+              }),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 300)),
+            ]);
+            if (durInfo) {
+              duration = durInfo.seconds;
+              durationFormatted = durInfo.formatted;
+            }
+          } catch {}
         }
 
         return {

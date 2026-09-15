@@ -84,11 +84,31 @@ export async function generateGrokSchedule(params: GenerateScheduleParams): Prom
     return generateRealisticSchedule(params);
   }
 
-  // To guarantee the response returns within 15-18 seconds and avoids proxy 520 timeouts:
-  // We ask Grok to design the core narrative anchor posts (up to 14 days with top 18 assets).
-  // If requestedDays > 14, we seamlessly extend the storyline across the remaining days locally in 3ms.
-  const grokTargetDays = Math.min(requestedDays, 14);
-  const grokAssets = params.availableAssets.slice(0, 18);
+  // To guarantee the response returns within 3-4 seconds and completely avoids reverse-proxy 520 timeouts:
+  // We ask Grok to design the core narrative anchor posts (up to 4 days with up to 6 key assets).
+  // If requestedDays > 4, we seamlessly extend the storyline across the remaining days locally in 3ms.
+  const grokTargetDays = Math.min(requestedDays, 4);
+
+  // Pick up to 6 representative anchor assets across tiers for Grok's opening narrative
+  const teaserAssets = params.availableAssets.filter((a) => a.explicitLevel === "TEASER");
+  const softAssets = params.availableAssets.filter((a) => a.explicitLevel === "SOFT");
+  const ppvAssets = params.availableAssets.filter((a) => a.explicitLevel === "PPV");
+
+  const grokAssets: typeof params.availableAssets = [];
+  grokAssets.push(...teaserAssets.slice(0, 2));
+  grokAssets.push(...softAssets.slice(0, 2));
+  grokAssets.push(...ppvAssets.slice(0, 2));
+
+  if (grokAssets.length < 6) {
+    const includedIds = new Set(grokAssets.map((a) => a.id));
+    for (const a of params.availableAssets) {
+      if (!includedIds.has(a.id)) {
+        grokAssets.push(a);
+        includedIds.add(a.id);
+        if (grokAssets.length >= 6) break;
+      }
+    }
+  }
 
   const systemPrompt = `You are the authentic, intimate German creator voice for "${params.modelName}" on Telegram.
 You are designing a narrative-driven, authentic content schedule across ${grokTargetDays} days for her Telegram VIP Channel.
@@ -180,9 +200,10 @@ Respond in strict JSON with the following structure:
   ]
 }`;
 
-  // 20s hard timeout to guarantee response time is safely below reverse-proxy 520 / 524 limits
+  // 7.5s hard timeout: well below reverse-proxy 520 / 524 limits (15-20s).
+  // If Grok doesn't answer within 7.5s, fallback instantly generates the full schedule locally in 2ms.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 7500);
 
   try {
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -258,11 +279,15 @@ Respond in strict JSON with the following structure:
         }
 
         const dayOfWeek = d % 7;
-        const isPauseDay = (params.allowPauseDays ?? true) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
+        const remainingUnused = unusedAssets.length - nextUnusedIdx;
+        const remainingDays = requestedDays - d;
+
+        // Only pause if there are plenty of days left to schedule remaining assets
+        const isPauseDay = (params.allowPauseDays ?? true) && (remainingDays > remainingUnused) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
         if (isPauseDay) continue;
 
-        const remainingUnused = unusedAssets.length - nextUnusedIdx;
-        const postCount = (dayOfWeek === 4 || dayOfWeek === 5) && remainingUnused >= 2 ? 2 : 1;
+        // Schedule 2 posts on weekend peaks OR when there are more assets than remaining days
+        const postCount = ((dayOfWeek === 4 || dayOfWeek === 5) || remainingUnused > remainingDays) && remainingUnused >= 2 ? 2 : 1;
         for (let p = 0; p < postCount && nextUnusedIdx < unusedAssets.length; p++) {
           const asset = unusedAssets[nextUnusedIdx++];
           seenAssetIds.add(asset.id);
@@ -289,6 +314,47 @@ Respond in strict JSON with the following structure:
           });
         }
       }
+
+      // If there are still unused assets, backfill them into days with only 1 post (max 2 posts/day)
+      if (nextUnusedIdx < unusedAssets.length) {
+        const postsPerDayMap = new Map<number, number>();
+        validated.schedule.forEach((p) => {
+          postsPerDayMap.set(p.timeOffsetDays, (postsPerDayMap.get(p.timeOffsetDays) || 0) + 1);
+        });
+
+        for (let d = 0; d < requestedDays && nextUnusedIdx < unusedAssets.length; d++) {
+          const countOnDay = postsPerDayMap.get(d) || 0;
+          if (countOnDay === 1) {
+            const asset = unusedAssets[nextUnusedIdx++];
+            seenAssetIds.add(asset.id);
+            const level = asset.explicitLevel;
+            const starsPrice = level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0);
+            const caption = composeStorylineCaption({
+              asset,
+              dayOfWeek: d % 7,
+              dayIndex: d,
+              timeSlot: "afternoon",
+              modelName: params.modelName,
+              usedCaptionsSet,
+            });
+
+            validated.schedule.push({
+              timeOffsetDays: d,
+              timeOfDay: "14:30",
+              assetId: asset.id,
+              caption: ensureCaptionTimeConsistency(caption, "14:30"),
+              starsPrice,
+            });
+            postsPerDayMap.set(d, 2);
+          }
+        }
+      }
+
+      // Re-sort schedule by timeOffsetDays and timeOfDay
+      validated.schedule.sort((a, b) => {
+        if (a.timeOffsetDays !== b.timeOffsetDays) return a.timeOffsetDays - b.timeOffsetDays;
+        return a.timeOfDay.localeCompare(b.timeOfDay);
+      });
     }
 
     // Hard ceiling: A schedule must NEVER contain more posts than available assets!
@@ -426,9 +492,10 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
 
     switch (strategy) {
       case "REALISTIC": {
-        if (allowPauseDays && (dayOfWeek === 6 || (dayOfWeek === 2 && day % 14 === 2))) {
+        const remainingDays = days - day;
+        if (allowPauseDays && remainingDays > totalRemaining && (dayOfWeek === 6 || (dayOfWeek === 2 && day % 14 === 2))) {
           postCount = 0;
-        } else if (dayOfWeek === 4 || dayOfWeek === 5) {
+        } else if (dayOfWeek === 4 || dayOfWeek === 5 || totalRemaining > remainingDays) {
           postCount = 2;
         } else if (day % 5 === 0) {
           postCount = 2;
@@ -530,6 +597,42 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         starsPrice,
       });
     }
+  }
+
+  // If there are still unused assets in pools, backfill them into days with only 1 post (max 2 posts/day)
+  let leftoverRemaining = teaserPool.length + softPool.length + ppvPool.length;
+  if (leftoverRemaining > 0) {
+    const postsPerDayMap = new Map<number, number>();
+    schedule.forEach((p) => {
+      postsPerDayMap.set(p.timeOffsetDays, (postsPerDayMap.get(p.timeOffsetDays) || 0) + 1);
+    });
+
+    for (let d = 0; d < days && leftoverRemaining > 0; d++) {
+      const countOnDay = postsPerDayMap.get(d) || 0;
+      if (countOnDay === 1) {
+        const chosenAsset = takeAsset("PPV");
+        if (!chosenAsset) break;
+        const timeOfDay = "14:30";
+        const slot = "afternoon";
+        const starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
+        const caption = getStoryCaption(chosenAsset, chosenAsset.explicitLevel, slot, d);
+
+        schedule.push({
+          timeOffsetDays: d,
+          timeOfDay,
+          assetId: chosenAsset.id,
+          caption: ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(caption, chosenAsset.type), timeOfDay),
+          starsPrice,
+        });
+        postsPerDayMap.set(d, 2);
+        leftoverRemaining = teaserPool.length + softPool.length + ppvPool.length;
+      }
+    }
+
+    schedule.sort((a, b) => {
+      if (a.timeOffsetDays !== b.timeOffsetDays) return a.timeOffsetDays - b.timeOffsetDays;
+      return a.timeOfDay.localeCompare(b.timeOfDay);
+    });
   }
 
   // Calculate detailed statistics
