@@ -130,8 +130,12 @@ export async function findDuplicateAsset(modelId: string, hash: string) {
   const match = await prisma.asset.findFirst({
     where: {
       modelId,
-      notes: { contains: `[HASH:${hash}]` },
+      OR: [
+        { tags: { has: `hash_${hash}` } },
+        { notes: { contains: `[HASH:${hash}]` } },
+      ],
     },
+    select: { id: true, fileUrl: true },
   });
 
   return match;

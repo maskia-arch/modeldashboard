@@ -188,31 +188,56 @@ export function SourceChannelModal({
             : `📥 Stapel #${batchIndex}: Lade Medien (${totalImported}/${syncLimit} geladen, ${totalSkipped} übersprungen)...`
         );
 
-        const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            limit: syncLimit === 0 ? 0 : remainingLimit,
-            offsetId: currentOffset,
-            classifyWithGrok,
-          }),
-        });
+        let data: any = null;
+        let lastError: Error | null = null;
 
-        const rawText = await res.text();
-        let data: any;
-        try {
-          data = JSON.parse(rawText);
-        } catch {
-          if (res.status === 504 || rawText.includes("Gateway Timeout")) {
-            throw new Error(
-              "Server-Gateway-Timeout (504): Die Verbindung zu Telegram brauchte zu lange. Bitte erneut versuchen."
-            );
+        // Auto-retry up to 2 times for transient network/proxy (520/504) blips
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                limit: syncLimit === 0 ? 0 : remainingLimit,
+                offsetId: currentOffset,
+                classifyWithGrok,
+              }),
+            });
+
+            const rawText = await res.text();
+            try {
+              data = JSON.parse(rawText);
+            } catch {
+              if (res.status === 520 || rawText.includes("520") || rawText.includes("Web server is returning an unknown error")) {
+                throw new Error(
+                  "Cloudflare-Verbindungsfehler (520): Die Verbindung zum Backend wurde kurzzeitig unterbrochen."
+                );
+              }
+              if (res.status === 504 || rawText.includes("504") || rawText.includes("Gateway Timeout")) {
+                throw new Error(
+                  "Server-Gateway-Timeout (504): Die Telegram-Abfrage brauchte zu lange."
+                );
+              }
+              throw new Error(`Serverfehler (${res.status}): Ungültige Serverantwort.`);
+            }
+
+            if (!res.ok || !data.success) {
+              throw new Error(data.error || data.message || "Synchronisierung fehlgeschlagen");
+            }
+
+            lastError = null;
+            break; // Success!
+          } catch (err: any) {
+            lastError = err;
+            if (attempt < 3) {
+              setSyncProgress(`⚠️ Kurze Pause vor erneutem Versuch (Versuch ${attempt + 1}/3)...`);
+              await new Promise((r) => setTimeout(r, 1500));
+            }
           }
-          throw new Error(`Ungültige Serverantwort (${res.status}): ${rawText.slice(0, 100)}`);
         }
 
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || data.message || "Synchronisierung fehlgeschlagen");
+        if (lastError || !data) {
+          throw lastError || new Error("Synchronisierung fehlgeschlagen.");
         }
 
         totalImported += data.importedCount || 0;
@@ -229,8 +254,8 @@ export function SourceChannelModal({
 
         currentOffset = data.nextOffsetId;
         batchIndex++;
-        // Short pause between batches to be gentle on Telegram MTProto
-        await new Promise((r) => setTimeout(r, 400));
+        // Gentle pause between batches to protect Telegram MTProto connection
+        await new Promise((r) => setTimeout(r, 800));
       }
 
       let summary = "";

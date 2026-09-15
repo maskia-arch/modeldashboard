@@ -62,8 +62,26 @@ export async function GET(
       }
     );
 
+    // Sanitize heavy base64 strings from notes to prevent bloated JSON payloads (>50MB) and browser/proxy crashes
+    const sanitizedAssets = (model.assets || []).map((a) => ({
+      ...a,
+      notes: a.notes ? a.notes.replace(/\s*\|\s*\[BACKUP_DATA:[^\]]+\]/g, "").trim() : a.notes,
+    }));
+
+    const sanitizedPosts = (model.posts || []).map((p) => ({
+      ...p,
+      asset: p.asset
+        ? {
+            ...p.asset,
+            notes: p.asset.notes ? p.asset.notes.replace(/\s*\|\s*\[BACKUP_DATA:[^\]]+\]/g, "").trim() : p.asset.notes,
+          }
+        : p.asset,
+    }));
+
     return NextResponse.json({
       ...model,
+      assets: sanitizedAssets,
+      posts: sanitizedPosts,
       financials,
     });
   } catch (error: any) {
