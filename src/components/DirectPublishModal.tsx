@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useLanguage } from "@/context/LanguageContext";
 import { getMediaDisplayUrl } from "@/lib/utils";
+import { getFormatAwareDefaultCaption, sanitizeCaptionForMediaType } from "@/lib/captions";
 
 interface DirectPublishModalProps {
   open: boolean;
@@ -60,7 +61,8 @@ export function DirectPublishModal({
     if (open) {
       setError(null);
       if (post) {
-        setCaption(post.caption || "");
+        const postMediaType = post.asset?.type || (isVideo ? "VIDEO" : "PHOTO");
+        setCaption(sanitizeCaptionForMediaType(post.caption || "", postMediaType));
         setStarsPrice(post.starsPrice || 0);
       } else if (asset) {
         // Check if notes contains suggested caption
@@ -73,9 +75,9 @@ export function DirectPublishModal({
         }
 
         if (!initialCaption) {
-          initialCaption = asset.explicitLevel === "PPV"
-            ? `Exklusiver VIP Content für euch 🔥 ${asset.theme ? `[${asset.theme}] ` : ""}Schaltet das Video unten frei mit Telegram Stars! 🌟`
-            : `Guten Morgen meine Lieben! 💕 Kleiner Gruß für euren Start in den Tag. Lasst mir gerne ein Like da ✨`;
+          initialCaption = getFormatAwareDefaultCaption(asset.type, asset.explicitLevel, asset.theme);
+        } else {
+          initialCaption = sanitizeCaptionForMediaType(initialCaption, asset.type);
         }
 
         setCaption(initialCaption);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus } from "@prisma/client";
+import { sanitizeCaptionForMediaType } from "@/lib/captions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,8 @@ export async function PATCH(
         return NextResponse.json({ error: "Post not found" }, { status: 404 });
       }
 
-      const effectiveCaption = caption !== undefined ? caption : fullPost.caption;
+      const rawCaption = caption !== undefined ? caption : fullPost.caption;
+      const effectiveCaption = sanitizeCaptionForMediaType(rawCaption, fullPost.asset?.type);
       const effectivePrice = starsPrice !== undefined ? Math.max(0, parseInt(starsPrice, 10) || 0) : fullPost.starsPrice;
 
       const { publishToTelegram } = await import("@/lib/telegram-bot");
@@ -114,7 +116,9 @@ export async function PATCH(
       }
     }
 
-    if (caption !== undefined) updateData.caption = caption;
+    if (caption !== undefined) {
+      updateData.caption = sanitizeCaptionForMediaType(caption, existingPost.asset?.type);
+    }
     if (starsPrice !== undefined) updateData.starsPrice = parseInt(starsPrice, 10) || 0;
     if (scheduledFor !== undefined) {
       const newDate = new Date(scheduledFor);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus } from "@prisma/client";
+import { sanitizeCaptionForMediaType } from "@/lib/captions";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,26 @@ export async function GET(req: Request) {
       ],
     });
 
+    // Self-healing: Ensure any scheduled/pending post caption strictly matches its asset format
+    const healPromises: Promise<any>[] = [];
+    for (const post of posts) {
+      if (post.status !== PostStatus.PUBLISHED && post.asset && post.caption) {
+        const sanitized = sanitizeCaptionForMediaType(post.caption, post.asset.type);
+        if (sanitized !== post.caption) {
+          post.caption = sanitized;
+          healPromises.push(
+            prisma.post.update({
+              where: { id: post.id },
+              data: { caption: sanitized },
+            }).catch((err) => console.warn(`Self-heal post ${post.id} error:`, err))
+          );
+        }
+      }
+    }
+    if (healPromises.length > 0) {
+      await Promise.all(healPromises);
+    }
+
     return NextResponse.json(posts);
   } catch (error: any) {
     console.error("Error fetching schedule posts:", error);
@@ -86,11 +107,19 @@ export async function POST(req: Request) {
     const now = new Date();
     const initialStatus = targetDate <= now ? PostStatus.PENDING : PostStatus.SCHEDULED;
 
+    let finalCaption = caption;
+    if (assetId) {
+      const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+      if (asset) {
+        finalCaption = sanitizeCaptionForMediaType(caption, asset.type);
+      }
+    }
+
     const post = await prisma.post.create({
       data: {
         modelId,
         assetId: assetId || null,
-        caption,
+        caption: finalCaption,
         starsPrice: parseInt(starsPrice, 10) || 0,
         scheduledFor: targetDate,
         status: initialStatus,

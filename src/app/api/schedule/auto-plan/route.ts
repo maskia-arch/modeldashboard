@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { PostStatus, ExplicitLevel } from "@prisma/client";
 import { getGermanDateParts, createGermanDate } from "@/lib/timezone";
+import { sanitizeCaptionForMediaType } from "@/lib/captions";
 
 export const dynamic = "force-dynamic";
 
@@ -197,12 +198,16 @@ export async function POST(req: Request) {
           const assetTheme = asset.theme || "VIP Exclusive";
           const assetTitle = asset.title || "Neuer exklusiver Drop";
 
+          const isVideo = asset.type === "VIDEO";
           if (asset.explicitLevel === ExplicitLevel.PPV) {
             starsPrice = 50;
-            caption = `🔥 **Privater VIP-Content freigeschaltet** 🔥\n\n${asset.notes || `${assetTheme} – Streng limitiert nur für euch!`}\n\n👇 Jetzt mit Telegram Stars entsperren:`;
+            const itemLabel = isVideo ? "VIP-Clip" : "VIP-Foto";
+            const unlockWord = isVideo ? "das Video" : "das Foto";
+            caption = `🔥 **Privater ${itemLabel} freigeschaltet** 🔥\n\n${asset.notes || `${assetTheme} – Streng limitiert nur für euch!`}\n\n👇 Jetzt ${unlockWord} mit Telegram Stars entsperren:`;
           } else if (asset.explicitLevel === ExplicitLevel.SOFT) {
             starsPrice = 15;
-            caption = `✨ *${assetTitle}* ✨\n\n${asset.notes || `Ein kleiner Vorgeschmack aus dem heutigen Shooting zum Thema ${assetTheme}. Wie gefällt es euch? Hinterlasst ein Like ❤️`}`;
+            const formatWord = isVideo ? "dem heutigen Video-Set" : "dem heutigen Foto-Shooting";
+            caption = `✨ *${assetTitle}* ✨\n\n${asset.notes || `Ein kleiner Vorgeschmack aus ${formatWord} zum Thema ${assetTheme}. Wie gefällt es euch? Hinterlasst ein Like ❤️`}`;
           } else {
             starsPrice = 0;
             caption = `Hey ihr Lieben! 💕\n\n${asset.notes || `${assetTitle} aus der neuen ${assetTheme}-Reihe. Schreibt mir mal in die Kommentare, was ihr heute macht! 🥰`}`;
@@ -221,6 +226,9 @@ export async function POST(req: Request) {
               starsPrice = parseInt(sMatch[1], 10) || starsPrice;
             }
           }
+
+          // Ensure strict format integrity: photo never mentions video/clip, video never mentions photo
+          caption = sanitizeCaptionForMediaType(caption, asset.type);
 
           await prisma.$transaction([
             prisma.post.create({

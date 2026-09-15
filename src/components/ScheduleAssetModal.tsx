@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/context/LanguageContext";
 
 import { formatGermanDateInput, parseGermanDateTime } from "@/lib/timezone";
+import { getFormatAwareDefaultCaption, sanitizeCaptionForMediaType } from "@/lib/captions";
 
 interface ScheduleAssetModalProps {
   open: boolean;
@@ -54,9 +55,9 @@ export function ScheduleAssetModal({
       }
 
       if (!initialCaption) {
-        initialCaption = asset.explicitLevel === "PPV"
-          ? `Exklusiver VIP Content für euch 🔥 ${asset.theme ? `[${asset.theme}] ` : ""}Schaltet das Video unten frei mit Telegram Stars! 🌟`
-          : `Guten Morgen meine Lieben! 💕 Kleiner Gruß für euren Start in den Tag. Lasst mir gerne ein Like da ✨`;
+        initialCaption = getFormatAwareDefaultCaption(asset.type, asset.explicitLevel, asset.theme);
+      } else {
+        initialCaption = sanitizeCaptionForMediaType(initialCaption, asset.type);
       }
 
       setCaption(initialCaption);

@@ -1,4 +1,13 @@
 import { z } from "zod";
+import {
+  PHOTO_TEASER_CAPTIONS,
+  PHOTO_SOFT_CAPTIONS,
+  PHOTO_PPV_CAPTIONS,
+  VIDEO_TEASER_CAPTIONS,
+  VIDEO_SOFT_CAPTIONS,
+  VIDEO_PPV_CAPTIONS,
+  sanitizeCaptionForMediaType,
+} from "./captions";
 
 export const ScheduleItemSchema = z.object({
   timeOffsetDays: z.number().int().min(0).max(120), // Support up to 4 months (120 days)
@@ -84,7 +93,10 @@ Rules:
 3. For PPV (Pay-Per-View) assets: starsPrice must be between 50 and 450 stars depending on allure.
 4. Schedule posts at high-engagement hours (e.g., 09:30, 12:45, 18:30, 21:15, 23:00).
 5. Captions must sound completely natural, seductive, and enticing with emojis, written in German.
-6. Return STRICT valid JSON matching the schema provided. Do not include markdown wraps or extra commentary.`;
+6. Return STRICT valid JSON matching the schema provided. Do not include markdown wraps or extra commentary.
+7. CRITICAL MEDIA FORMAT INTEGRITY:
+   - For 'PHOTO' assets: NEVER use words like "Video", "Clip", "Film", "gefilmt", etc. You must use authentic photo words like "Foto", "Bild", "Schnappschuss", "Shooting", "Aufnahme", "Spiegelselfie".
+   - For 'VIDEO' assets: Refer to it accurately as "Video", "Clip", "Aufnahme". Do NOT call it a photo or snapshot.`;
 
   const userPrompt = `Assets available for scheduling:
 ${JSON.stringify(params.availableAssets.slice(0, 50), null, 2)}
@@ -146,6 +158,17 @@ Respond in strict JSON with the following structure:
 
     const parsedJson = JSON.parse(rawContent);
     const validated = GrokScheduleResponseSchema.parse(parsedJson);
+
+    // Format integrity: Sanitize all captions against actual asset media types
+    const assetMap = new Map(params.availableAssets.map((a) => [a.id, a]));
+    validated.schedule = validated.schedule.map((item) => {
+      const asset = assetMap.get(item.assetId);
+      const mediaType = asset ? asset.type : "PHOTO";
+      return {
+        ...item,
+        caption: sanitizeCaptionForMediaType(item.caption, mediaType),
+      };
+    });
 
     // Calculate stats for the validated schedule
     const days = params.targetDays || 30;
@@ -223,44 +246,31 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
   const softAssets = assets.filter((a) => a.explicitLevel === "SOFT");
   const ppvAssets = assets.filter((a) => a.explicitLevel === "PPV");
 
-  // Diverse authentic German creator caption banks
-  const teaserCaptions = [
-    "Guten Morgen meine Lieben! 💕 Kleiner Schnappschuss für euren Start in den Tag. Was habt ihr heute Schönes vor?",
-    "Kurzer Gruß aus dem Bett ☕ Hoffe eure Woche läuft gut! Lasst mir gerne ein Like da ✨",
-    "Shooting-Tag heute 📸 Welches Outfit gefällt euch besser? Freue mich riesig auf euer Feedback in den Kommentaren!",
-    "Endlich Wochenende! Habt ihr schon Pläne? Ich mach's mir heute gemütlich... 💋",
-    "Spontanes Spiegelselfie vor dem Ausgehen ✨ Wie findet ihr den Look?",
-    "Frisch geduscht und bereit für den Tag 🌸 Schicke euch ganz viel Liebe und positive Energie!",
-    "Ein kleiner Vorgeschmack auf das, was diese Woche noch kommt... Seid ihr bereit? 😉🔥",
-    "Einfach mal die Seele baumeln lassen ☀️ Wünsche euch allen einen entspannten Tag!",
-    "Wer von euch ist heute auch noch so müde wie ich? Kuscheln wäre jetzt perfekt... 🧸💕",
-    "Ein kleiner Schnappschuss zwischendurch nur für euch 😘 Wie verbringt ihr euren Feierabend?"
-  ];
-
-  const softCaptions = [
-    "Ein kleiner Teaser von meinem heutigen VIP-Shooting ✨ Gefällt es euch? Hinterlasst ein Herz oder schaltet das volle Set frei! 💕",
-    "Hinter den Kulissen... 🤫 Manchmal geht es bei mir heißer her als gedacht. Mehr dazu unten!",
-    "Nur für meine treuen Abonnenten hier ein kleiner exklusiver Einblick 🔥 Wie gefällt euch diese Pose?",
-    "Wollte euch diesen Clip nicht vorenthalten 🙈 Reagiert mit 🔥 wenn ihr mehr davon sehen wollt!",
-    "Ein Hauch von Luxus für eure Timeline ✨ Schönen Feierabend euch allen!",
-    "Preview auf mein neues Set... Das Beste seht ihr natürlich im VIP-Bereich 💋",
-    "Kleine Aufmerksamkeit für euch 🌸 Ich hoffe ihr hattet einen wundervollen Tag!",
-  ];
-
-  const ppvCaptions = [
-    "Exklusiver VIP Content für euch 🔥 [THEME] Schaltet das Video unten frei mit Telegram Stars! 🌟",
-    "Das bisher heißeste Set aus meiner Privatsammlung... 🤫 Komplett unzensiert und nur für euch! Jetzt freischalten 🔓✨",
-    "Habe mich getraut und etwas ganz Besonderes aufgenommen 🙈 Streng geheimer Clip – exklusiv hier im VIP-Channel! 🌟",
-    "Mein persönliches Lieblingsvideo des Monats 🔥 Klickt unten auf den Stern um den vollen Clip sofort freizuschalten!",
-    "Für alle, die das Besondere suchen 💎 Volle Länge, beste Auflösung. Gönnt euch den exklusiven Einblick 🌟",
-    "Late Night Special 🌙 Dieser Clip bleibt nur für begrenzte Zeit verfügbar. Schaltet ihn frei, bevor er im Archiv landet!",
-    "Unwiderstehlich & intensiv... 💋 Holt euch diesen brandneuen Clip direkt in euren Telegram Chat!"
-  ];
 
   let assetIndex = 0;
   let teaserIdx = 0;
   let softIdx = 0;
   let ppvIdx = 0;
+
+  const getFormatCaption = (
+    asset: typeof assets[0],
+    level: "TEASER" | "SOFT" | "PPV"
+  ): string => {
+    const isVideo = asset.type === "VIDEO";
+    let raw = "";
+    if (level === "TEASER") {
+      const bank = isVideo ? VIDEO_TEASER_CAPTIONS : PHOTO_TEASER_CAPTIONS;
+      raw = bank[(teaserIdx++) % bank.length];
+    } else if (level === "SOFT") {
+      const bank = isVideo ? VIDEO_SOFT_CAPTIONS : PHOTO_SOFT_CAPTIONS;
+      raw = bank[(softIdx++) % bank.length];
+    } else {
+      const bank = isVideo ? VIDEO_PPV_CAPTIONS : PHOTO_PPV_CAPTIONS;
+      const themeTag = asset.theme ? `[${asset.theme}] ` : "";
+      raw = bank[(ppvIdx++) % bank.length].replace("[THEME]", themeTag);
+    }
+    return sanitizeCaptionForMediaType(raw, asset.type);
+  };
 
   for (let day = 0; day < days; day++) {
     // Determine post count for this day based on strategy
@@ -289,7 +299,7 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         if (allowPauseDays && day % 10 === 6) {
           postCount = 0;
         } else {
-          // Dynamic rhythm: [1, 2, 1, 1, 2, 2, 1]
+          // Dynamic rhythm: [1, 2, 1, 2, 2, 2, 1]
           postCount = [1, 2, 1, 2, 2, 2, 1][dayOfWeek];
         }
         break;
@@ -343,7 +353,7 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
             ? teaserAssets[assetIndex % teaserAssets.length]
             : assets[assetIndex % assets.length];
           starsPrice = 0;
-          caption = teaserCaptions[teaserIdx++ % teaserCaptions.length];
+          caption = getFormatCaption(chosenAsset, "TEASER");
         } else {
           timeOfDay = (dayOfWeek === 4 || dayOfWeek === 5)
             ? lateNightTimes[(day + p) % lateNightTimes.length]
@@ -352,16 +362,15 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
           if (ppvAssets.length > 0) {
             chosenAsset = ppvAssets[assetIndex % ppvAssets.length];
             starsPrice = 100 + ((day * 35) % 250); // 100 to 350 Stars
-            const themeTag = chosenAsset.theme ? `[${chosenAsset.theme}] ` : "";
-            caption = ppvCaptions[ppvIdx++ % ppvCaptions.length].replace("[THEME]", themeTag);
+            caption = getFormatCaption(chosenAsset, "PPV");
           } else if (softAssets.length > 0) {
             chosenAsset = softAssets[assetIndex % softAssets.length];
             starsPrice = 50;
-            caption = softCaptions[softIdx++ % softCaptions.length];
+            caption = getFormatCaption(chosenAsset, "SOFT");
           } else {
             chosenAsset = assets[assetIndex % assets.length];
             starsPrice = 100;
-            caption = ppvCaptions[ppvIdx++ % ppvCaptions.length].replace("[THEME]", "");
+            caption = getFormatCaption(chosenAsset, "PPV");
           }
         }
       } else {
@@ -377,20 +386,19 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
             ? teaserAssets[assetIndex % teaserAssets.length]
             : assets[assetIndex % assets.length];
           starsPrice = 0;
-          caption = teaserCaptions[teaserIdx++ % teaserCaptions.length];
+          caption = getFormatCaption(chosenAsset, "TEASER");
         } else if (roll < 7 && softAssets.length > 0) {
           // Soft
           chosenAsset = softAssets[assetIndex % softAssets.length];
           starsPrice = (day % 3 === 0) ? 25 : 0;
-          caption = softCaptions[softIdx++ % softCaptions.length];
+          caption = getFormatCaption(chosenAsset, "SOFT");
         } else {
           // PPV
           chosenAsset = (ppvAssets.length > 0)
             ? ppvAssets[assetIndex % ppvAssets.length]
             : (softAssets.length > 0 ? softAssets[assetIndex % softAssets.length] : assets[assetIndex % assets.length]);
           starsPrice = 120 + ((day * 20) % 230); // 120 to 350 Stars
-          const themeTag = chosenAsset.theme ? `[${chosenAsset.theme}] ` : "";
-          caption = ppvCaptions[ppvIdx++ % ppvCaptions.length].replace("[THEME]", themeTag);
+          caption = getFormatCaption(chosenAsset, "PPV");
         }
       }
 
@@ -400,7 +408,7 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         timeOffsetDays: day,
         timeOfDay,
         assetId: chosenAsset.id,
-        caption,
+        caption: sanitizeCaptionForMediaType(caption, chosenAsset.type),
         starsPrice,
       });
     }
