@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Radio, Download, RefreshCw, CheckCircle2, AlertCircle, Trash2, ExternalLink, Sparkles } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -50,13 +50,101 @@ export function SourceChannelModal({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncProgress, setSyncProgress] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startPolling = () => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/models/${modelSlug}/source/sync`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const state = data?.state;
+        if (!state) return;
+
+        if (state.status === "running") {
+          setIsSyncing(true);
+          setSyncProgress(state.progressMessage || "Synchronisiere Medien...");
+        } else if (state.status === "completed") {
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+          setIsSyncing(false);
+          setSyncProgress("");
+
+          let summary = "";
+          if (state.totalImported === 0 && state.totalSkipped > 0) {
+            summary = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${state.totalSkipped} bereits im Dashboard vorhanden).`;
+          } else if (state.totalImported > 0 && state.totalSkipped > 0) {
+            summary = `Erfolg: ${state.totalImported} neue Medien heruntergeladen (${state.totalSkipped} bereits vorhandene übersprungen)!`;
+          } else if (state.totalImported > 0) {
+            summary = `Erfolg: ${state.totalImported} Medien erfolgreich auf die Festplatte gespeichert!`;
+          } else {
+            summary = state.progressMessage || "Keine neuen Medien im Quellkanal gefunden.";
+          }
+
+          setStatusMessage({
+            type: "success",
+            text: summary,
+          });
+
+          setLastSyncedAt(state.completedAt || new Date().toISOString());
+          if (onSyncCompleted) onSyncCompleted();
+        } else if (state.status === "error") {
+          if (pollTimerRef.current) {
+            clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+          }
+          setIsSyncing(false);
+          setSyncProgress("");
+          setStatusMessage({
+            type: "error",
+            text: state.error || state.progressMessage || "Synchronisierung fehlgeschlagen",
+          });
+        }
+      } catch (err: any) {
+        console.warn("[SourceChannelModal] Polling error:", err?.message);
+      }
+    }, 1000);
+  };
+
+  const checkActiveSync = async () => {
+    try {
+      const res = await fetch(`/api/models/${modelSlug}/source/sync`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.state?.status === "running") {
+          setIsSyncing(true);
+          setSyncProgress(data.state.progressMessage || "Synchronisiere Medien...");
+          startPolling();
+        }
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     if (open) {
       loadSourceConfig();
       loadUserbotDialogs();
+      checkActiveSync();
       setStatusMessage(null);
+    } else {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     }
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
   }, [open, modelSlug]);
 
   const loadSourceConfig = async () => {
@@ -170,116 +258,41 @@ export function SourceChannelModal({
     setStatusMessage(null);
     setSyncProgress(
       syncLimit === 0
-        ? "Verbindung zum Quellkanal wird hergestellt (Modus: ALLE)..."
-        : `Verbindung zum Quellkanal wird hergestellt (Ziel: ${syncLimit} Medien)...`
+        ? "Verbindung zum Quellkanal wird aufgebaut (Modus: ALLE)..."
+        : `Verbindung zum Quellkanal wird aufgebaut (Ziel: ${syncLimit} Medien)...`
     );
 
     try {
-      let currentOffset: number | undefined = undefined;
-      let totalImported = 0;
-      let totalSkipped = 0;
-      let remainingLimit = syncLimit;
-      let batchIndex = 1;
-
-      while (true) {
-        setSyncProgress(
-          syncLimit === 0
-            ? `📥 Stapel #${batchIndex}: Synchronisiere ALLE Medien (${totalImported} geladen, ${totalSkipped} übersprungen)...`
-            : `📥 Stapel #${batchIndex}: Lade Medien (${totalImported}/${syncLimit} geladen, ${totalSkipped} übersprungen)...`
-        );
-
-        let data: any = null;
-        let lastError: Error | null = null;
-
-        // Auto-retry up to 2 times for transient network/proxy (520/504) blips
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                limit: syncLimit === 0 ? 0 : Math.max(1, remainingLimit),
-                offsetId: currentOffset,
-                classifyWithGrok,
-              }),
-            });
-
-            const rawText = await res.text();
-            try {
-              data = JSON.parse(rawText);
-            } catch {
-              if (res.status === 520 || rawText.includes("520") || rawText.includes("Web server is returning an unknown error")) {
-                throw new Error(
-                  "Cloudflare-Verbindungsfehler (520): Die Verbindung zum Backend wurde kurzzeitig unterbrochen."
-                );
-              }
-              if (res.status === 504 || rawText.includes("504") || rawText.includes("Gateway Timeout")) {
-                throw new Error(
-                  "Server-Gateway-Timeout (504): Die Telegram-Abfrage brauchte zu lange."
-                );
-              }
-              throw new Error(`Serverfehler (${res.status}): Ungültige Serverantwort.`);
-            }
-
-            if (!res.ok || !data.success) {
-              throw new Error(data.error || data.message || "Synchronisierung fehlgeschlagen");
-            }
-
-            lastError = null;
-            break; // Success!
-          } catch (err: any) {
-            lastError = err;
-            if (attempt < 3) {
-              setSyncProgress(`⚠️ Kurze Pause vor erneutem Versuch (Versuch ${attempt + 1}/3)...`);
-              await new Promise((r) => setTimeout(r, 1500));
-            }
-          }
-        }
-
-        if (lastError || !data) {
-          throw lastError || new Error("Synchronisierung fehlgeschlagen.");
-        }
-
-        totalImported += data.importedCount || 0;
-        totalSkipped += data.skippedCount || 0;
-
-        if (syncLimit > 0) {
-          remainingLimit = Math.max(0, syncLimit - totalImported);
-        }
-
-        // Break if no more messages or target limit reached
-        if (!data.hasMore || !data.nextOffsetId || (syncLimit > 0 && remainingLimit <= 0)) {
-          break;
-        }
-
-        currentOffset = data.nextOffsetId;
-        batchIndex++;
-        // Gentle pause between batches to protect Telegram MTProto connection
-        await new Promise((r) => setTimeout(r, 800));
-      }
-
-      let summary = "";
-      if (totalImported === 0 && totalSkipped > 0) {
-        summary = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${totalSkipped} bereits im Dashboard vorhanden).`;
-      } else if (totalImported > 0 && totalSkipped > 0) {
-        summary = `Erfolg: ${totalImported} neue Medien heruntergeladen (${totalSkipped} bereits vorhandene übersprungen)!`;
-      } else if (totalImported > 0) {
-        summary = `Erfolg: ${totalImported} Medien erfolgreich auf die Festplatte gespeichert!`;
-      } else {
-        summary = "Keine neuen Medien im Quellkanal gefunden.";
-      }
-
-      setStatusMessage({
-        type: "success",
-        text: summary,
+      const res = await fetch(`/api/models/${modelSlug}/source/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          limit: syncLimit,
+          classifyWithGrok,
+        }),
       });
 
-      setLastSyncedAt(new Date().toISOString());
-      if (onSyncCompleted) onSyncCompleted();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Serverfehler (${res.status}): Ungültige Serverantwort.`);
+      }
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Starten der Synchronisierung fehlgeschlagen");
+      }
+
+      if (data.state?.progressMessage) {
+        setSyncProgress(data.state.progressMessage);
+      }
+
+      // Start live progress polling (runs completely decoupled from MTProto download stream)
+      startPolling();
     } catch (err: any) {
-      console.error("[SourceChannelModal] Sync error:", err);
-      setStatusMessage({ type: "error", text: err.message || "Fehler beim Herunterladen" });
-    } finally {
+      console.error("[SourceChannelModal] Sync trigger error:", err);
+      setStatusMessage({ type: "error", text: err.message || "Fehler beim Starten der Synchronisation" });
       setIsSyncing(false);
       setSyncProgress("");
     }

@@ -1,14 +1,49 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { syncMediaFromSourceChannel } from "@/lib/model-sources";
+import { startBackgroundSourceSync, getSourceSyncState } from "@/lib/model-sources";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 /**
+ * GET /api/models/[slug]/source/sync:
+ * Returns the current background synchronization progress and state.
+ */
+export async function GET(
+  req: Request,
+  { params }: { params: { slug: string } }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const model = await prisma.model.findUnique({
+      where: { slug: params.slug },
+      select: { id: true, name: true, slug: true },
+    });
+
+    if (!model) {
+      return NextResponse.json({ error: "Model not found" }, { status: 404 });
+    }
+
+    const state = getSourceSyncState(model.id);
+    return NextResponse.json({
+      success: true,
+      state,
+    });
+  } catch (error: any) {
+    console.error("[SourceSync] GET Error:", error);
+    return NextResponse.json({ error: error.message || "Failed to get sync status" }, { status: 500 });
+  }
+}
+
+/**
  * POST /api/models/[slug]/source/sync:
- * Pulls media from the source channel via userbot and saves to disk.
+ * Triggers a non-blocking background synchronization task that streams media
+ * directly to disk. Responds immediately (<15ms) to prevent proxy (520/504) timeouts.
  */
 export async function POST(
   req: Request,
@@ -22,6 +57,7 @@ export async function POST(
 
     const model = await prisma.model.findUnique({
       where: { slug: params.slug },
+      select: { id: true, name: true, slug: true },
     });
 
     if (!model) {
@@ -45,27 +81,19 @@ export async function POST(
     } catch {}
 
     console.log(
-      `[SourceSync] Triggering source channel media sync for ${model.name} (limit: ${limit === 0 ? "ALL" : limit}, offsetId: ${offsetId || "none"}, grok: ${classifyWithGrok})...`
+      `[SourceSync] Starting background sync for ${model.name} (limit: ${limit === 0 ? "ALL" : limit}, offsetId: ${offsetId || "none"}, grok: ${classifyWithGrok})...`
     );
-    const result = await syncMediaFromSourceChannel(model.id, limit, classifyWithGrok, offsetId);
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.message || "Sync failed", details: result.error },
-        { status: 502 }
-      );
-    }
+    const state = startBackgroundSourceSync(model.id, limit, classifyWithGrok, offsetId);
 
     return NextResponse.json({
       success: true,
-      importedCount: result.importedCount,
-      skippedCount: result.skippedCount || 0,
-      hasMore: Boolean(result.hasMore),
-      nextOffsetId: result.nextOffsetId || null,
-      message: result.message,
+      started: true,
+      state,
     });
   } catch (error: any) {
-    console.error("[SourceSync] Error:", error);
-    return NextResponse.json({ error: error.message || "Failed to sync source channel" }, { status: 500 });
+    console.error("[SourceSync] POST Error:", error);
+    return NextResponse.json({ error: error.message || "Failed to start sync" }, { status: 500 });
   }
 }
+

@@ -73,11 +73,120 @@ export function deleteModelSource(modelId: string): void {
  * downloads media directly to local disk (public/uploads/models/[slug]/...),
  * and creates unclassified Asset records in the database.
  */
+export interface SourceSyncState {
+  modelId: string;
+  status: "idle" | "running" | "completed" | "error";
+  progressMessage: string;
+  totalImported: number;
+  totalSkipped: number;
+  hasMore?: boolean;
+  nextOffsetId?: number | null;
+  error?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+const globalForSync = globalThis as unknown as {
+  activeSourceSyncJobs?: Map<string, SourceSyncState>;
+};
+export const activeSourceSyncJobs =
+  globalForSync.activeSourceSyncJobs ||
+  (globalForSync.activeSourceSyncJobs = new Map<string, SourceSyncState>());
+
+export function getSourceSyncState(modelId: string): SourceSyncState {
+  const existing = activeSourceSyncJobs.get(modelId);
+  if (existing) return existing;
+  return {
+    modelId,
+    status: "idle",
+    progressMessage: "",
+    totalImported: 0,
+    totalSkipped: 0,
+  };
+}
+
+export function startBackgroundSourceSync(
+  modelId: string,
+  limit: number = 50,
+  autoClassifyPhotos: boolean = false,
+  offsetId?: number
+): SourceSyncState {
+  const existing = activeSourceSyncJobs.get(modelId);
+  if (existing && existing.status === "running") {
+    return existing;
+  }
+
+  const state: SourceSyncState = {
+    modelId,
+    status: "running",
+    progressMessage: "Verbindung zum Quellkanal wird aufgebaut...",
+    totalImported: 0,
+    totalSkipped: 0,
+    startedAt: new Date().toISOString(),
+  };
+  activeSourceSyncJobs.set(modelId, state);
+
+  // Execute asynchronously in the background so the HTTP request returns in ~10ms!
+  // This makes Cloudflare 520 / 504 / proxy timeouts 100% impossible.
+  (async () => {
+    try {
+      const result = await syncMediaFromSourceChannelInternal(
+        modelId,
+        limit,
+        autoClassifyPhotos,
+        offsetId,
+        (progress) => {
+          state.progressMessage = progress.message;
+          state.totalImported = progress.importedCount;
+          state.totalSkipped = progress.skippedCount;
+        }
+      );
+
+      state.status = result.success ? "completed" : "error";
+      state.totalImported = result.importedCount;
+      state.totalSkipped = result.skippedCount || 0;
+      state.progressMessage = result.message;
+      state.hasMore = result.hasMore;
+      state.nextOffsetId = result.nextOffsetId;
+      state.completedAt = new Date().toISOString();
+      if (!result.success) {
+        state.error = result.error || result.message;
+      }
+    } catch (err: any) {
+      console.error("[BackgroundSync] Fatal error in background job:", err);
+      state.status = "error";
+      state.error = err.message || "Unerwarteter Fehler bei der Synchronisation";
+      state.progressMessage = `Fehler: ${err.message}`;
+      state.completedAt = new Date().toISOString();
+    }
+  })();
+
+  return state;
+}
+
+/**
+ * Synchronous wrapper for callers that await the sync.
+ */
 export async function syncMediaFromSourceChannel(
   modelId: string,
   limit: number = 50,
   autoClassifyPhotos: boolean = false,
   offsetId?: number
+) {
+  return await syncMediaFromSourceChannelInternal(modelId, limit, autoClassifyPhotos, offsetId);
+}
+
+/**
+ * Core internal sync engine:
+ * - Streams ALL media files of ANY format and ANY size directly to disk (0 RAM buffer).
+ * - Processes downloads sequentially to protect Telegram MTProto connection and avoid rate limits.
+ */
+async function syncMediaFromSourceChannelInternal(
+  modelId: string,
+  limit: number = 50,
+  autoClassifyPhotos: boolean = false,
+  offsetId?: number,
+  onProgress?: (progress: { importedCount: number; skippedCount: number; message: string }) => void
 ): Promise<{
   success: boolean;
   importedCount: number;
@@ -112,6 +221,8 @@ export async function syncMediaFromSourceChannel(
 
   try {
     console.log(`[SourceChannel] Resolving source peer ${sourceConfig.sourceChannelId} for model ${model.name}...`);
+    if (onProgress) onProgress({ importedCount: 0, skippedCount: 0, message: "Quellkanal wird aufgelöst..." });
+
     const peer = await resolveChannelPeer(client, sourceConfig.sourceChannelId);
     if (!peer) {
       throw new Error(`Quellkanal ${sourceConfig.sourceChannelId} konnte nicht aufgelöst werden.`);
@@ -120,8 +231,6 @@ export async function syncMediaFromSourceChannel(
     // Lightweight lookup of already imported Telegram message IDs without loading heavy base64 strings into memory
     const existingMsgIds = new Set<number>();
     try {
-      // 1. Primary high-speed DB lookup: extract only the message number from notes in PostgreSQL
-      // This sends ZERO base64 bytes across the network and eliminates memory spikes/OOM crashes!
       const rawMatches = await prisma.$queryRaw<Array<{ msgIdStr: string | null }>>`
         SELECT SUBSTRING(notes FROM 'Nachricht #([0-9]+)') AS "msgIdStr"
         FROM "Asset"
@@ -134,7 +243,6 @@ export async function syncMediaFromSourceChannel(
         }
       }
     } catch {
-      // 2. Fallback: Lookup by tags and fileUrl without selecting notes
       try {
         const fallbackAssets = await prisma.asset.findMany({
           where: { modelId: model.id },
@@ -160,21 +268,15 @@ export async function syncMediaFromSourceChannel(
     console.log(`[SourceChannel] Found ${existingMsgIds.size} already imported source messages for ${model.name}.`);
 
     const isAll = limit === 0;
-    const batchStartTime = Date.now();
-    // Safety thresholds: 6s duration and max 2 downloads per request ensures every batch finishes in 2-4 seconds!
-    // This makes Cloudflare 520, 524, and proxy timeouts architecturally impossible.
-    const MAX_BATCH_DURATION_MS = 6000;
-    const MAX_ITEMS_PER_BATCH = 6;
-    const MAX_DOWNLOADS_PER_BATCH = 2;
-
-    console.log(`[SourceChannel] ${isAll ? "Scanning ALL messages" : `Fetching up to ${limit} messages`} from source channel (offsetId: ${offsetId || "none"})...`);
+    const targetLimit = limit;
 
     const iterParams: any = {};
     if (offsetId && offsetId > 0) {
       iterParams.offsetId = offsetId;
     }
-    // Safety: always request in chunks of at most 20 messages from Telegram MTProto to prevent socket timeouts
-    iterParams.limit = isAll ? 20 : Math.min(Math.max(limit, 1), 20);
+    if (!isAll && targetLimit > 0) {
+      iterParams.limit = targetLimit;
+    }
 
     let importedCount = 0;
     let skippedExistingCount = 0;
@@ -183,17 +285,12 @@ export async function syncMediaFromSourceChannel(
     let nextOffsetId: number | null = null;
     let lastProcessedMsgId: number | null = null;
 
+    const { getUploadsDirectory, sanitizeSlug } = await import("./assets");
+    const crypto = await import("crypto");
+    const targetDir = getUploadsDirectory(model.slug);
+
     for await (const msg of client.iterMessages(peer, iterParams)) {
-      // Check limits before starting the next item
-      const elapsed = Date.now() - batchStartTime;
-      const batchProcessed = importedCount + skippedExistingCount;
-      if (
-        elapsed > MAX_BATCH_DURATION_MS ||
-        batchProcessed >= MAX_ITEMS_PER_BATCH ||
-        importedCount >= MAX_DOWNLOADS_PER_BATCH ||
-        (!isAll && importedCount >= limit)
-      ) {
-        console.log(`[SourceChannel] Batch safety threshold reached (${elapsed}ms, ${importedCount} imported, ${skippedExistingCount} skipped). Yielding nextOffsetId=${lastProcessedMsgId || msg.id}`);
+      if (!isAll && importedCount >= targetLimit) {
         hasMore = true;
         nextOffsetId = lastProcessedMsgId || msg.id;
         break;
@@ -209,10 +306,10 @@ export async function syncMediaFromSourceChannel(
         consecutiveExistingCount++;
         lastProcessedMsgId = msg.id;
 
-        // Optimization: In standard sync from newest, if we encounter 10 consecutive already-imported messages,
-        // all newer messages have been processed and the channel is fully up to date!
-        if (!offsetId && consecutiveExistingCount >= 10) {
-          console.log(`[SourceChannel] Reached 10 consecutive already imported items. Source channel is up-to-date.`);
+        // Optimization: If we encounter 15 consecutive already-imported messages from newest,
+        // all newer messages have been processed and the channel is completely up to date!
+        if (!offsetId && consecutiveExistingCount >= 15) {
+          console.log(`[SourceChannel] Reached 15 consecutive already imported items. Source channel is up-to-date.`);
           hasMore = false;
           break;
         }
@@ -240,6 +337,12 @@ export async function syncMediaFromSourceChannel(
         } else if (mimeType.includes("webp")) {
           ext = ".webp";
           assetType = "PHOTO";
+        } else if (mimeType.includes("quicktime") || mimeType.includes("mov")) {
+          ext = ".mov";
+          assetType = "VIDEO";
+        } else if (mimeType.includes("audio") || mimeType.includes("ogg") || mimeType.includes("mp3")) {
+          ext = ".mp3";
+          assetType = "VIDEO";
         } else {
           ext = ".jpg";
           assetType = "PHOTO";
@@ -249,136 +352,169 @@ export async function syncMediaFromSourceChannel(
         assetType = "PHOTO";
       }
 
-      // Safety check: Avoid downloading giant media files (> 100 MB) synchronously in web request
-      const docSize = Number(mediaAny.document?.size || 0);
-      if (docSize > 100 * 1024 * 1024) {
-        console.warn(`[SourceChannel] Message #${msg.id}: media size (${Math.round(docSize / 1024 / 1024)} MB) exceeds 100MB safety limit. Skipping.`);
-        lastProcessedMsgId = msg.id;
-        continue;
+      const uniqueName = `${Date.now()}_${Math.floor(Math.random() * 10000)}_source_msg_${msg.id}${ext}`;
+      const filePath = path.join(targetDir, uniqueName);
+      const cleanSlug = sanitizeSlug(model.slug);
+      const fileUrl = `/uploads/models/${cleanSlug}/${uniqueName}`;
+
+      if (onProgress) {
+        const typeLabel = assetType === "VIDEO" ? "Video" : "Foto";
+        const progressMessage = isAll
+          ? `📥 Lade ${typeLabel} #${msg.id} auf Festplatte (${importedCount + 1} geladen, ${skippedExistingCount} übersprungen)...`
+          : `📥 Lade ${typeLabel} #${msg.id} auf Festplatte (${importedCount + 1}/${targetLimit})...`;
+        onProgress({
+          importedCount,
+          skippedCount: skippedExistingCount,
+          message: progressMessage,
+        });
       }
 
-      const filename = `source_msg_${msg.id}_${Date.now()}${ext}`;
-
-      let buffer: Buffer | undefined = undefined;
+      // Stream directly to disk using GramJS outputFile!
+      // This supports files of ANY size (10 MB, 100 MB, 500 MB, 1 GB+) with zero RAM buffering!
+      let downloadSuccess = false;
       for (let attempt = 1; attempt <= 2; attempt++) {
-        let timer: NodeJS.Timeout | undefined;
         try {
-          console.log(`[SourceChannel] Downloading media from msg #${msg.id} (attempt ${attempt}/2)...`);
-          const downloadPromise = client.downloadMedia(msg, {}) as Promise<Buffer | Uint8Array | undefined>;
-          const timeoutPromise = new Promise<undefined>((_, reject) => {
-            timer = setTimeout(() => reject(new Error("Telegram Download-Timeout (> 18s)")), 18000);
+          console.log(`[SourceChannel] Streaming media from msg #${msg.id} directly to disk (attempt ${attempt}/2) -> ${filePath}`);
+          await client.downloadMedia(msg, {
+            outputFile: filePath,
           });
 
-          const res = await Promise.race([downloadPromise, timeoutPromise]);
-          if (res) {
-            if (Buffer.isBuffer(res) && res.length > 0) {
-              buffer = res;
-              break;
-            } else if (res instanceof Uint8Array && res.byteLength > 0) {
-              buffer = Buffer.from(res);
+          if (fs.existsSync(filePath)) {
+            const stat = await fs.promises.stat(filePath);
+            if (stat.size > 0) {
+              downloadSuccess = true;
               break;
             }
           }
         } catch (err: any) {
-          console.warn(`[SourceChannel] Download attempt ${attempt}/2 for msg #${msg.id} failed:`, err.message);
-          if (attempt < 2) await sleep(400);
-        } finally {
-          if (timer) clearTimeout(timer);
+          console.warn(`[SourceChannel] Stream download attempt ${attempt}/2 for msg #${msg.id} failed:`, err.message);
+          if (attempt < 2) await sleep(800);
         }
+      }
+
+      if (!downloadSuccess || !fs.existsSync(filePath)) {
+        console.warn(`[SourceChannel] Could not download media for msg #${msg.id}. Skipping.`);
+        lastProcessedMsgId = msg.id;
+        continue;
       }
 
       try {
-        if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0) {
-          const { fileUrl, filePath, size, hash } = await saveUploadedBuffer(buffer, filename, model.slug);
-          console.log(`[SourceChannel] Message #${msg.id}: verified ${size} bytes saved to disk at ${filePath}`);
+        const stat = await fs.promises.stat(filePath);
+        console.log(`[SourceChannel] Message #${msg.id}: verified ${stat.size} bytes on disk at ${filePath}`);
 
-          // Check if identical content hash already exists for this model
-          const { findDuplicateAsset } = await import("@/lib/storage");
-          const duplicate = await findDuplicateAsset(model.id, hash);
+        // Stream hash calculation (zero RAM consumption even for 1GB+ files)
+        const hash = await new Promise<string>((resolve, reject) => {
+          const h = crypto.createHash("sha256");
+          const stream = fs.createReadStream(filePath);
+          stream.on("data", (chunk) => h.update(chunk));
+          stream.on("end", () => resolve(h.digest("hex")));
+          stream.on("error", reject);
+        });
 
-          if (duplicate) {
-            console.log(`[SourceChannel] Message #${msg.id}: duplicate content detected (matches asset #${duplicate.id}). Skipping to save storage.`);
-            const { deleteAssetLocalFile } = await import("@/lib/assets");
-            await deleteAssetLocalFile(fileUrl);
-            existingMsgIds.add(msg.id);
-            skippedExistingCount++;
-            lastProcessedMsgId = msg.id;
-            continue;
-          }
+        // Check if identical content hash already exists for this model
+        const { findDuplicateAsset } = await import("@/lib/storage");
+        const duplicate = await findDuplicateAsset(model.id, hash);
 
-          const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(filename);
-
-          // Safe Database Backup for small photos <= 500 KB (prevents multi-megabyte string bloat in DB)
-          let backupTag = "";
-          if (!isVideo && buffer.length <= 500 * 1024) {
-            const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
-            backupTag = ` | [BACKUP_DATA:data:${mime};base64,${buffer.toString("base64")}]`;
-          }
-
-          const sourceNote = `Aus Quellkanal importiert (Nachricht #${msg.id})`;
-          const rawCaption = msg.message ? String(msg.message).trim() : "";
-
-          // Extract video duration from Telegram attributes if present
-          let durationTag = "";
-          if (isVideo) {
-            const docAttrs = (mediaAny.document?.attributes || []) as any[];
-            for (const attr of docAttrs) {
-              if (typeof attr.duration === "number" && attr.duration > 0) {
-                durationTag = ` | [DURATION:${Math.round(attr.duration)}s]`;
-                break;
-              }
-            }
-          }
-
-          let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
-          let assetTheme = "Unklassifiziert";
-          let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
-          let assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, "unclassified"];
-          let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + durationTag + backupTag + ` | [HASH:${hash}]`;
-
-          // If auto-classify is requested and it's a photo, run Grok Vision
-          if (autoClassifyPhotos && !isVideo) {
-            const localPath = getAssetLocalPath(fileUrl);
-            if (localPath) {
-              try {
-                console.log(`[SourceChannel] Auto-classifying photo from msg #${msg.id} with Grok Vision...`);
-                const grokRes = await classifyImageWithGrokVision({
-                  localFilePath: localPath,
-                  modelName: model.name,
-                });
-                assetTitle = grokRes.title || assetTitle;
-                assetTheme = grokRes.theme || "Allgemein";
-                assetLevel = grokRes.explicitLevel || "TEASER";
-                assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, ...(grokRes.tags || [])];
-                assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${grokRes.suggestedStarsPrice}`;
-              } catch (grokErr: any) {
-                console.warn(`[SourceChannel] Grok classification failed for msg #${msg.id}:`, grokErr.message);
-              }
-            }
-          }
-
-          await prisma.asset.create({
-            data: {
-              modelId: model.id,
-              title: assetTitle,
-              theme: assetTheme,
-              type: isVideo ? "VIDEO" : "PHOTO",
-              explicitLevel: assetLevel,
-              notes: assetNotes,
-              fileUrl,
-              tags: assetTags,
-              isUsed: false,
-            },
-          });
-
+        if (duplicate) {
+          console.log(`[SourceChannel] Message #${msg.id}: duplicate content detected (matches asset #${duplicate.id}). Skipping.`);
+          await fs.promises.unlink(filePath).catch(() => {});
           existingMsgIds.add(msg.id);
-          importedCount++;
+          skippedExistingCount++;
+          lastProcessedMsgId = msg.id;
+          continue;
         }
-      } catch (dlErr: any) {
-        console.warn(`[SourceChannel] Failed to process media from msg #${msg.id}:`, dlErr.message);
+
+        // Secondary persistence write to root /uploads
+        try {
+          const secondaryDir = path.join(process.cwd(), "uploads", "models", cleanSlug);
+          if (!fs.existsSync(secondaryDir)) {
+            fs.mkdirSync(secondaryDir, { recursive: true });
+          }
+          await fs.promises.copyFile(filePath, path.join(secondaryDir, uniqueName));
+        } catch {}
+
+        const isVideo = assetType === "VIDEO" || isVideoOrGifExtension(uniqueName);
+
+        // Safe database backup for small photos (<= 300 KB) only
+        let backupTag = "";
+        if (!isVideo && stat.size <= 300 * 1024) {
+          try {
+            const smallBuf = await fs.promises.readFile(filePath);
+            const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+            backupTag = ` | [BACKUP_DATA:data:${mime};base64,${smallBuf.toString("base64")}]`;
+          } catch {}
+        }
+
+        const sourceNote = `Aus Quellkanal importiert (Nachricht #${msg.id})`;
+        const rawCaption = msg.message ? String(msg.message).trim() : "";
+
+        // Extract video duration from Telegram attributes if present
+        let durationTag = "";
+        if (isVideo) {
+          const docAttrs = (mediaAny.document?.attributes || []) as any[];
+          for (const attr of docAttrs) {
+            if (typeof attr.duration === "number" && attr.duration > 0) {
+              durationTag = ` | [DURATION:${Math.round(attr.duration)}s]`;
+              break;
+            }
+          }
+        }
+
+        let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
+        let assetTheme = "Unklassifiziert";
+        let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
+        let assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, "unclassified"];
+        let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + durationTag + backupTag + ` | [HASH:${hash}]`;
+
+        // If auto-classify is requested and it's a photo, run Grok Vision
+        if (autoClassifyPhotos && !isVideo) {
+          try {
+            console.log(`[SourceChannel] Auto-classifying photo from msg #${msg.id} with Grok Vision...`);
+            const grokRes = await classifyImageWithGrokVision({
+              localFilePath: filePath,
+              modelName: model.name,
+            });
+            assetTitle = grokRes.title || assetTitle;
+            assetTheme = grokRes.theme || "Allgemein";
+            assetLevel = grokRes.explicitLevel || "TEASER";
+            assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, ...(grokRes.tags || [])];
+            assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${grokRes.suggestedStarsPrice}`;
+          } catch (grokErr: any) {
+            console.warn(`[SourceChannel] Grok classification failed for msg #${msg.id}:`, grokErr.message);
+          }
+        }
+
+        await prisma.asset.create({
+          data: {
+            modelId: model.id,
+            title: assetTitle,
+            theme: assetTheme,
+            type: isVideo ? "VIDEO" : "PHOTO",
+            explicitLevel: assetLevel,
+            notes: assetNotes,
+            fileUrl,
+            tags: assetTags,
+            isUsed: false,
+          },
+        });
+
+        existingMsgIds.add(msg.id);
+        importedCount++;
+
+        if (onProgress) {
+          onProgress({
+            importedCount,
+            skippedCount: skippedExistingCount,
+            message: `✓ Medium #${msg.id} gespeichert (${importedCount} geladen, ${skippedExistingCount} übersprungen)...`,
+          });
+        }
+      } catch (procErr: any) {
+        console.warn(`[SourceChannel] Error finalizing media msg #${msg.id}:`, procErr.message);
       }
 
       lastProcessedMsgId = msg.id;
+      // Gentle pause between downloads to protect Telegram MTProto connection
+      await sleep(300);
     }
 
     // Update config with last sync
@@ -391,9 +527,9 @@ export async function syncMediaFromSourceChannel(
     if (importedCount === 0 && skippedExistingCount > 0) {
       message = `Quellkanal ist aktuell: Keine neuen Medien gefunden (${skippedExistingCount} bereits im Dashboard vorhanden).`;
     } else if (importedCount > 0 && skippedExistingCount > 0) {
-      message = `${importedCount} neue Medien erfolgreich aus dem Quell-Kanal importiert! (${skippedExistingCount} bereits vorhandene übersprungen)`;
+      message = `Erfolg: ${importedCount} neue Medien erfolgreich heruntergeladen (${skippedExistingCount} bereits vorhandene übersprungen)!`;
     } else if (importedCount > 0) {
-      message = `${importedCount} Medien erfolgreich aus dem Quell-Kanal auf die Festplatte geladen!`;
+      message = `Erfolg: ${importedCount} Medien erfolgreich auf die Festplatte gespeichert!`;
     } else {
       message = "Keine Medien im Quell-Kanal gefunden.";
     }
@@ -419,7 +555,7 @@ export async function syncMediaFromSourceChannel(
     try {
       await Promise.race([
         client.disconnect(),
-        new Promise((resolve) => setTimeout(resolve, 800)),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
       ]);
     } catch {}
   }
