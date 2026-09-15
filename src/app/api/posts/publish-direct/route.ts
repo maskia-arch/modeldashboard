@@ -5,6 +5,7 @@ import { publishToTelegram } from "@/lib/telegram-bot";
 import { deleteAssetLocalFile } from "@/lib/assets";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 /**
  * POST /api/posts/publish-direct:
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
           where: { id: post.id },
           data: { status: "FAILED" },
         });
-        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 502 });
+        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 400 });
       }
 
       // Update post to PUBLISHED
@@ -108,7 +109,7 @@ export async function POST(req: Request) {
       });
 
       if (!result.success) {
-        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 502 });
+        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 400 });
       }
 
       // Create a PUBLISHED Post record in DB for tracking and history

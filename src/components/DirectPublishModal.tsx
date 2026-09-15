@@ -111,7 +111,32 @@ export function DirectPublishModal({
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (res.status === 504 || res.status === 524 || res.status === 520) {
+          throw new Error(
+            language === "de"
+              ? `Gateway-Timeout (${res.status}): Das Hochladen des Mediums hat das Zeitlimit überschritten. Bitte prüfen Sie Ihren Telegram-Kanal oder versuchen Sie es erneut.`
+              : `Gateway Timeout (${res.status}): The upload timed out. Please try again.`
+          );
+        }
+        if (res.status === 502) {
+          throw new Error(
+            language === "de"
+              ? `Bad Gateway (502): Telegram-Schnittstelle nicht erreichbar.`
+              : `Bad Gateway (502): Telegram gateway unreachable.`
+          );
+        }
+        throw new Error(
+          language === "de"
+            ? `Server-Fehler (${res.status}): Ungültige Serverantwort.`
+            : `Server error (${res.status}): Invalid response.`
+        );
+      }
+
       if (!res.ok) throw new Error(data.error || "Publishing failed");
 
       onOpenChange(false);

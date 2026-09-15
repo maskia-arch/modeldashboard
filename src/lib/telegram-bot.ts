@@ -196,7 +196,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
           const customFile = new CustomFile(path.basename(localPath), stat.size, localPath);
           const uploadedFile = await client.uploadFile({
             file: customFile,
-            workers: 1,
+            workers: 4,
           });
 
           const mediaItem = isVideo
@@ -252,7 +252,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             forceDocument: false,
             supportsStreaming: isVideo,
             attributes: videoAttributes,
-            workers: 1,
+            workers: 4,
           });
         } catch (parseErr: any) {
           console.warn(`[Userbot Publisher] Retrying sendFile without HTML parsing: ${parseErr.message}`);
@@ -262,7 +262,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             forceDocument: false,
             supportsStreaming: isVideo,
             attributes: videoAttributes,
-            workers: 1,
+            workers: 4,
           });
         }
       }

@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { publishToTelegram } from "@/lib/telegram-bot";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function POST(
   req: Request,
@@ -69,7 +70,7 @@ export async function POST(
 
       return NextResponse.json({
         error: result.error || "Failed to publish post to Telegram",
-      }, { status: 502 });
+      }, { status: 400 });
     }
   } catch (error: any) {
     console.error("Manual publish error:", error);

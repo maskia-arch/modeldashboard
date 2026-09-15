@@ -5,6 +5,7 @@ import { PostStatus } from "@prisma/client";
 import { sanitizeCaptionForMediaType } from "@/lib/captions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export async function PATCH(
   req: Request,
@@ -59,7 +60,7 @@ export async function PATCH(
           where: { id },
           data: { status: PostStatus.FAILED },
         });
-        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 502 });
+        return NextResponse.json({ error: result.error || "Failed to publish to Telegram" }, { status: 400 });
       }
 
       // Mark as PUBLISHED and clean up media from disk
