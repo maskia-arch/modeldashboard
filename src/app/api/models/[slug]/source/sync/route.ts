@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { syncMediaFromSourceChannel } from "@/lib/model-sources";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 /**
  * POST /api/models/[slug]/source/sync:

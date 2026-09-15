@@ -198,7 +198,7 @@ export function SourceChannelModal({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                limit: syncLimit === 0 ? 0 : remainingLimit,
+                limit: syncLimit === 0 ? 0 : Math.max(1, remainingLimit),
                 offsetId: currentOffset,
                 classifyWithGrok,
               }),
@@ -244,7 +244,7 @@ export function SourceChannelModal({
         totalSkipped += data.skippedCount || 0;
 
         if (syncLimit > 0) {
-          remainingLimit = Math.max(0, syncLimit - (totalImported + totalSkipped));
+          remainingLimit = Math.max(0, syncLimit - totalImported);
         }
 
         // Break if no more messages or target limit reached

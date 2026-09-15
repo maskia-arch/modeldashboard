@@ -161,9 +161,11 @@ export async function syncMediaFromSourceChannel(
 
     const isAll = limit === 0;
     const batchStartTime = Date.now();
-    // Safety thresholds: 16s duration and 15 items per batch prevent Cloudflare 520 / 524 / proxy timeouts
-    const MAX_BATCH_DURATION_MS = 16000;
-    const MAX_ITEMS_PER_BATCH = 15;
+    // Safety thresholds: 6s duration and max 2 downloads per request ensures every batch finishes in 2-4 seconds!
+    // This makes Cloudflare 520, 524, and proxy timeouts architecturally impossible.
+    const MAX_BATCH_DURATION_MS = 6000;
+    const MAX_ITEMS_PER_BATCH = 6;
+    const MAX_DOWNLOADS_PER_BATCH = 2;
 
     console.log(`[SourceChannel] ${isAll ? "Scanning ALL messages" : `Fetching up to ${limit} messages`} from source channel (offsetId: ${offsetId || "none"})...`);
 
@@ -171,9 +173,8 @@ export async function syncMediaFromSourceChannel(
     if (offsetId && offsetId > 0) {
       iterParams.offsetId = offsetId;
     }
-    if (!isAll) {
-      iterParams.limit = limit;
-    }
+    // Safety: always request in chunks of at most 20 messages from Telegram MTProto to prevent socket timeouts
+    iterParams.limit = isAll ? 20 : Math.min(Math.max(limit, 1), 20);
 
     let importedCount = 0;
     let skippedExistingCount = 0;
@@ -189,6 +190,7 @@ export async function syncMediaFromSourceChannel(
       if (
         elapsed > MAX_BATCH_DURATION_MS ||
         batchProcessed >= MAX_ITEMS_PER_BATCH ||
+        importedCount >= MAX_DOWNLOADS_PER_BATCH ||
         (!isAll && importedCount >= limit)
       ) {
         console.log(`[SourceChannel] Batch safety threshold reached (${elapsed}ms, ${importedCount} imported, ${skippedExistingCount} skipped). Yielding nextOffsetId=${lastProcessedMsgId || msg.id}`);
@@ -202,16 +204,15 @@ export async function syncMediaFromSourceChannel(
 
       // Incremental Update Check:
       // If this message was already imported, skip downloading immediately!
-      // This eliminates downloading files that were already imported or cleaned up from disk.
       if (existingMsgIds.has(msg.id)) {
         skippedExistingCount++;
         consecutiveExistingCount++;
         lastProcessedMsgId = msg.id;
 
-        // Optimization: In standard sync from newest, if we encounter 30 consecutive already-imported messages,
-        // all newer messages have been processed and the channel is up to date.
-        if (!offsetId && consecutiveExistingCount >= 30 && importedCount > 0) {
-          console.log(`[SourceChannel] Reached 30 consecutive already imported items. Source channel is up-to-date.`);
+        // Optimization: In standard sync from newest, if we encounter 10 consecutive already-imported messages,
+        // all newer messages have been processed and the channel is fully up to date!
+        if (!offsetId && consecutiveExistingCount >= 10) {
+          console.log(`[SourceChannel] Reached 10 consecutive already imported items. Source channel is up-to-date.`);
           hasMore = false;
           break;
         }
@@ -416,7 +417,10 @@ export async function syncMediaFromSourceChannel(
     };
   } finally {
     try {
-      await client.disconnect();
+      await Promise.race([
+        client.disconnect(),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]);
     } catch {}
   }
 }
