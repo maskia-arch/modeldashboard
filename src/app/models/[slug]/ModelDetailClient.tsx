@@ -279,20 +279,20 @@ export function ModelDetailClient({
 
   const handleBulkGrokClassify = async () => {
     if (selectedAssetIds.size === 0) return;
-    const selectedPhotos = (model.assets || []).filter(
-      (a: any) => selectedAssetIds.has(a.id) && a.type === "PHOTO"
+    const selectedMedia = (model.assets || []).filter(
+      (a: any) => selectedAssetIds.has(a.id) && (a.type === "PHOTO" || a.type === "VIDEO")
     );
 
-    if (selectedPhotos.length === 0) {
+    if (selectedMedia.length === 0) {
       alert(
         language === "de"
-          ? "Unter den ausgewählten Medien wurden keine Fotos gefunden (nur Fotos können mit Grok bewertet werden)."
-          : "No photos found among selected media."
+          ? "Unter den ausgewählten Medien wurden keine Fotos oder Videos gefunden."
+          : "No photos or videos found among selected media."
       );
       return;
     }
 
-    handleBatchGrokClassify(true, selectedPhotos);
+    handleBatchGrokClassify(true, selectedMedia);
   };
 
   const handleDeleteSingleAsset = async () => {
@@ -485,10 +485,10 @@ export function ModelDetailClient({
   };
 
   const handleBatchGrokClassify = async (force: boolean = false, targetAssets?: any[]) => {
-    // Collect eligible photo assets
+    // Collect eligible media assets (both photos and videos)
     const pool = targetAssets || model.assets || [];
-    const eligiblePhotos = pool.filter((a: any) => {
-      if (a.type !== "PHOTO" || !a.fileUrl) return false;
+    const eligibleAssets = pool.filter((a: any) => {
+      if ((a.type !== "PHOTO" && a.type !== "VIDEO") || !a.fileUrl) return false;
       if (force) return true;
       const isUnclassifiedTag = a.tags?.includes("unclassified");
       const isQuelleGeneric =
@@ -497,11 +497,11 @@ export function ModelDetailClient({
       return isUnclassifiedTag || isQuelleGeneric;
     });
 
-    if (eligiblePhotos.length === 0) {
+    if (eligibleAssets.length === 0) {
       alert(
         language === "de"
-          ? "Keine passenden Fotos zur Klassifizierung vorhanden."
-          : "No matching photos found to classify."
+          ? "Keine passenden Medien zur Klassifizierung vorhanden."
+          : "No matching media found to classify."
       );
       return;
     }
@@ -511,9 +511,9 @@ export function ModelDetailClient({
     setBatchProgress({
       isOpen: true,
       isMinimized: false,
-      total: eligiblePhotos.length,
+      total: eligibleAssets.length,
       current: 0,
-      currentTitle: eligiblePhotos[0]?.title || "Initialisiere...",
+      currentTitle: eligibleAssets[0]?.title || "Initialisiere...",
       successCount: 0,
       skippedCount: 0,
       errorCount: 0,
@@ -527,7 +527,7 @@ export function ModelDetailClient({
     let errors = 0;
     const logs: string[] = [];
 
-    for (let i = 0; i < eligiblePhotos.length; i++) {
+    for (let i = 0; i < eligibleAssets.length; i++) {
       if (cancelBatchRef.current) {
         logs.unshift(language === "de" ? "⏹️ Vorgang durch Benutzer abgebrochen." : "⏹️ Process cancelled by user.");
         setBatchProgress((prev) =>
@@ -543,15 +543,16 @@ export function ModelDetailClient({
         break;
       }
 
-      const asset = eligiblePhotos[i];
-      const assetLabel = asset.title || `Foto #${i + 1}`;
+      const asset = eligibleAssets[i];
+      const isVid = asset.type === "VIDEO";
+      const assetLabel = asset.title || (isVid ? `Video #${i + 1}` : `Foto #${i + 1}`);
 
       setBatchProgress((prev) =>
         prev
           ? {
               ...prev,
               current: i + 1,
-              currentTitle: assetLabel,
+              currentTitle: `${isVid ? "🎬 Video" : "📷 Foto"}: ${assetLabel}`,
             }
           : null
       );
@@ -637,7 +638,7 @@ export function ModelDetailClient({
       );
 
       // Periodically refresh dashboard data in background so cards update live
-      if ((i + 1) % 2 === 0 || i === eligiblePhotos.length - 1) {
+      if ((i + 1) % 2 === 0 || i === eligibleAssets.length - 1) {
         refreshData().catch(() => {});
       }
     }
@@ -739,16 +740,20 @@ export function ModelDetailClient({
     }
   };
 
-  const unclassifiedPhotosCount = (model.assets || []).filter((a: any) => {
-    if (a.isUsed || a.type !== "PHOTO") return false;
+  const unclassifiedAssets = (model.assets || []).filter((a: any) => {
+    if (a.isUsed) return false;
     const isUnclassifiedTag = a.tags?.includes("unclassified");
     const isQuelleGeneric =
       a.tags?.includes("quelle") &&
       (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
     return isUnclassifiedTag || isQuelleGeneric;
-  }).length;
+  });
 
-  const hasPhotos = (model.assets || []).some((a: any) => a.type === "PHOTO");
+  const unclassifiedCount = unclassifiedAssets.length;
+  const unclassifiedPhotosCount = unclassifiedAssets.filter((a: any) => a.type === "PHOTO").length;
+  const unclassifiedVideosCount = unclassifiedAssets.filter((a: any) => a.type === "VIDEO").length;
+
+  const hasAssetsToClassify = (model.assets || []).some((a: any) => a.type === "PHOTO" || a.type === "VIDEO");
 
   return (
     <div className="space-y-6">
@@ -1024,7 +1029,7 @@ export function ModelDetailClient({
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {unclassifiedPhotosCount > 0 && (
+                  {unclassifiedCount > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -1040,18 +1045,18 @@ export function ModelDetailClient({
                       {isBatchClassifying
                         ? (language === "de" ? "Grok analysiert..." : "Grok analyzing...")
                         : (language === "de"
-                            ? `🤖 Grok AI: Fotos bewerten (${unclassifiedPhotosCount})`
-                            : `🤖 Grok AI: Classify Photos (${unclassifiedPhotosCount})`)}
+                            ? `🤖 Grok AI: Content bewerten (${unclassifiedCount})`
+                            : `🤖 Grok AI: Classify Content (${unclassifiedCount})`)}
                     </Button>
                   )}
-                  {hasPhotos && (
+                  {hasAssetsToClassify && (
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={isBatchClassifying}
                       onClick={() => handleBatchGrokClassify(true)}
                       className="gap-1.5 text-xs font-semibold border-purple-500/40 text-purple-300 hover:text-purple-200 hover:bg-purple-950/30 shadow-sm"
-                      title={language === "de" ? "Alle Fotos des Models nochmals von Grok bewerten lassen" : "Re-classify all photos with Grok"}
+                      title={language === "de" ? "Gesamten Content (Fotos & Videos) nochmals von Grok bewerten lassen" : "Re-classify all media with Grok"}
                     >
                       {isBatchClassifying ? (
                         <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1101,7 +1106,7 @@ export function ModelDetailClient({
           </div>
 
           {/* Prominent One-Click Initial Grok Classification Banner */}
-          {unclassifiedPhotosCount > 0 && (
+          {unclassifiedCount > 0 && (
             <div className="p-4 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-purple-500/10 to-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
@@ -1111,7 +1116,11 @@ export function ModelDetailClient({
                   <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
                     <span>{t.schedule.classifyAllBannerTitle}</span>
                     <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/50 text-[10px] font-bold">
-                      {unclassifiedPhotosCount} {language === "de" ? "Fotos ausstehend" : "photos pending"}
+                      {unclassifiedCount} {language === "de"
+                        ? (unclassifiedVideosCount > 0
+                            ? `Medien ausstehend (${unclassifiedPhotosCount} Fotos, ${unclassifiedVideosCount} Videos)`
+                            : "Medien ausstehend")
+                        : `${unclassifiedCount} items pending (${unclassifiedPhotosCount} photos, ${unclassifiedVideosCount} videos)`}
                     </Badge>
                   </h4>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -1487,7 +1496,7 @@ export function ModelDetailClient({
                         {t.modelDetail.directPostButton}
                       </Button>
                       <div className="flex items-center gap-1 flex-wrap">
-                        {asset.type === "PHOTO" && (
+                        {(asset.type === "PHOTO" || asset.type === "VIDEO") && (
                           isUnclassified ? (
                             <Button
                               variant="outline"

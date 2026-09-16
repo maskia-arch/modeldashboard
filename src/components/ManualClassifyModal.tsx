@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Tag, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Tag, CheckCircle2, AlertCircle, RefreshCw, Sparkles } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ export function ManualClassifyModal({
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGrokClassifying, setIsGrokClassifying] = useState(false);
 
   useEffect(() => {
     if (asset && open) {
@@ -53,6 +54,34 @@ export function ManualClassifyModal({
   }, [asset, open]);
 
   const isVideo = asset?.type === "VIDEO" || asset?.fileUrl?.match(/\.(mp4|mov|mkv|avi)$/i);
+
+  const handleGrokClassify = async () => {
+    if (!asset) return;
+    setIsGrokClassifying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/assets/${asset.id}/classify`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Grok-Analyse fehlgeschlagen");
+
+      if (data.classification) {
+        setTitle(data.classification.title || "");
+        setTheme(data.classification.theme || "VIP Exclusive");
+        setExplicitLevel(data.classification.explicitLevel || (isVideo ? "PPV" : "TEASER"));
+        setTags(data.classification.tags?.join(", ") || "");
+        setNotes(
+          `${data.classification.notes || ""} | Caption: "${data.classification.suggestedCaption || ""}" | Stars: ${data.classification.suggestedStarsPrice ?? (isVideo ? 25 : 0)}`
+        );
+      }
+      if (onClassified) onClassified();
+    } catch (err: any) {
+      setError(err.message || "Grok-Analyse fehlgeschlagen");
+    } finally {
+      setIsGrokClassifying(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,26 +143,47 @@ export function ManualClassifyModal({
 
         <form onSubmit={handleSave} className="space-y-3.5 py-1">
           {/* Media Mini-Preview */}
-          <div className="p-2.5 rounded-lg border bg-muted/20 flex items-center gap-3">
-            <div className="h-14 w-14 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
-              {asset?.fileUrl ? (
-                isVideo ? (
-                  <video src={getMediaDisplayUrl(asset.fileUrl, asset.id)} className="h-full w-full object-cover" muted />
+          <div className="p-2.5 rounded-lg border bg-muted/20 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-14 w-14 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
+                {asset?.fileUrl ? (
+                  isVideo ? (
+                    <video src={getMediaDisplayUrl(asset.fileUrl, asset.id)} className="h-full w-full object-cover" muted />
+                  ) : (
+                    <img src={getMediaDisplayUrl(asset.fileUrl, asset.id)} alt="Preview" className="h-full w-full object-cover" />
+                  )
                 ) : (
-                  <img src={getMediaDisplayUrl(asset.fileUrl, asset.id)} alt="Preview" className="h-full w-full object-cover" />
-                )
+                  <span className="text-[10px] font-bold text-muted-foreground">{asset?.type}</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-bold truncate block text-foreground">
+                  {asset?.title || asset?.fileUrl || "Medium"}
+                </span>
+                <span className="text-[10px] text-muted-foreground block">
+                  {isVideo ? "🎬 Video (Thumbnail + Länge für Grok)" : "📷 Foto"}
+                </span>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isGrokClassifying || isSaving}
+              onClick={handleGrokClassify}
+              className="gap-1.5 text-xs font-bold bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 shrink-0 shadow-sm"
+              title={isVideo ? "Video per Thumbnail & Dauer von Grok bewerten lassen" : "Foto von Grok bewerten lassen"}
+            >
+              {isGrokClassifying ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <span className="text-[10px] font-bold text-muted-foreground">{asset?.type}</span>
+                <Sparkles className="h-3.5 w-3.5 text-amber-400" />
               )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <span className="text-xs font-bold truncate block text-foreground">
-                {asset?.title || asset?.fileUrl || "Medium"}
-              </span>
-              <span className="text-[10px] text-muted-foreground block">
-                {isVideo ? "🎬 Video / GIF (Manuelle Klassifizierung)" : "📷 Foto"}
-              </span>
-            </div>
+              {isGrokClassifying
+                ? (language === "de" ? "Grok analysiert..." : "Grok analyzing...")
+                : "🤖 Grok AI"}
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
