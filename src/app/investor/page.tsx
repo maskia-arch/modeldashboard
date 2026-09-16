@@ -2,12 +2,17 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { PostStatus } from "@prisma/client";
 import { calculateChannelFinancials, calculateInvestorPortfolio } from "@/lib/financial-engine";
 import { InvestorClient } from "./InvestorClient";
 
 export const revalidate = 0;
 
-export default async function InvestorPage() {
+interface InvestorPageProps {
+  searchParams?: { tab?: string };
+}
+
+export default async function InvestorPage({ searchParams }: InvestorPageProps) {
   const user = await getCurrentUser();
   if (!user) {
     redirect("/login");
@@ -71,6 +76,44 @@ export default async function InvestorPage() {
     )
     .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
 
+  // Fetch content schedule / posts for assigned models
+  const assignedModelIds = models.map((m) => m.id);
+  const now = new Date();
+
+  // Automatically update any overdue SCHEDULED posts for these models to PENDING
+  if (assignedModelIds.length > 0) {
+    await prisma.post.updateMany({
+      where: {
+        modelId: { in: assignedModelIds },
+        status: PostStatus.SCHEDULED,
+        scheduledFor: { lte: now },
+      },
+      data: {
+        status: PostStatus.PENDING,
+      },
+    });
+  }
+
+  const scheduledPosts = await prisma.post.findMany({
+    where: {
+      modelId: { in: assignedModelIds },
+    },
+    include: {
+      model: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          telegramChannelId: true,
+          channelTitle: true,
+          avatarUrl: true,
+        },
+      },
+      asset: true,
+    },
+    orderBy: { scheduledFor: "asc" },
+  });
+
   return (
     <InvestorClient
       investor={user}
@@ -83,6 +126,8 @@ export default async function InvestorPage() {
       }))}
       submittedExpenses={submittedExpenses}
       fulfilledPayouts={fulfilledPayouts}
+      scheduledPosts={scheduledPosts}
+      initialTab={searchParams?.tab}
     />
   );
 }

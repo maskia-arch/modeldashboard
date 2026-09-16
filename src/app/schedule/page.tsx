@@ -13,9 +13,9 @@ export default async function SchedulePage() {
     redirect("/login");
   }
 
-  // Strictly protected: Only Master Admin can access the global Content Schedule
+  // Master Admin has global schedule; Investors are routed to their personal models schedule tab
   if (user.role !== "MASTER_ADMIN") {
-    redirect("/investor");
+    redirect("/investor?tab=schedule");
   }
 
   const now = new Date();

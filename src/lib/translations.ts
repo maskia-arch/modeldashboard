@@ -591,9 +591,13 @@ export const translations = {
 
     // Ton Wallet Generator
     walletGenerator: {
-      title: "Client-Side TON Wallet Generator",
-      desc: "Erzeugt ein sicheres V4R2-Schlüsselpaar direkt im Browser via @ton/crypto.",
-      activeAddressLabel: "Aktive gespeicherte Adresse:",
+      title: "TON Auszahlungsadresse festlegen",
+      desc: "Wählen Sie, ob Sie Ihre bestehende TON-Adresse hinterlegen oder ein neues Wallet im Browser erzeugen möchten.",
+      activeAddressLabel: "Aktive verknüpfte TON-Adresse:",
+      tabGenerate: "Neues Wallet erzeugen",
+      tabGenerateSub: "24-Wort Seed Phrase im Browser generieren",
+      tabManual: "Eigene Adresse hinterlegen",
+      tabManualSub: "Tonkeeper, Telegram @wallet oder Exchange",
       generateButton: "Neues 24-Wort Wallet erzeugen",
       generatingButton: "Generiere Kryptoschlüssel...",
       warningTitle: "Sicherheits-Warnung",
@@ -603,6 +607,12 @@ export const translations = {
       saveToProfile: "Als primäre Auszahlungs-Adresse speichern",
       savingToProfile: "Speichere im Profil...",
       savedSuccess: "Erfolgreich im Profil gespeichert!",
+      manualTitle: "Eigene TON-Adresse angeben (Empfohlen)",
+      manualDesc: "Geben Sie Ihre persönliche TON-Empfangsadresse (aus Tonkeeper, Telegram Wallet oder Krypto-Börse) ein.",
+      manualLabel: "Ihre TON-Auszahlungsadresse (UQ... oder EQ...)",
+      manualPlaceholder: "UQ... oder EQ... hier einfügen",
+      saveManualButton: "Adresse speichern & verknüpfen",
+      invalidAddressError: "Ungültiges TON-Adressformat (erwartet: UQ... oder EQ...)",
     },
 
     // Investor Portal Page
@@ -629,6 +639,11 @@ export const translations = {
       liquidPayoutClaimDescReady: "Wird vom Master per TON an dich überwiesen",
       liquidPayoutClaimDescSettled: "Aktuell alle fälligen Beträge vollständig ausbezahlt",
       channelsTab: "Meine Kanäle",
+      scheduleTab: "Zeitplan",
+      scheduleTitle: "Content-Zeitplan der zugeteilten Models",
+      scheduleDesc: "Einsicht in alle geplanten, fälligen und veröffentlichten Beiträge Ihrer Models (reiner Lesezugriff).",
+      allAssignedModels: "Alle zugeteilten Models",
+      readOnlyBadge: "Reiner Lesezugriff",
       expensesTab: "Eingereichte Ausgaben",
       payoutsTab: "Auszahlungshistorie",
       channelBalanceSheetTitle: "Kanal-Amortisationsübersicht",
@@ -1476,9 +1491,13 @@ export const translations = {
 
     // Ton Wallet Generator
     walletGenerator: {
-      title: "Client-Side TON Wallet Generator",
-      desc: "Generates a secure V4R2 keypair directly in your browser via @ton/crypto.",
-      activeAddressLabel: "Active Saved Address:",
+      title: "Configure TON Payout Address",
+      desc: "Choose whether to link your existing TON address or generate a new wallet in the browser.",
+      activeAddressLabel: "Active linked TON address:",
+      tabGenerate: "Generate New Wallet",
+      tabGenerateSub: "24-word seed phrase in browser",
+      tabManual: "Enter Your Address",
+      tabManualSub: "Tonkeeper, Telegram @wallet or exchange",
       generateButton: "Generate New 24-Word Wallet",
       generatingButton: "Generating cryptographic keys...",
       warningTitle: "Security Warning",
@@ -1488,6 +1507,12 @@ export const translations = {
       saveToProfile: "Save as Primary Payout Address",
       savingToProfile: "Saving to Profile...",
       savedSuccess: "Successfully saved to profile!",
+      manualTitle: "Enter Your TON Address (Recommended)",
+      manualDesc: "Enter your personal TON receiving address (e.g. from Tonkeeper, Telegram Wallet, or exchange).",
+      manualLabel: "Your TON Payout Address (UQ... or EQ...)",
+      manualPlaceholder: "Paste UQ... or EQ... here",
+      saveManualButton: "Save & Link Address",
+      invalidAddressError: "Invalid TON address format (expected: UQ... or EQ...)",
     },
 
     // Investor Portal Page
@@ -1514,6 +1539,11 @@ export const translations = {
       liquidPayoutClaimDescReady: "Ready for TON blockchain transfer",
       liquidPayoutClaimDescSettled: "All eligible earnings currently disbursed",
       channelsTab: "My Channels",
+      scheduleTab: "Schedule",
+      scheduleTitle: "Assigned Models Content Schedule",
+      scheduleDesc: "View all scheduled, due, and published posts for your assigned models (read-only).",
+      allAssignedModels: "All Assigned Models",
+      readOnlyBadge: "Read-Only Access",
       expensesTab: "Submitted Expenses",
       payoutsTab: "Payout History",
       channelBalanceSheetTitle: "Channel-by-Channel Balance Sheets",

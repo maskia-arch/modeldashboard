@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   TrendingUp,
   DollarSign,
@@ -17,6 +17,9 @@ import {
   KeyRound,
   Check,
   Copy,
+  CalendarClock,
+  Search,
+  Eye,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,8 +29,10 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TonWalletGenerator } from "@/components/TonWalletGenerator";
-import { formatUsd, truncateAddress } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatUsd, truncateAddress, getMediaDisplayUrl, cn } from "@/lib/utils";
+import { format, formatDistanceToNow, isToday } from "date-fns";
+import { de, enUS } from "date-fns/locale";
+import { formatGermanDateTime } from "@/lib/timezone";
 import { useLanguage } from "@/context/LanguageContext";
 import type { InvestorPortfolio } from "@/lib/financial-engine";
 
@@ -37,6 +42,8 @@ interface InvestorClientProps {
   assignedModels: Array<{ id: string; name: string; channelTitle?: string | null; enableExpenseRecoupment?: boolean }>;
   submittedExpenses: any[];
   fulfilledPayouts?: any[];
+  scheduledPosts?: any[];
+  initialTab?: string;
 }
 
 export function InvestorClient({
@@ -45,6 +52,8 @@ export function InvestorClient({
   assignedModels,
   submittedExpenses: initialExpenses,
   fulfilledPayouts: initialPayouts = [],
+  scheduledPosts: initialPosts = [],
+  initialTab = "channels",
 }: InvestorClientProps) {
   const { t, language } = useLanguage();
   const [expenses, setExpenses] = useState(initialExpenses || []);
@@ -100,6 +109,92 @@ export function InvestorClient({
     setCurrentTonAddress(newAddress);
   };
 
+  // Schedule Tab State (Read-Only)
+  const [schedulePosts, setSchedulePosts] = useState(initialPosts || []);
+  const [activeTab, setActiveTab] = useState(initialTab || "channels");
+  const [scheduleModelFilter, setScheduleModelFilter] = useState<string>("ALL");
+  const [scheduleStatusFilter, setScheduleStatusFilter] = useState<string>("ALL");
+  const [scheduleSearchQuery, setScheduleSearchQuery] = useState<string>("");
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSchedulePosts(initialPosts || []);
+  }, [initialPosts]);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam) {
+        setActiveTab(tabParam);
+      }
+    }
+  }, []);
+
+  const dateLocale = language === "de" ? de : enUS;
+
+  const handleCopyCaption = (caption: string, id: string) => {
+    navigator.clipboard.writeText(caption);
+    setCopiedPostId(id);
+    setTimeout(() => setCopiedPostId(null), 2000);
+  };
+
+  const scheduleStats = useMemo(() => {
+    let pending = 0;
+    let scheduled = 0;
+    let published = 0;
+    let publishedToday = 0;
+    const now = new Date();
+
+    schedulePosts.forEach((p) => {
+      const targetDate = new Date(p.scheduledFor);
+      if (p.status === "PUBLISHED") {
+        published++;
+        if (p.publishedAt && isToday(new Date(p.publishedAt))) {
+          publishedToday++;
+        }
+      } else if (targetDate <= now) {
+        pending++;
+      } else {
+        scheduled++;
+      }
+    });
+
+    return { pending, scheduled, published, publishedToday, total: schedulePosts.length };
+  }, [schedulePosts]);
+
+  const filteredSchedulePosts = useMemo(() => {
+    const now = new Date();
+    return schedulePosts.filter((post) => {
+      if (scheduleModelFilter !== "ALL" && post.modelId !== scheduleModelFilter) {
+        return false;
+      }
+      const targetDate = new Date(post.scheduledFor);
+      let effectiveStatus = post.status;
+      if (effectiveStatus === "SCHEDULED" && targetDate <= now) {
+        effectiveStatus = "PENDING";
+      }
+      if (scheduleStatusFilter !== "ALL" && effectiveStatus !== scheduleStatusFilter) {
+        return false;
+      }
+      if (scheduleSearchQuery.trim()) {
+        const q = scheduleSearchQuery.toLowerCase();
+        const matchCaption = post.caption?.toLowerCase().includes(q);
+        const matchModel = post.model?.name?.toLowerCase().includes(q);
+        const matchChannel = post.model?.channelTitle?.toLowerCase().includes(q);
+        const matchTheme = post.asset?.theme?.toLowerCase().includes(q);
+        if (!matchCaption && !matchModel && !matchChannel && !matchTheme) return false;
+      }
+      return true;
+    });
+  }, [schedulePosts, scheduleModelFilter, scheduleStatusFilter, scheduleSearchQuery]);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Investor Header */}
@@ -143,7 +238,7 @@ export function InvestorClient({
             className="gap-1.5 text-xs font-semibold text-[#0098EA] border-[#0098EA]/30"
           >
             <Wallet className="h-4 w-4" />
-            {currentTonAddress ? t.investorPortal.manageWallet : (language === "de" ? "Wallet generieren" : "Generate Wallet")}
+            {currentTonAddress ? t.investorPortal.manageWallet : (language === "de" ? "TON Wallet einrichten" : "Set Up TON Wallet")}
           </Button>
 
           <Button onClick={() => setIsSubmitModalOpen(true)} className="gap-2 font-semibold text-xs">
@@ -228,12 +323,16 @@ export function InvestorClient({
         </Card>
       </div>
 
-      {/* Tabs: Channel Breakdown vs Invoices vs Fulfilled Payouts */}
-      <Tabs defaultValue="channels" className="w-full">
-        <TabsList className="grid grid-cols-3 max-w-xl">
+      {/* Tabs: Channels vs Schedule vs Expenses vs Payouts */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 max-w-2xl">
           <TabsTrigger value="channels" className="gap-2 text-xs">
             <TrendingUp className="h-3.5 w-3.5" />
             {t.investorPortal.channelsTab} ({portfolio.channels.length})
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="gap-2 text-xs">
+            <CalendarClock className="h-3.5 w-3.5 text-purple-400" />
+            {t.investorPortal.scheduleTab || (language === "de" ? "Zeitplan" : "Schedule")} ({schedulePosts.length})
           </TabsTrigger>
           <TabsTrigger value="expenses" className="gap-2 text-xs">
             <Receipt className="h-3.5 w-3.5" />
@@ -347,7 +446,335 @@ export function InvestorClient({
           </div>
         </TabsContent>
 
-        {/* Tab 2: Submitted Invoices & Receipts */}
+        {/* Tab 2: Content Schedule (Read-Only) */}
+        <TabsContent value="schedule" className="space-y-4 pt-2">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5 text-purple-400" />
+                  {t.investorPortal.scheduleTitle || "Content-Zeitplan der zugeteilten Models"}
+                </h3>
+                <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 py-0.5">
+                  <Lock className="h-3 w-3" />
+                  {t.investorPortal.readOnlyBadge || "Reiner Lesezugriff"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t.investorPortal.scheduleDesc || "Einsicht in alle geplanten, fälligen und veröffentlichten Beiträge Ihrer Models (reiner Lesezugriff)."}
+              </p>
+            </div>
+          </div>
+
+          {/* KPI Stats Overview */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <Card className={cn("border-border", scheduleStats.pending > 0 ? "border-amber-500/50 bg-amber-950/10" : "")}>
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <AlertCircle className={cn("h-3.5 w-3.5", scheduleStats.pending > 0 ? "text-amber-400 animate-pulse" : "text-muted-foreground")} />
+                    {t.schedule.duePendingCard || "Fällig / In Übertragung"}
+                  </div>
+                  <div className="text-2xl font-black mt-1 text-foreground">
+                    {scheduleStats.pending}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Wartet auf Veröffentlichung" : "Awaiting publication"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-blue-400" />
+                    {t.schedule.scheduledFutureCard || "Geplant (Zukunft)"}
+                  </div>
+                  <div className="text-2xl font-black mt-1 text-foreground">
+                    {scheduleStats.scheduled}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {t.schedule.inQueue || "In der Pipeline"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    {t.schedule.todayPostings || "Heute gepostet"}
+                  </div>
+                  <div className="text-2xl font-black mt-1 text-foreground">
+                    {scheduleStats.publishedToday}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Bereits live im Channel" : "Live in channel today"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
+                    {language === "de" ? "Veröffentlicht (Gesamt)" : "Total Published"}
+                  </div>
+                  <div className="text-2xl font-black mt-1 text-foreground">
+                    {scheduleStats.published}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Erfolgreich abgewickelt" : "Successfully completed"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Filter & Search Bar */}
+          <Card>
+            <CardContent className="p-3 sm:p-4 flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                {/* Model Filter */}
+                <select
+                  value={scheduleModelFilter}
+                  onChange={(e) => setScheduleModelFilter(e.target.value)}
+                  className="flex h-9 rounded-md border border-input bg-card px-3 py-1 text-xs shadow-sm"
+                >
+                  <option value="ALL">{t.investorPortal.allAssignedModels || "Alle zugeteilten Models"}</option>
+                  {assignedModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.channelTitle || (language === "de" ? "Zugeordnet" : "Assigned")})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Status Filter */}
+                <div className="flex rounded-md border border-border bg-card p-0.5 text-xs">
+                  {[
+                    { id: "ALL", label: t.schedule.filterAll || "Alle" },
+                    { id: "PENDING", label: t.schedule.filterPending || "Fällig" },
+                    { id: "SCHEDULED", label: t.schedule.filterScheduled || "Geplant" },
+                    { id: "PUBLISHED", label: t.schedule.filterPublished || "Veröffentlicht" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setScheduleStatusFilter(tab.id)}
+                      className={cn(
+                        "px-2.5 py-1 rounded font-medium transition-colors",
+                        scheduleStatusFilter === tab.id
+                          ? "bg-primary/20 text-primary font-bold shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search */}
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder={t.schedule.searchPlaceholder || "Suche nach Caption, Model..."}
+                  value={scheduleSearchQuery}
+                  onChange={(e) => setScheduleSearchQuery(e.target.value)}
+                  className="h-9 pl-9 text-xs"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Posts Feed */}
+          <div className="space-y-3">
+            {filteredSchedulePosts.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center text-muted-foreground space-y-2">
+                  <CalendarClock className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                  <p className="font-semibold text-sm">
+                    {language === "de" ? "Keine Beiträge für diese Kriterien gefunden" : "No posts found matching these criteria"}
+                  </p>
+                  <p className="text-xs">
+                    {language === "de"
+                      ? "Sobald für Ihre Models Beiträge im Zeitplan eingetragen werden, erscheinen sie hier in Echtzeit."
+                      : "Once posts are scheduled for your models, they will appear here in real-time."}
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              filteredSchedulePosts.map((post) => {
+                const now = new Date();
+                const targetDate = new Date(post.scheduledFor);
+                let effectiveStatus = post.status;
+                if (effectiveStatus === "SCHEDULED" && targetDate <= now) {
+                  effectiveStatus = "PENDING";
+                }
+                const isPending = effectiveStatus === "PENDING";
+                const isPublished = effectiveStatus === "PUBLISHED";
+
+                return (
+                  <Card
+                    key={post.id}
+                    className={cn(
+                      "border transition-all hover:border-primary/40",
+                      isPending ? "border-amber-500/50 bg-amber-950/10 shadow-sm" : ""
+                    )}
+                  >
+                    <CardContent className="p-4 space-y-3">
+                      {/* Card Header: Model Info + Status Badge */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border/50">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center font-bold text-xs text-primary">
+                            {post.model?.name?.charAt(0) || "M"}
+                          </div>
+                          <div>
+                            <span className="font-bold text-sm text-foreground block">
+                              {post.model?.name}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground font-mono">
+                              {post.model?.channelTitle || post.model?.telegramChannelId}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isPending ? (
+                            <Badge variant="warning" className="gap-1 animate-pulse font-bold text-xs py-1 px-2.5">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              {t.schedule.dueBadge || "Fällig"} ({language === "de" ? "Seit" : "Since"} {formatDistanceToNow(targetDate, { locale: dateLocale })})
+                            </Badge>
+                          ) : isPublished ? (
+                            <Badge variant="success" className="gap-1 text-xs py-1 px-2.5">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {t.schedule.publishedBadge || "Veröffentlicht"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="gap-1 text-xs py-1 px-2.5">
+                              <Clock className="h-3.5 w-3.5 text-blue-400" />
+                              {language === "de"
+                                ? `Geplant für ${format(targetDate, "dd.MM.yyyy HH:mm", { locale: dateLocale })} Uhr`
+                                : `Scheduled for ${format(targetDate, "yyyy-MM-dd HH:mm", { locale: dateLocale })}`}
+                            </Badge>
+                          )}
+
+                          {post.starsPrice > 0 ? (
+                            <Badge variant="default" className="bg-amber-600 text-[10px]">
+                              ⭐ {post.starsPrice} {t.schedule.starsPaywall || "Stars Paywall"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px]">
+                              {t.schedule.freeTeaser || "Kostenloser Teaser"}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Post Details & Caption */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                        {/* Caption Preview (2 columns) */}
+                        <div className="md:col-span-2 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-muted-foreground">Caption / Telegram-Text:</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                              onClick={() => handleCopyCaption(post.caption, post.id)}
+                            >
+                              {copiedPostId === post.id ? (
+                                <>
+                                  <Check className="h-3 w-3 text-emerald-400" />
+                                  <span className="text-emerald-400 font-bold">{t.schedule.copied || "Kopiert"}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-3 w-3" />
+                                  <span>{t.schedule.copyCaption || "Caption kopieren"}</span>
+                                </>
+                              )}
+                            </Button>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-card/60 border font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                            {post.caption}
+                          </div>
+                        </div>
+
+                        {/* Media Asset Preview (1 column) */}
+                        <div className="p-3 rounded-lg bg-muted/20 border space-y-2 text-xs flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <span className="font-semibold text-muted-foreground block">{t.schedule.assignedMedia || "Zugeordnetes Foto/Video:"}</span>
+                            {post.asset ? (
+                              <>
+                                <div className="flex items-start gap-2 pt-0.5">
+                                  {post.asset.fileUrl && (
+                                    <div className="h-12 w-12 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
+                                      {post.asset.type === "VIDEO" || post.asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
+                                        <video
+                                          src={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
+                                          className="h-full w-full object-cover"
+                                          muted
+                                        />
+                                      ) : (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
+                                          alt="Preview"
+                                          className="h-full w-full object-cover"
+                                          onError={(e) => {
+                                            (e.currentTarget as HTMLElement).style.display = "none";
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="font-bold text-foreground truncate">{post.asset.title || (language === "de" ? "Foto/Video" : "Photo/Video")}</div>
+                                    <div className="text-[11px] text-muted-foreground truncate">{language === "de" ? "Thema" : "Theme"}: {post.asset.theme || (language === "de" ? "Allgemein" : "General")}</div>
+                                    <div className="text-[11px] text-muted-foreground">Level: {post.asset.explicitLevel}</div>
+                                  </div>
+                                </div>
+                                {post.asset.fileUrl && (
+                                  <a
+                                    href={getMediaDisplayUrl(post.asset.fileUrl, post.asset.id)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] text-sky-400 hover:underline flex items-center gap-1 mt-1 truncate"
+                                  >
+                                    <ExternalLink className="h-3 w-3 shrink-0" />
+                                    {t.schedule.openFileLink || "Datei in neuem Tab ansehen"}
+                                  </a>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground italic">{t.schedule.noAssetLinked || "Kein Asset verknüpft"}</span>
+                            )}
+                          </div>
+
+                          <div className="pt-2 border-t border-border/50 text-[11px] text-muted-foreground">
+                            {t.schedule.scheduledAt || "Geplant für:"} {formatGermanDateTime(targetDate)}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tab 3: Submitted Invoices & Receipts */}
         <TabsContent value="expenses" className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
             <div>
@@ -516,11 +943,11 @@ export function InvestorClient({
                 <Wallet className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle>{language === "de" ? "Integrierte TON Wallet einrichten" : "Set Up Integrated TON Wallet"}</DialogTitle>
+                <DialogTitle>{language === "de" ? "TON Auszahlungsadresse einrichten" : "Set Up TON Payout Address"}</DialogTitle>
                 <DialogDescription>
                   {currentTonAddress
                     ? (language === "de" ? "Deine aktive TON Auszahlungsadresse im System" : "Your active TON payout address in the system")
-                    : (language === "de" ? "Wichtig: Generiere deine non-custodiale Wallet. Deine Adresse wird automatisch an das Master Dashboard übermittelt." : "Important: Generate your non-custodial wallet. Your address will be automatically synced with the Master Dashboard.")}
+                    : (language === "de" ? "Wichtig: Hinterlegen Sie Ihre TON-Auszahlungsadresse. Sie können direkt ein neues Wallet erzeugen oder Ihre bestehende Adresse (z. B. Tonkeeper / Telegram Wallet) manuell angeben." : "Important: Set up your TON payout address. You can generate a new wallet or enter your existing address (e.g. Tonkeeper / Telegram Wallet) manually.")}
                 </DialogDescription>
               </div>
             </div>
@@ -531,13 +958,23 @@ export function InvestorClient({
             onAddressSaved={handleWalletSaved}
           />
 
-          <DialogFooter className="pt-2">
+          <DialogFooter className="pt-2 flex flex-col sm:flex-row gap-2 items-center justify-between">
             <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsWalletModalOpen(false)}
+              className="text-xs text-muted-foreground hover:text-foreground order-2 sm:order-1"
+            >
+              {language === "de" ? "Später einrichten (zum Zeitplan)" : "Set up later (view schedule)"}
+            </Button>
+            <Button
+              type="button"
               onClick={() => setIsWalletModalOpen(false)}
               disabled={!currentTonAddress}
-              className="w-full"
+              className="w-full sm:w-auto text-xs font-semibold order-1 sm:order-2"
             >
-              {currentTonAddress ? (language === "de" ? "Fertigstellen & zum Dashboard" : "Complete & Go to Dashboard") : (language === "de" ? "Bitte zuerst Adresse generieren & speichern" : "Please generate & save wallet first")}
+              {currentTonAddress ? (language === "de" ? "Fertigstellen & zum Dashboard" : "Complete & Go to Dashboard") : (language === "de" ? "Bitte zuerst Adresse speichern" : "Please save address first")}
             </Button>
           </DialogFooter>
         </DialogContent>

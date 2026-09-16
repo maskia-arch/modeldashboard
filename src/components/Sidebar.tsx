@@ -65,6 +65,11 @@ export function Sidebar() {
           icon: PieChart,
         },
         {
+          label: t.sidebar.schedule,
+          href: "/investor?tab=schedule",
+          icon: CalendarClock,
+        },
+        {
           label: t.sidebar.tonWallet,
           href: "/settings/wallet",
           icon: Wallet,
