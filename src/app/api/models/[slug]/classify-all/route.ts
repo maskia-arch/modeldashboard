@@ -26,7 +26,6 @@ export async function POST(
       include: {
         assets: {
           where: {
-            type: "PHOTO",
             isUsed: false,
           },
         },
@@ -57,7 +56,7 @@ export async function POST(
         success: true,
         classifiedCount: 0,
         remainingCount: 0,
-        message: force ? "Keine Fotos für dieses Model vorhanden." : "Keine unklassifizierten Fotos gefunden.",
+        message: force ? "Keine Medien für dieses Model vorhanden." : "Keine unklassifizierten Medien gefunden.",
       });
     }
 
@@ -70,6 +69,8 @@ export async function POST(
     const MAX_DURATION_MS = 25000;
     let processedIndex = 0;
 
+    const { isVideoOrGifExtension } = await import("@/lib/assets");
+
     for (let i = 0; i < targetAssets.length && i < limit; i++) {
       processedIndex = i + 1;
       if (Date.now() - startTime > MAX_DURATION_MS) {
@@ -78,9 +79,26 @@ export async function POST(
       }
 
       const asset = targetAssets[i];
-      if (!asset.fileUrl || !isPhotoExtension(asset.fileUrl)) {
+      if (!asset.fileUrl) {
         skippedCount++;
         continue;
+      }
+
+      const isVideo = asset.type === "VIDEO" || isVideoOrGifExtension(asset.fileUrl);
+      let durationSeconds: number | null = null;
+      let durationFormatted: string | null = null;
+
+      if (isVideo) {
+        const { getAssetVideoDuration } = await import("@/lib/video-metadata");
+        const dur = await getAssetVideoDuration({
+          type: "VIDEO",
+          notes: asset.notes,
+          fileUrl: asset.fileUrl,
+        });
+        if (dur) {
+          durationSeconds = dur.seconds;
+          durationFormatted = dur.formatted;
+        }
       }
 
       let localPath = getAssetLocalPath(asset.fileUrl);
@@ -95,7 +113,21 @@ export async function POST(
         } catch {}
       }
 
-      if (!localPath) {
+      let visionFilePath = localPath;
+      if (isVideo && asset.fileUrl) {
+        const { getOrCreateVideoThumbnail } = await import("@/lib/video-thumbnails");
+        const thumbInfo = await getOrCreateVideoThumbnail({
+          id: asset.id,
+          fileUrl: asset.fileUrl,
+          notes: asset.notes,
+          tags: asset.tags,
+          modelId: model.id,
+          model: { slug: model.slug, id: model.id },
+        });
+        visionFilePath = thumbInfo.thumbnailPath;
+      }
+
+      if (!visionFilePath) {
         skippedCount++;
         errors.push(`Datei nicht auf Festplatte: ${asset.title || asset.id}`);
         continue;
@@ -105,15 +137,29 @@ export async function POST(
         let classification;
         try {
           classification = await classifyImageWithGrokVision({
-            localFilePath: localPath,
+            localFilePath: visionFilePath,
             modelName: model.name,
+            isVideo,
+            videoDurationSeconds: durationSeconds || undefined,
+            videoDurationFormatted: durationFormatted || undefined,
           });
         } catch (grokErr: any) {
           console.warn(
             `[ClassifyAll] Grok Vision error for ${asset.id}: ${grokErr.message}. Falling back.`
           );
           const { generateFallbackClassification } = await import("@/lib/grok");
-          classification = generateFallbackClassification(localPath, model.name);
+          classification = generateFallbackClassification(
+            visionFilePath,
+            model.name,
+            isVideo,
+            durationFormatted || undefined,
+            durationSeconds || undefined
+          );
+        }
+
+        if (isVideo) {
+          classification.explicitLevel = "PPV";
+          classification.suggestedStarsPrice = Math.max(classification.suggestedStarsPrice || 0, 25);
         }
 
         const { mergeCleanedTags } = await import("@/lib/assets");
@@ -147,7 +193,7 @@ export async function POST(
       remainingCount,
       isComplete: remainingCount === 0,
       errors: errors.length > 0 ? errors : undefined,
-      message: `${classifiedCount} Fotos erfolgreich mit Grok 4.20 Vision bewertet!${
+      message: `${classifiedCount} Medien (Fotos & Videos) erfolgreich mit Grok 4.20 Vision bewertet!${
         remainingCount > 0 ? ` (${remainingCount} verbleibend)` : ""
       }`,
     });

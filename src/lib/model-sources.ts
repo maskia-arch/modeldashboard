@@ -458,6 +458,7 @@ async function syncMediaFromSourceChannelInternal(
 
         // Extract video duration from Telegram attributes if present
         let durationTag = "";
+        let videoThumbPath: string | null = null;
         if (isVideo) {
           const docAttrs = (mediaAny.document?.attributes || []) as any[];
           for (const attr of docAttrs) {
@@ -466,27 +467,67 @@ async function syncMediaFromSourceChannelInternal(
               break;
             }
           }
+
+          // Download video thumbnail from Telegram
+          try {
+            const thumbTarget = filePath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
+            await client.downloadMedia(msg, {
+              outputFile: thumbTarget,
+              thumb: -1,
+            });
+            if (fs.existsSync(thumbTarget) && (await fs.promises.stat(thumbTarget)).size > 100) {
+              videoThumbPath = thumbTarget;
+              try {
+                const secondaryThumbDir = path.join(process.cwd(), "uploads", "models", cleanSlug);
+                await fs.promises.copyFile(thumbTarget, path.join(secondaryThumbDir, path.basename(thumbTarget)));
+              } catch {}
+            }
+          } catch (tErr: any) {
+            console.warn(`[SourceChannel] Video thumbnail download notice for msg #${msg.id}:`, tErr.message);
+          }
         }
 
         let assetTitle = rawCaption ? rawCaption.slice(0, 50) : `Quell-Medium #${msg.id}`;
         let assetTheme = "Unklassifiziert";
-        let assetLevel: "TEASER" | "SOFT" | "PPV" = "TEASER";
-        let assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, "unclassified"];
+        let assetLevel: "TEASER" | "SOFT" | "PPV" = isVideo ? "PPV" : "TEASER";
+        let assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, ...(isVideo ? ["video", "vip", "ppv"] : []), "unclassified"];
         let assetNotes = sourceNote + (rawCaption ? ` | Caption: "${rawCaption}"` : "") + durationTag + backupTag + ` | [HASH:${hash}]`;
 
-        // If auto-classify is requested and it's a photo, run Grok Vision
-        if (autoClassifyPhotos && !isVideo) {
+        // If auto-classify is requested, run Grok Vision (on photos, and on videos via thumbnail + duration)
+        if (autoClassifyPhotos) {
           try {
-            console.log(`[SourceChannel] Auto-classifying photo from msg #${msg.id} with Grok Vision...`);
-            const grokRes = await classifyImageWithGrokVision({
-              localFilePath: filePath,
-              modelName: model.name,
-            });
-            assetTitle = grokRes.title || assetTitle;
-            assetTheme = grokRes.theme || "Allgemein";
-            assetLevel = grokRes.explicitLevel || "TEASER";
-            assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, ...(grokRes.tags || [])];
-            assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${grokRes.suggestedStarsPrice}`;
+            if (!isVideo) {
+              console.log(`[SourceChannel] Auto-classifying photo from msg #${msg.id} with Grok Vision...`);
+              const grokRes = await classifyImageWithGrokVision({
+                localFilePath: filePath,
+                modelName: model.name,
+              });
+              assetTitle = grokRes.title || assetTitle;
+              assetTheme = grokRes.theme || "Allgemein";
+              assetLevel = grokRes.explicitLevel || "TEASER";
+              assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, ...(grokRes.tags || [])];
+              assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${grokRes.suggestedStarsPrice}`;
+            } else if (isVideo && videoThumbPath) {
+              console.log(`[SourceChannel] Auto-classifying video from msg #${msg.id} with Grok Vision (thumbnail & duration)...`);
+              let durSec: number | undefined = undefined;
+              const dMatch = durationTag.match(/\[DURATION:(\d+)s\]/);
+              if (dMatch) durSec = parseInt(dMatch[1], 10);
+              const { formatDurationGerman } = await import("./video-metadata");
+              const durFmt = durSec ? formatDurationGerman(durSec) : undefined;
+
+              const grokRes = await classifyImageWithGrokVision({
+                localFilePath: videoThumbPath,
+                modelName: model.name,
+                isVideo: true,
+                videoDurationSeconds: durSec,
+                videoDurationFormatted: durFmt,
+              });
+              assetTitle = grokRes.title || assetTitle;
+              assetTheme = grokRes.theme || "VIP Video";
+              assetLevel = "PPV"; // Every video is VIP Content
+              assetTags = ["quelle", "telegram", model.slug, `msg_${msg.id}`, `hash_${hash}`, "video", "vip", "ppv", ...(grokRes.tags || [])];
+              assetNotes += ` | Grok: ${grokRes.notes} | Caption: "${grokRes.suggestedCaption}" | Stars: ${Math.max(grokRes.suggestedStarsPrice || 0, 25)}`;
+            }
           } catch (grokErr: any) {
             console.warn(`[SourceChannel] Grok classification failed for msg #${msg.id}:`, grokErr.message);
           }

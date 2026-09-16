@@ -327,24 +327,30 @@ export function composeStorylineCaption(opts: StorylineOptions): string {
 
     if (isVideo) {
       const dur = asset.duration || 0;
-      if (dur >= 90) {
-        // Long video
-        candidates.push(
-          `Über ${durationStr} pure Intimität komplett ohne Schnitt... 🔥 Da ist wirklich alles drauf! Schaltet das volle Video unten frei 🔓✨`,
-          `Ganze ${durationStr} in bester Auflösung 🤫 Habe die Kamera einfach laufen lassen. Holt euch den unzensierten Clip direkt in den Chat 🌟`
+      // For videos, strictly prioritize video-specific captions with duration and exclusivity
+      const vidCandidates: string[] = [];
+      if (dur >= 60 || (durationStr && durationStr.includes("Minut"))) {
+        vidCandidates.push(
+          `${durationStr} Exklusiv-Content für euch 🔥 Direkt unten freischalten 🔓✨`,
+          `Ganze ${durationStr} pure Intimität komplett ohne Schnitt... 🔥 Da ist wirklich alles drauf! Schaltet das volle Video unten frei 🔓✨`,
+          `${durationStr} unzensierter VIP-Content nur für euch... 🤫 Holt euch den Clip direkt in den Chat 🌟`,
+          `Ganze ${durationStr} in bester Auflösung 🤫 Habe die Kamera einfach laufen lassen. Jetzt unten freischalten 🔓✨`
         );
-      } else if (dur > 0) {
-        // Medium/Short video with duration
-        candidates.push(
+      } else if (dur > 0 || durationStr) {
+        vidCandidates.push(
+          `${durationStr} Exklusiv-Content für euch 🔥 Jetzt unten freischalten 🔓✨`,
           `Habe heute einen intimen ${durationStr}-Clip für euch aufgenommen 🙈 Voll in Bewegung und unzensiert! Jetzt unten freischalten 🔓✨`,
-          `${durationStr} purer VIP-Content in Bewegung 🔥 Schaut mal ganz genau hin... Direkt unten entsperren 🌟`
+          `${durationStr} purer VIP-Content in Bewegung 🔥 Schaut mal ganz genau hin... Direkt unten entsperren 🌟`,
+          `${durationStr} exklusiver Einblick in Bewegung 🤫 Nur für meine VIPs hier im Channel! 🌟`
         );
       } else {
-        candidates.push(
+        vidCandidates.push(
+          `Exklusiv-Content für euch 🔥 Komplett unzensiert und in voller Bewegung! Jetzt unten freischalten 🔓✨`,
           `Der bisher intensivste Clip aus meiner Privatsammlung... 🤫 Komplett unzensiert und in voller Bewegung! Jetzt unten freischalten 🔓✨`,
-          `Unwiderstehlich & intim in Bewegung... 💋 Holt euch diesen brandneuen Clip direkt in euren Telegram Chat 🌟`
+          `Unwiderstehlich & intim in Bewegung... 💋 Holt euch diesen brandneuen VIP-Clip direkt in euren Telegram Chat 🌟`
         );
       }
+      candidates.unshift(...vidCandidates);
     }
   }
 

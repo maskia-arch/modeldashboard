@@ -189,9 +189,16 @@ export async function POST(req: Request) {
           // Prime times strictly in German Time (Europe/Berlin):
           // Slot 0 (Afternoon): 14:30 German time
           // Slot 1 (Evening): 20:15 German time
-          const postDate = (slot === 0 && postsToday === 2)
+          let postDate = (slot === 0 && postsToday === 2)
             ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 14, 30)
             : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 20, 15);
+
+          // If scheduling on Day 0 and slot has already passed today, roll forward to tomorrow at exact slot time
+          if (dayOffset === 0 && postDate.getTime() <= Date.now()) {
+            postDate = (slot === 0 && postsToday === 2)
+              ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day + 1, 14, 30)
+              : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day + 1, 20, 15);
+          }
 
           const isVideo = asset.type === "VIDEO";
           let durationFormatted: string | null = null;
@@ -210,6 +217,9 @@ export async function POST(req: Request) {
           }
 
           let starsPrice = asset.explicitLevel === ExplicitLevel.PPV ? 150 : (asset.explicitLevel === ExplicitLevel.SOFT ? 25 : 0);
+          if (isVideo) {
+            starsPrice = Math.max(starsPrice, 25);
+          }
           if (asset.notes && asset.notes.includes("Stars: ")) {
             const sMatch = asset.notes.match(/Stars:\s*(\d+)/);
             if (sMatch && sMatch[1]) {

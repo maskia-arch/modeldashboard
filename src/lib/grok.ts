@@ -110,10 +110,22 @@ export async function generateGrokSchedule(params: GenerateScheduleParams): Prom
     }
   }
 
+  const { getGermanDateParts } = await import("./timezone");
+  const nowGerman = getGermanDateParts(new Date());
+  const currentGermanTimeStr = `${String(nowGerman.hour).padStart(2, "0")}:${String(nowGerman.minute).padStart(2, "0")}`;
+
   const systemPrompt = `You are the authentic, intimate German creator voice for "${params.modelName}" on Telegram.
 You are designing a narrative-driven, authentic content schedule across ${grokTargetDays} days for her Telegram VIP Channel.
 Tone & Persona: ${params.modelTone || "Authentic, intimate, charming, playful, flirty German creator"}.
 Strategy: ${params.strategy || "REALISTIC"} (Realistic posting rhythm with rest days and weekend peaks).
+
+CURRENT TIME CONTEXT (Europe/Berlin):
+- Right now in Germany it is ${currentGermanTimeStr} Uhr. Day 0 is TODAY.
+- If it is already past 11:30 in Germany: Morning slots (07:00 - 11:30) for Day 0 have ALREADY PASSED!
+  Any morning posts ("Guten Morgen", coffee, waking thoughts) MUST be scheduled for Day 1 (tomorrow morning, e.g. 09:30 or 10:15) or later!
+  Day 0 may only have slots strictly AFTER ${currentGermanTimeStr} Uhr.
+- If it is already past 21:00 in Germany: Day 0 has ended; start your schedule on Day 1 (tomorrow morning).
+- Every post will be scheduled at its EXACT planned "timeOfDay" and "timeOffsetDays".
 
 CORE PRINCIPLES:
 1. AUTHENTIC FIRST-PERSON MESSAGES (NO MARKETING SPEAK!):
@@ -138,10 +150,13 @@ CORE PRINCIPLES:
      * Tattoos visible -> mention your tattoos, asking how they like the ink on your skin.
      * Topless / Nude PPV drop -> be intimate, personal and vulnerable, teasing that you dared to share something private.
 
-4. VIDEO DURATION AWARENESS:
-   - For VIDEO assets, you receive 'videoDuration' (e.g. "45 Sekunden" or "2 Min. 15 Sek."):
-     * For short clips (< 45s): Reference it as a spontaneous, moving sneak peek or short video clip ("Ein kleiner 30-Sekunden Vorgeschmack...").
-     * For long videos (> 60s): Emphasize the full uninterrupted length and raw intimacy ("Ganze 2 Minuten und 15 Sekunden komplett ohne Schnitt...").
+4. VIDEO DURATION & EXCLUSIVITY (CRITICAL):
+   - For VIDEO assets, you receive 'videoDuration' (e.g. "10 Minuten", "45 Sekunden" or "2 Min. 15 Sek."):
+     * EVERY video is VIP Content! Even video teasers / previews cost Stars (min 25 Stars).
+     * The caption MUST prominently emphasize the duration and exclusivity:
+       e.g. "\${videoDuration} Exklusiv-Content für euch 🔥 Direkt unten freischalten 🔓✨",
+       "Ganze \${videoDuration} pure Intimität komplett ohne Schnitt... 🔥 Holt euch den Clip direkt in den Chat 🌟".
+     * Never call a video a photo or snapshot!
 
 5. CRITICAL MEDIA FORMAT INTEGRITY:
    - For 'PHOTO' assets: NEVER use words like "Video", "Clip", "Film", "gefilmt", etc. You must use authentic photo words like "Foto", "Bild", "Schnappschuss", "Shooting", "Aufnahme", "Spiegelselfie".
@@ -151,9 +166,10 @@ CORE PRINCIPLES:
    - Every single caption MUST be unique in wording, emotion, and angle. Never reuse identical hooks or phrases across days.
 
 7. PRICING RULES:
-   - TEASER assets: starsPrice = 0.
-   - SOFT assets: starsPrice = 15 to 50.
-   - PPV assets: starsPrice = 100 to 450.
+   - ALL VIDEO ASSETS: Must have starsPrice >= 25 (e.g. 25-50 for teaser clips, 100-250 for standard, 250-450 for full/explicit).
+   - PHOTO TEASER assets: starsPrice = 0.
+   - PHOTO SOFT assets: starsPrice = 15 to 50.
+   - PHOTO PPV assets: starsPrice = 100 to 450.
 
 8. ABSOLUTE STRICT TIME-OF-DAY CONSISTENCY:
    - "timeOfDay" dictates the greeting and emotional context:
@@ -254,9 +270,23 @@ Respond in strict JSON with the following structure:
       if (!seenAssetIds.has(item.assetId) && assetMap.has(item.assetId)) {
         seenAssetIds.add(item.assetId);
         const asset = assetMap.get(item.assetId)!;
+        const isVideo = asset.type === "VIDEO";
+        let starsPrice = item.starsPrice;
+        if (isVideo) {
+          starsPrice = Math.max(starsPrice, 25);
+        }
+
+        let timeOffsetDays = item.timeOffsetDays;
+        // Exact timing protection: if planned for Day 0 but time has already passed today, roll forward to tomorrow at exact time
+        if (timeOffsetDays === 0 && item.timeOfDay <= currentGermanTimeStr) {
+          timeOffsetDays = 1;
+        }
+
         const sanitized = sanitizeCaptionForMediaType(item.caption, asset.type);
         deduplicatedSchedule.push({
           ...item,
+          timeOffsetDays,
+          starsPrice,
           caption: ensureCaptionTimeConsistency(sanitized, item.timeOfDay),
         });
       }
@@ -293,8 +323,10 @@ Respond in strict JSON with the following structure:
           seenAssetIds.add(asset.id);
           const timeOfDay = p === 0 ? (postCount === 2 ? "14:30" : "20:15") : "20:45";
           const slot: "morning" | "afternoon" | "evening" | "latenight" = p === 0 ? (postCount === 2 ? "afternoon" : "evening") : "evening";
+          const isVideo = asset.type === "VIDEO";
           const level = asset.explicitLevel;
-          const starsPrice = level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0);
+          let starsPrice = isVideo ? (level === "PPV" ? 200 : 50) : (level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0));
+          if (isVideo) starsPrice = Math.max(starsPrice, 25);
 
           const caption = composeStorylineCaption({
             asset,
@@ -327,8 +359,10 @@ Respond in strict JSON with the following structure:
           if (countOnDay === 1) {
             const asset = unusedAssets[nextUnusedIdx++];
             seenAssetIds.add(asset.id);
+            const isVideo = asset.type === "VIDEO";
             const level = asset.explicitLevel;
-            const starsPrice = level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0);
+            let starsPrice = isVideo ? (level === "PPV" ? 200 : 50) : (level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0));
+            if (isVideo) starsPrice = Math.max(starsPrice, 25);
             const caption = composeStorylineCaption({
               asset,
               dayOfWeek: d % 7,
@@ -560,14 +594,16 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
           slot = "afternoon";
           chosenAsset = takeAsset("TEASER");
           if (!chosenAsset) break;
-          starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
+          const isVid = chosenAsset.type === "VIDEO";
+          starsPrice = isVid ? 50 : (chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0));
         } else {
           // Slot 1 (Evening): 20:15 or 21:30
           timeOfDay = (dayOfWeek === 4 || dayOfWeek === 5) ? "21:30" : "20:15";
           slot = "evening";
           chosenAsset = takeAsset("PPV");
           if (!chosenAsset) break;
-          starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 + ((day * 25) % 200) : (chosenAsset.explicitLevel === "SOFT" ? 35 : 0);
+          const isVid = chosenAsset.type === "VIDEO";
+          starsPrice = isVid ? 200 : (chosenAsset.explicitLevel === "PPV" ? 150 + ((day * 25) % 200) : (chosenAsset.explicitLevel === "SOFT" ? 35 : 0));
         }
       } else {
         // 1 post day: Alternate between Afternoon (14:30) and Evening (20:15 / 19:45)
@@ -583,14 +619,31 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         chosenAsset = takeAsset(preferredLevel);
         if (!chosenAsset) break;
 
-        starsPrice = chosenAsset.explicitLevel === "PPV" ? 120 + ((day * 20) % 230) : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
+        const isVid = chosenAsset.type === "VIDEO";
+        starsPrice = isVid ? 150 : (chosenAsset.explicitLevel === "PPV" ? 120 + ((day * 20) % 230) : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0));
+      }
+
+      const isVideoAsset = chosenAsset.type === "VIDEO";
+      if (isVideoAsset) {
+        starsPrice = Math.max(starsPrice, 25);
       }
 
       caption = getStoryCaption(chosenAsset, chosenAsset.explicitLevel, slot, day);
       caption = ensureCaptionTimeConsistency(caption, timeOfDay);
 
+      let timeOffsetDays = day;
+      // Exact timing: if scheduled on Day 0 but time has already passed today, roll to Day 1
+      if (day === 0) {
+        const { getGermanDateParts } = require("./timezone");
+        const nowG = getGermanDateParts(new Date());
+        const curGTime = `${String(nowG.hour).padStart(2, "0")}:${String(nowG.minute).padStart(2, "0")}`;
+        if (timeOfDay <= curGTime) {
+          timeOffsetDays = 1;
+        }
+      }
+
       schedule.push({
-        timeOffsetDays: day,
+        timeOffsetDays,
         timeOfDay,
         assetId: chosenAsset.id,
         caption: ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(caption, chosenAsset.type), timeOfDay),
@@ -614,11 +667,23 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         if (!chosenAsset) break;
         const timeOfDay = "14:30";
         const slot = "afternoon";
-        const starsPrice = chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0);
+        const isVid = chosenAsset.type === "VIDEO";
+        let starsPrice = isVid ? 150 : (chosenAsset.explicitLevel === "PPV" ? 150 : (chosenAsset.explicitLevel === "SOFT" ? 25 : 0));
+        if (isVid) starsPrice = Math.max(starsPrice, 25);
         const caption = getStoryCaption(chosenAsset, chosenAsset.explicitLevel, slot, d);
 
+        let timeOffsetDays = d;
+        if (d === 0) {
+          const { getGermanDateParts } = require("./timezone");
+          const nowG = getGermanDateParts(new Date());
+          const curGTime = `${String(nowG.hour).padStart(2, "0")}:${String(nowG.minute).padStart(2, "0")}`;
+          if (timeOfDay <= curGTime) {
+            timeOffsetDays = 1;
+          }
+        }
+
         schedule.push({
-          timeOffsetDays: d,
+          timeOffsetDays,
           timeOfDay,
           assetId: chosenAsset.id,
           caption: ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(caption, chosenAsset.type), timeOfDay),
@@ -703,25 +768,39 @@ export interface GrokImageClassification {
 }
 
 /**
- * Evaluates and classifies a photo using xAI Grok Vision.
+ * Evaluates and classifies a photo or video thumbnail using xAI Grok Vision.
  * Follows the 6-Tier Expositionsgrad system (Tier 0 to Tier 5) with secondary attributes and quality scoring.
- * Videos and GIFs are explicitly prohibited from being passed to this function.
+ * For videos, the thumbnail image is evaluated alongside the extracted video duration.
+ * Every video is strictly treated as VIP Content (PPV) with mandatory Stars pricing.
  */
 export async function classifyImageWithGrokVision(params: {
   localFilePath: string;
   modelName?: string;
   modelTone?: string;
+  isVideo?: boolean;
+  videoDurationSeconds?: number;
+  videoDurationFormatted?: string;
 }): Promise<GrokImageClassification> {
   const fs = await import("fs");
   const path = await import("path");
 
   const ext = path.extname(params.localFilePath).toLowerCase();
-  if ([".mp4", ".mov", ".mkv", ".avi", ".gif"].includes(ext)) {
-    throw new Error("Videos and GIFs are excluded from Grok Vision. They must be classified manually.");
+  const isVideoExt = [".mp4", ".mov", ".mkv", ".avi", ".webm"].includes(ext);
+  const isVideo = Boolean(params.isVideo) || isVideoExt;
+
+  let imagePath = params.localFilePath;
+  if (isVideoExt) {
+    // If a video container was passed directly, look for its thumbnail image
+    const candidateThumb = params.localFilePath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
+    if (fs.existsSync(candidateThumb)) {
+      imagePath = candidateThumb;
+    }
+  } else if ([".gif"].includes(ext)) {
+    throw new Error("GIFs are excluded from direct image Vision. Please classify them manually.");
   }
 
-  if (!fs.existsSync(params.localFilePath)) {
-    throw new Error(`File not found on disk: ${params.localFilePath}`);
+  if (!fs.existsSync(imagePath)) {
+    throw new Error(`File not found on disk: ${imagePath}`);
   }
 
   const apiKey = process.env.XAI_API_KEY;
@@ -740,14 +819,43 @@ export async function classifyImageWithGrokVision(params: {
     );
   }
 
-  const fileBuffer = await fs.promises.readFile(params.localFilePath);
+  const fileBuffer = await fs.promises.readFile(imagePath);
+  const imgExt = path.extname(imagePath).toLowerCase();
   let mimeType = "image/jpeg";
-  if (ext === ".png") mimeType = "image/png";
-  else if (ext === ".webp") mimeType = "image/webp";
+  if (imgExt === ".png") mimeType = "image/png";
+  else if (imgExt === ".webp") mimeType = "image/webp";
 
   const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
 
-  const systemPrompt = `You are Grok 4.20 Vision, the expert VIP Content Auditor for OnlyFans and Telegram Stars VIP Channels.
+  const durationLabel = params.videoDurationFormatted || (params.videoDurationSeconds ? `${params.videoDurationSeconds} Sekunden` : "Video-Clip");
+
+  const promptBody = isVideo
+    ? `You are Grok 4.20 Vision, the expert VIP Content Auditor for OnlyFans and Telegram Stars VIP Channels.
+Analyze the provided preview THUMBNAIL for a VIDEO of creator "${params.modelName || "Creator"}".
+Video Duration: ${durationLabel}.
+
+CRITICAL BUSINESS RULES FOR VIDEOS:
+1. EVERY VIDEO IS VIP CONTENT:
+   - For all videos, explicitLevel MUST be "PPV"! No video can be free.
+2. STARS PRICING:
+   - Even video teasers / previews REQUIRE Stars!
+   - Short teaser clips (< 45s): 25 to 75 Stars.
+   - Standard videos (45s - 3 min): 100 to 250 Stars.
+   - Long / exclusive videos (> 3 min or high nudity): 250 to 500+ Stars.
+3. AUTHENTIC CAPTION:
+   - The suggested caption MUST refer to the video format and duration:
+     e.g. "${durationLabel} Exklusiv-Content für euch 🔥 Direkt unten freischalten 🔓✨",
+     "Ganze ${durationLabel} unzensierter VIP-Content nur für euch...".
+   - NEVER refer to it as a photo or snapshot!
+
+PRÄZISE DEFINITIONEN NACH EXPOSITIONSGRAD (TIERS):
+- Tier 0: "SFW / Lifestyle" -> Vollständig bekleidet. Stars: 25-50 (da Video VIP).
+- Tier 1: "Suggestive / Bademode" -> Knappe Kleidung / Bikini. Stars: 50-100.
+- Tier 2: "Lingerie / Unterwäsche" -> Reizwäsche am Körper. Stars: 100-200.
+- Tier 3: "Teilakt (Partial Nude)" -> Oben-ohne / verdeckter Akt. Stars: 200-350.
+- Tier 4: "Vollakt (Full Nude)" -> Vollständige Nacktheit. Stars: 350-500.
+- Tier 5: "Explizit / Interaktion" -> Sexuelle Handlungen / Toys. Stars: 500-800+.`
+    : `You are Grok 4.20 Vision, the expert VIP Content Auditor for OnlyFans and Telegram Stars VIP Channels.
 Analyze the provided photo of creator "${params.modelName || "Creator"}".
 
 PRÄZISE DEFINITIONEN NACH EXPOSITIONSGRAD (TIERS):
@@ -762,7 +870,9 @@ PRÄZISE DEFINITIONEN NACH EXPOSITIONSGRAD (TIERS):
 1. Bestimme ZUERST in "visual_audit.clothing_detected" objektiv die tatsächlich getragene Kleidung (z.B. "T-Shirt mit Print", "Hoodie", "BH & Slip", "Bikini", "Oben-Ohne").
 2. Wenn die Person ein normales T-Shirt, einen Pullover, Hoodie oder Alltagskleidung trägt, MUSS das Tier zwingend "Tier 0" sein!
 3. Ein Bett, Kissen oder Spiegel im Hintergrund macht ein Bild NIEMALS zu Lingerie oder Reizwäsche! Lingerie existiert NUR, wenn echte Unterwäsche sichtbar getragen wird.
-4. Titel und Bildunterschrift müssen wahrheitsgetreu zum Bild passen: Ein T-Shirt-Spiegelselfie darf NIEMALS "Dessous" oder "Lingerie" genannt werden!
+4. Titel und Bildunterschrift müssen wahrheitsgetreu zum Bild passen: Ein T-Shirt-Spiegelselfie darf NIEMALS "Dessous" oder "Lingerie" genannt werden!`;
+
+  const systemPrompt = `${promptBody}
 
 STRICT JSON OUTPUT FORMAT:
 {
@@ -878,15 +988,18 @@ STRICT JSON OUTPUT FORMAT:
       errText.toLowerCase().includes("nsfw");
 
     if (isNsfwOrSafetyRefusal) {
-      console.log(`[GrokVision] Image triggered xAI content filter/refusal -> automatically classifying as Tier 4 / PPV.`);
+      console.log(`[GrokVision] Content triggered xAI filter/refusal -> classifying as Tier 4 / PPV.`);
+      const vidDurText = params.videoDurationFormatted || (params.videoDurationSeconds ? `${params.videoDurationSeconds}s` : "");
       return {
         explicitLevel: "PPV",
-        title: `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
-        theme: "Vollakt / Explicit",
-        tags: ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
-        notes: "Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI NSFW-Filter ausgelöst",
-        suggestedCaption: "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
-        suggestedStarsPrice: 350,
+        title: isVideo ? `Exklusives VIP Video (${params.modelName || "Creator"})` : `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
+        theme: isVideo ? "VIP Video / Explicit" : "Vollakt / Explicit",
+        tags: isVideo ? ["video", "vip", "ppv", "stars", "explicit", "tier4", "vollakt"] : ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
+        notes: `Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI NSFW-Filter ausgelöst${vidDurText ? ` | [DURATION:${params.videoDurationSeconds || 0}s]` : ""}`,
+        suggestedCaption: isVideo
+          ? `${params.videoDurationFormatted ? `${params.videoDurationFormatted} ` : ""}Exklusiv-Content für euch 🔥 Komplett unzensiert und in voller Bewegung! Jetzt freischalten 🔓✨`
+          : "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
+        suggestedStarsPrice: isVideo ? Math.max(350, (params.videoDurationSeconds && params.videoDurationSeconds > 180 ? 450 : 350)) : 350,
         classification: {
           tier: "Tier 4",
           category: "Vollakt (Full Nude)",
@@ -921,14 +1034,17 @@ STRICT JSON OUTPUT FORMAT:
 
   if (refusal) {
     console.log(`[GrokVision] Model refused with: "${refusal}" -> classifying as Tier 4 / PPV.`);
+    const vidDurText = params.videoDurationFormatted || (params.videoDurationSeconds ? `${params.videoDurationSeconds}s` : "");
     return {
       explicitLevel: "PPV",
-      title: `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
-      theme: "Vollakt / Explicit",
-      tags: ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
-      notes: `Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI Refusal: ${refusal}`,
-      suggestedCaption: "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
-      suggestedStarsPrice: 350,
+      title: isVideo ? `Exklusives VIP Video (${params.modelName || "Creator"})` : `Exklusiver VIP Vollakt (${params.modelName || "Creator"})`,
+      theme: isVideo ? "VIP Video / Explicit" : "Vollakt / Explicit",
+      tags: isVideo ? ["video", "vip", "ppv", "stars", "explicit", "tier4", "vollakt"] : ["tier4", "vollakt", "nude", "ppv", "explicit", "vip", "stars"],
+      notes: `Grok 4.20 Vision: Tier 4 - Vollakt (Full Nude) | xAI Refusal: ${refusal}${vidDurText ? ` | [DURATION:${params.videoDurationSeconds || 0}s]` : ""}`,
+      suggestedCaption: isVideo
+        ? `${params.videoDurationFormatted ? `${params.videoDurationFormatted} ` : ""}Exklusiv-Content für euch 🔥 Komplett unzensiert und in voller Bewegung! Jetzt freischalten 🔓✨`
+        : "Streng geheim und unzensiert... 🤫 Nur für echte VIPs hier im Channel! Jetzt freischalten 🔓✨",
+      suggestedStarsPrice: isVideo ? Math.max(350, (params.videoDurationSeconds && params.videoDurationSeconds > 180 ? 450 : 350)) : 350,
       classification: {
         tier: "Tier 4",
         category: "Vollakt (Full Nude)",
@@ -953,7 +1069,7 @@ STRICT JSON OUTPUT FORMAT:
 
   if (!rawJson) {
     console.warn("Empty response from Grok Vision, using fallback classification.");
-    return generateFallbackClassification(params.localFilePath, params.modelName);
+    return generateFallbackClassification(params.localFilePath, params.modelName, isVideo, params.videoDurationFormatted, params.videoDurationSeconds);
   }
 
   // Robust JSON extraction removing markdown fences, leading/trailing text
@@ -970,7 +1086,7 @@ STRICT JSON OUTPUT FORMAT:
     parsed = JSON.parse(cleanJson);
   } catch (parseErr) {
     console.warn("[GrokVision] JSON parse failed on raw output, using fallback parser:", rawJson);
-    return generateFallbackClassification(params.localFilePath, params.modelName);
+    return generateFallbackClassification(params.localFilePath, params.modelName, isVideo, params.videoDurationFormatted, params.videoDurationSeconds);
   }
 
   const classification = parsed.classification || {
@@ -1098,7 +1214,31 @@ STRICT JSON OUTPUT FORMAT:
     }
   }
 
-  const structuredNotes = `[${normalizedTier}: ${classification.category} | Score: ${quality.score}/10 | ${attributes.perspective} | ${attributes.setting} | Face: ${attributes.face_visible ? "Ja" : "Nein"}]`;
+  // Critical Business Rule: EVERY video is VIP Content (PPV) and requires Stars
+  if (isVideo) {
+    explicitLevel = "PPV";
+    suggestedStarsPrice = Math.max(suggestedStarsPrice || 0, 25);
+    if (!combinedTags.includes("video")) combinedTags.push("video");
+    if (!combinedTags.includes("vip")) combinedTags.push("vip");
+    if (!combinedTags.includes("ppv")) combinedTags.push("ppv");
+    if (params.videoDurationFormatted) {
+      const durTag = params.videoDurationFormatted.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      if (!combinedTags.includes(durTag)) combinedTags.push(durTag);
+    }
+    const durPrefix = params.videoDurationFormatted ? `${params.videoDurationFormatted} Exklusiv-Content für euch 🔥` : "Exklusiv-Content für euch 🔥";
+    if (
+      !suggestedCaption.toLowerCase().includes("minuten") &&
+      !suggestedCaption.toLowerCase().includes("sekunden") &&
+      !suggestedCaption.toLowerCase().includes("exklusiv")
+    ) {
+      suggestedCaption = `${durPrefix} ${suggestedCaption}`;
+    }
+    if (!title.toLowerCase().includes("video") && !title.toLowerCase().includes("clip")) {
+      title = `${params.videoDurationFormatted ? `${params.videoDurationFormatted} ` : ""}VIP Video (${title})`;
+    }
+  }
+
+  const structuredNotes = `[${normalizedTier}: ${classification.category} | Score: ${quality.score}/10 | ${attributes.perspective} | ${attributes.setting} | Face: ${attributes.face_visible ? "Ja" : "Nein"}${isVideo && params.videoDurationSeconds ? ` | [DURATION:${params.videoDurationSeconds}s]` : ""}]`;
 
   return {
     title,
@@ -1135,7 +1275,10 @@ STRICT JSON OUTPUT FORMAT:
  */
 export function generateFallbackClassification(
   filePath: string,
-  modelName?: string
+  modelName?: string,
+  isVideo?: boolean,
+  videoDurationFormatted?: string,
+  videoDurationSeconds?: number
 ): GrokImageClassification {
   const path = require("path");
   const fileName = path.basename(filePath).toLowerCase();
@@ -1149,7 +1292,17 @@ export function generateFallbackClassification(
   let tags = ["lifestyle", "selfie", "portrait"];
   let visibleFeatures: string[] = ["face"];
 
-  if (fileName.includes("pussy") || fileName.includes("nude") || fileName.includes("naked") || fileName.includes("explicit") || fileName.includes("sex")) {
+  if (isVideo) {
+    explicitLevel = "PPV";
+    tier = "Tier 3";
+    category = "VIP Video Content";
+    const durLabel = videoDurationFormatted || (videoDurationSeconds ? `${videoDurationSeconds}s` : "Clip");
+    title = `${durLabel} Exklusiv-Video (${modelName || "Creator"})`;
+    suggestedStarsPrice = videoDurationSeconds && videoDurationSeconds > 180 ? 350 : 150;
+    tags = ["video", "vip", "ppv", "stars", ...(videoDurationFormatted ? [videoDurationFormatted.toLowerCase().replace(/[^a-z0-9]/g, "_")] : [])];
+    visibleFeatures = ["video"];
+    suggestedCaption = `${durLabel} Exklusiv-Content für euch 🔥 Komplett unzensiert in voller Bewegung! Jetzt unten freischalten 🔓✨`;
+  } else if (fileName.includes("pussy") || fileName.includes("nude") || fileName.includes("naked") || fileName.includes("explicit") || fileName.includes("sex")) {
     explicitLevel = "PPV";
     tier = "Tier 4";
     category = "Vollakt (Full Nude)";

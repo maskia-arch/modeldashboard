@@ -33,11 +33,22 @@ export async function POST(
       return NextResponse.json({ error: "Asset has no associated file" }, { status: 400 });
     }
 
-    if (!isPhotoExtension(asset.fileUrl)) {
-      return NextResponse.json(
-        { error: "Videos and GIFs cannot be sent to Grok Vision. Please classify them manually." },
-        { status: 400 }
-      );
+    const { isVideoOrGifExtension } = await import("@/lib/assets");
+    const isVideo = asset.type === "VIDEO" || isVideoOrGifExtension(asset.fileUrl);
+    let durationSeconds: number | null = null;
+    let durationFormatted: string | null = null;
+
+    if (isVideo) {
+      const { getAssetVideoDuration } = await import("@/lib/video-metadata");
+      const dur = await getAssetVideoDuration({
+        type: "VIDEO",
+        notes: asset.notes,
+        fileUrl: asset.fileUrl,
+      });
+      if (dur) {
+        durationSeconds = dur.seconds;
+        durationFormatted = dur.formatted;
+      }
     }
 
     let localPath = getAssetLocalPath(asset.fileUrl);
@@ -57,22 +68,51 @@ export async function POST(
       }
     }
 
-    if (!localPath) {
+    // For videos: resolve or download video thumbnail for Grok Vision preview
+    let visionFilePath = localPath;
+    if (isVideo) {
+      const { getOrCreateVideoThumbnail } = await import("@/lib/video-thumbnails");
+      const thumbInfo = await getOrCreateVideoThumbnail({
+        id: asset.id,
+        fileUrl: asset.fileUrl,
+        notes: asset.notes,
+        tags: asset.tags,
+        modelId: asset.modelId,
+        model: asset.model,
+      });
+      visionFilePath = thumbInfo.thumbnailPath;
+    }
+
+    if (!visionFilePath) {
       return NextResponse.json({ error: "Datei konnte auf der Festplatte nicht gefunden oder wiederhergestellt werden." }, { status: 404 });
     }
 
     let classification;
     try {
       classification = await classifyImageWithGrokVision({
-        localFilePath: localPath,
+        localFilePath: visionFilePath,
         modelName: asset.model.name,
+        isVideo,
+        videoDurationSeconds: durationSeconds || undefined,
+        videoDurationFormatted: durationFormatted || undefined,
       });
     } catch (grokErr: any) {
       console.warn(
         `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Applying resilient fallback classification.`
       );
       const { generateFallbackClassification } = await import("@/lib/grok");
-      classification = generateFallbackClassification(localPath, asset.model.name);
+      classification = generateFallbackClassification(
+        visionFilePath,
+        asset.model.name,
+        isVideo,
+        durationFormatted || undefined,
+        durationSeconds || undefined
+      );
+    }
+
+    if (isVideo) {
+      classification.explicitLevel = "PPV";
+      classification.suggestedStarsPrice = Math.max(classification.suggestedStarsPrice || 0, 25);
     }
 
     const { mergeCleanedTags } = await import("@/lib/assets");

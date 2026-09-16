@@ -16,21 +16,49 @@ export async function POST(req: Request) {
       );
     }
 
+    const { getGermanDateParts, createGermanDate } = await import("@/lib/timezone");
+    const now = new Date();
+    const nowGerman = getGermanDateParts(now);
+
+    let baseYear = nowGerman.year;
+    let baseMonth = nowGerman.month;
+    let baseDay = nowGerman.day;
+
+    if (body.startDate) {
+      const [sY, sM, sD] = String(body.startDate).split("-").map(Number);
+      if (sY && sM && sD) {
+        baseYear = sY;
+        baseMonth = sM;
+        baseDay = sD;
+      }
+    }
+
     const createdPosts = [];
 
     for (const item of posts) {
-      // Parse offset and timeOfDay (HH:MM)
-      const now = new Date();
-      const targetDate = new Date(now);
-      targetDate.setDate(targetDate.getDate() + (item.timeOffsetDays || 0));
-
+      const offset = typeof item.timeOffsetDays === "number" ? item.timeOffsetDays : 0;
       const [hours, minutes] = (item.timeOfDay || "12:00").split(":").map(Number);
-      targetDate.setHours(hours || 12, minutes || 0, 0, 0);
 
-      // If target time is already in the past for today, push to +5 minutes from now
-      const finalDate = targetDate.getTime() <= now.getTime()
-        ? new Date(now.getTime() + 5 * 60 * 1000)
-        : targetDate;
+      // Construct target Date in exact Europe/Berlin timezone
+      let finalDate = createGermanDate(baseYear, baseMonth, baseDay + offset, hours || 12, minutes || 0);
+
+      // Exact timing fix: If scheduled on Day 0 but time has already passed today:
+      // Roll forward to tomorrow (Day + 1) at the EXACT planned time of day (e.g. 09:00).
+      // NEVER jump to "now + 5 minutes"!
+      if (!body.startDate && offset === 0 && finalDate.getTime() <= now.getTime()) {
+        finalDate = createGermanDate(baseYear, baseMonth, baseDay + 1, hours || 12, minutes || 0);
+      }
+
+      let starsPrice = item.starsPrice || 0;
+      if (item.assetId) {
+        const assetRecord = await prisma.asset.findUnique({
+          where: { id: item.assetId },
+          select: { type: true },
+        });
+        if (assetRecord?.type === "VIDEO") {
+          starsPrice = Math.max(starsPrice, 25);
+        }
+      }
 
       // Ensure caption is strictly consistent with the scheduled time of day
       const finalCaption = ensureCaptionTimeConsistency(item.caption || "", item.timeOfDay || "12:00");

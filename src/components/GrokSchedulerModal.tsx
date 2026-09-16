@@ -423,13 +423,23 @@ export function GrokSchedulerModal({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        {language === "de" ? "Tag" : "Day"} +{item.timeOffsetDays}
-                      </span>
+                      {(() => {
+                        const targetDate = new Date(Date.now() + item.timeOffsetDays * 86400000);
+                        const dayLabel = item.timeOffsetDays === 0
+                          ? (language === "de" ? "Heute" : "Today")
+                          : item.timeOffsetDays === 1
+                          ? (language === "de" ? "Morgen" : "Tomorrow")
+                          : `${targetDate.toLocaleDateString(language === "de" ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit" })}`;
+                        return (
+                          <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-3 w-3" />
+                            {dayLabel} (Tag +{item.timeOffsetDays})
+                          </span>
+                        );
+                      })()}
                       <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
                         <Clock className="h-3 w-3" />
-                        {item.timeOfDay}
+                        {item.timeOfDay} {language === "de" ? "Uhr" : ""}
                       </span>
                       {item.starsPrice > 0 ? (
                         <Badge variant="ppv" className="text-[10px] gap-0.5">
