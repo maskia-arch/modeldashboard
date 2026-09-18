@@ -4,6 +4,9 @@ import { postQueue } from "@/lib/queue";
 import { PostStatus } from "@prisma/client";
 import { ensureCaptionTimeConsistency } from "@/lib/captions";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 180;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -33,9 +36,20 @@ export async function POST(req: Request) {
       }
     }
 
-    const createdPosts = [];
+    // Prefetch all referenced asset types in ONE query to avoid N+1 database lookups
+    const assetIds = Array.from(
+      new Set(posts.map((p: any) => p.assetId).filter((id): id is string => Boolean(id)))
+    );
+    const assetRecords = assetIds.length > 0
+      ? await prisma.asset.findMany({
+          where: { id: { in: assetIds } },
+          select: { id: true, type: true },
+        })
+      : [];
+    const assetTypeMap = new Map(assetRecords.map((a) => [a.id, a.type]));
 
-    for (const item of posts) {
+    // Pre-calculate all post items in memory
+    const preparedPosts = posts.map((item: any) => {
       const offset = typeof item.timeOffsetDays === "number" ? item.timeOffsetDays : 0;
       const [hours, minutes] = (item.timeOfDay || "12:00").split(":").map(Number);
 
@@ -44,63 +58,82 @@ export async function POST(req: Request) {
 
       // Exact timing fix: If scheduled on Day 0 but time has already passed today:
       // Roll forward to tomorrow (Day + 1) at the EXACT planned time of day (e.g. 09:00).
-      // NEVER jump to "now + 5 minutes"!
       if (!body.startDate && offset === 0 && finalDate.getTime() <= now.getTime()) {
         finalDate = createGermanDate(baseYear, baseMonth, baseDay + 1, hours || 12, minutes || 0);
       }
 
       let starsPrice = item.starsPrice || 0;
-      if (item.assetId) {
-        const assetRecord = await prisma.asset.findUnique({
-          where: { id: item.assetId },
-          select: { type: true },
-        });
-        if (assetRecord?.type === "VIDEO") {
-          starsPrice = Math.max(starsPrice, 25);
-        }
+      if (item.assetId && assetTypeMap.get(item.assetId) === "VIDEO") {
+        starsPrice = Math.max(starsPrice, 25);
       }
 
       // Ensure caption is strictly consistent with the scheduled time of day
       const finalCaption = ensureCaptionTimeConsistency(item.caption || "", item.timeOfDay || "12:00");
 
-      const [post] = await prisma.$transaction([
+      return {
+        assetId: item.assetId || null,
+        caption: finalCaption,
+        starsPrice,
+        finalDate,
+      };
+    });
+
+    // Chunked execution for high volume (e.g. 960+ posts across multi-year schedules)
+    const CHUNK_SIZE = 50;
+    const createdPosts: any[] = [];
+    const MAX_SAFE_DELAY_MS = 2147483647; // Max 32-bit signed int (~24.8 days) for setTimeout in Node.js
+
+    for (let i = 0; i < preparedPosts.length; i += CHUNK_SIZE) {
+      const chunk = preparedPosts.slice(i, i + CHUNK_SIZE);
+      const chunkAssetIds = Array.from(
+        new Set(chunk.map((c) => c.assetId).filter((id): id is string => Boolean(id)))
+      );
+
+      const transactionOps: any[] = chunk.map((c) =>
         prisma.post.create({
           data: {
             modelId,
-            assetId: item.assetId,
-            caption: finalCaption,
-            starsPrice: item.starsPrice || 0,
-            scheduledFor: finalDate,
+            assetId: c.assetId,
+            caption: c.caption,
+            starsPrice: c.starsPrice,
+            scheduledFor: c.finalDate,
             status: PostStatus.SCHEDULED,
           },
-        }),
-        ...(item.assetId
-          ? [
-              prisma.asset.update({
-                where: { id: item.assetId },
-                data: { isUsed: true },
-              }),
-            ]
-          : []),
-      ]);
+        })
+      );
 
-      // Compute BullMQ job delay in milliseconds
-      const delayMs = Math.max(0, finalDate.getTime() - Date.now());
-
-      try {
-        await postQueue.add(
-          `post-${post.id}`,
-          { postId: post.id },
-          {
-            delay: delayMs,
-            jobId: `post_${post.id}`,
-          }
+      if (chunkAssetIds.length > 0) {
+        transactionOps.push(
+          prisma.asset.updateMany({
+            where: { id: { in: chunkAssetIds } },
+            data: { isUsed: true },
+          })
         );
-      } catch (queueErr) {
-        console.warn(`[BullMQ] Warning adding job to Redis (Redis might be offline locally):`, queueErr);
       }
 
-      createdPosts.push(post);
+      const results = await prisma.$transaction(transactionOps);
+      const chunkCreated = results.slice(0, chunk.length);
+
+      for (const post of chunkCreated) {
+        createdPosts.push(post);
+
+        // Queue addition if within safe BullMQ timer delay (posts further out are picked up as they mature)
+        const delayMs = Math.max(0, new Date(post.scheduledFor).getTime() - Date.now());
+        if (delayMs <= MAX_SAFE_DELAY_MS) {
+          try {
+            await postQueue.add(
+              `post-${post.id}`,
+              { postId: post.id },
+              {
+                delay: delayMs,
+                jobId: `post_${post.id}`,
+              }
+            );
+          } catch {
+            // BullMQ/Redis offline locally
+          }
+        }
+      }
     }
 
     return NextResponse.json({

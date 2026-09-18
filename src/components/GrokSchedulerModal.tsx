@@ -156,6 +156,39 @@ export function GrokSchedulerModal({
 
   const getAssetById = (id: string) => availableAssets.find((a) => a.id === id);
 
+  const estimatedRunwayDays = React.useMemo(() => {
+    if (unpostedAssets.length === 0) return 0;
+    switch (strategy) {
+      case "EVERY_3_DAYS":
+        return unpostedAssets.length * 3;
+      case "EVERY_2_DAYS":
+        return unpostedAssets.length * 2;
+      case "RELAXED":
+        return Math.round((unpostedAssets.length * 7) / 3);
+      case "FIXED_2":
+        return Math.round(unpostedAssets.length / 2);
+      case "FIXED_1":
+        return unpostedAssets.length;
+      case "VARIABLE_1_2":
+        return Math.round(unpostedAssets.length / 1.5);
+      default:
+        return Math.round(unpostedAssets.length * 1.08);
+    }
+  }, [unpostedAssets.length, strategy]);
+
+  const formatRunway = (rDays: number) => {
+    if (rDays <= 0) return language === "de" ? "0 Tage" : "0 Days";
+    if (rDays >= 365) {
+      const yrs = (rDays / 365).toFixed(1).replace(".", ",");
+      return `~${yrs} ${language === "de" ? "Jahre" : "Years"} (${rDays} ${language === "de" ? "Tage" : "Days"})`;
+    }
+    if (rDays >= 30) {
+      const months = (rDays / 30).toFixed(1).replace(".", ",");
+      return `~${months} ${language === "de" ? "Monate" : "Months"} (${rDays} ${language === "de" ? "Tage" : "Days"})`;
+    }
+    return `${rDays} ${language === "de" ? "Tage" : "Days"}`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl" onClose={() => onOpenChange(false)}>
@@ -182,39 +215,21 @@ export function GrokSchedulerModal({
 
         {generatedSchedule.length === 0 ? (
           <div className="space-y-4 py-2">
-            {/* Multi-month Duration & Presets */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            {/* Multi-year Duration & Presets */}
+            <div className="space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="text-xs font-semibold text-muted-foreground block">
                   {t.grokScheduler.daysLabel}
                 </label>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    type="button"
-                    variant={days === 14 ? "default" : "outline"}
-                    size="sm"
-                    className="h-6 text-[11px] px-2"
-                    onClick={() => setDays(14)}
-                  >
-                    14 {language === "de" ? "Tage" : "Days"}
-                  </Button>
+                <div className="flex items-center gap-1 flex-wrap">
                   <Button
                     type="button"
                     variant={days === 30 ? "default" : "outline"}
                     size="sm"
-                    className="h-6 text-[11px] px-2 font-bold"
+                    className="h-6 text-[11px] px-2"
                     onClick={() => setDays(30)}
                   >
-                    30 {language === "de" ? "Tage" : "Days"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={days === 60 ? "default" : "outline"}
-                    size="sm"
-                    className="h-6 text-[11px] px-2 font-bold"
-                    onClick={() => setDays(60)}
-                  >
-                    60 {language === "de" ? "Tage" : "Days"}
+                    30d
                   </Button>
                   <Button
                     type="button"
@@ -223,10 +238,83 @@ export function GrokSchedulerModal({
                     className="h-6 text-[11px] px-2"
                     onClick={() => setDays(90)}
                   >
-                    90 {language === "de" ? "Tage" : "Days"}
+                    90d
                   </Button>
+                  <Button
+                    type="button"
+                    variant={days === 180 ? "default" : "outline"}
+                    size="sm"
+                    className="h-6 text-[11px] px-2"
+                    onClick={() => setDays(180)}
+                  >
+                    180d
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={days === 365 ? "default" : "outline"}
+                    size="sm"
+                    className="h-6 text-[11px] px-2 font-bold"
+                    onClick={() => setDays(365)}
+                  >
+                    1 {language === "de" ? "Jahr (365d)" : "Year (365d)"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={days === 730 ? "default" : "outline"}
+                    size="sm"
+                    className="h-6 text-[11px] px-2 font-bold"
+                    onClick={() => setDays(730)}
+                  >
+                    2 {language === "de" ? "Jahre (730d)" : "Years (730d)"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={days === 1095 ? "default" : "outline"}
+                    size="sm"
+                    className="h-6 text-[11px] px-2 font-bold"
+                    onClick={() => setDays(1095)}
+                  >
+                    3 {language === "de" ? "Jahre (1095d)" : "Years (1095d)"}
+                  </Button>
+                  {unpostedAssets.length > 0 && (
+                    <Button
+                      type="button"
+                      variant={days === Math.min(estimatedRunwayDays, 3650) ? "default" : "secondary"}
+                      size="sm"
+                      className="h-6 text-[11px] px-2.5 font-semibold bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 gap-1"
+                      onClick={() => setDays(Math.min(estimatedRunwayDays, 3650))}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      {t.grokScheduler.allMediaPreset} ({unpostedAssets.length})
+                    </Button>
+                  )}
                 </div>
               </div>
+
+              {/* Dynamic Reach / Runway Indicator */}
+              {unpostedAssets.length > 0 && (
+                <div className="p-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-400 shrink-0" />
+                    <span className="text-foreground">
+                      {language === "de" ? "Content-Reichweite:" : "Content Runway:"}{" "}
+                      <strong className="text-purple-300">
+                        {unpostedAssets.length} {language === "de" ? "Medien reichen für" : "media last for"}{" "}
+                        {formatRunway(estimatedRunwayDays)}
+                      </strong>
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 text-[10px] px-2 text-purple-300 hover:text-white"
+                    onClick={() => setDays(Math.min(estimatedRunwayDays, 3650))}
+                  >
+                    {language === "de" ? "Als Zeitraum setzen" : "Set as horizon"}
+                  </Button>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -243,6 +331,8 @@ export function GrokSchedulerModal({
                     <option value="FIXED_1">{t.grokScheduler.strategyFixed1}</option>
                     <option value="FIXED_2">{t.grokScheduler.strategyFixed2}</option>
                     <option value="RELAXED">{t.grokScheduler.strategyRelaxed}</option>
+                    <option value="EVERY_2_DAYS">{t.grokScheduler.strategyEvery2Days}</option>
+                    <option value="EVERY_3_DAYS">{t.grokScheduler.strategyEvery3Days}</option>
                   </select>
                   {strategy === "REALISTIC" && (
                     <span className="text-[10px] text-muted-foreground mt-1 block">
@@ -282,12 +372,12 @@ export function GrokSchedulerModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="text-[11px] text-muted-foreground block mb-1">
-                    {language === "de" ? "Exakte Tage (1 - 120 Tage)" : "Exact Days (1 - 120 Days)"}
+                    {language === "de" ? "Exakte Tage (1 - 3650 Tage / bis zu 10 Jahre)" : "Exact Days (1 - 3650 Days / up to 10 Years)"}
                   </label>
                   <Input
                     type="number"
                     min={1}
-                    max={120}
+                    max={3650}
                     value={days}
                     onChange={(e) => setDays(parseInt(e.target.value, 10) || 30)}
                   />
@@ -429,7 +519,7 @@ export function GrokSchedulerModal({
                           ? (language === "de" ? "Heute" : "Today")
                           : item.timeOffsetDays === 1
                           ? (language === "de" ? "Morgen" : "Tomorrow")
-                          : `${targetDate.toLocaleDateString(language === "de" ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit" })}`;
+                          : `${targetDate.toLocaleDateString(language === "de" ? "de-DE" : "en-US", { day: "2-digit", month: "2-digit", year: item.timeOffsetDays > 180 ? "numeric" : undefined })}`;
                         return (
                           <span className="text-xs font-semibold flex items-center gap-1 text-muted-foreground">
                             <Calendar className="h-3 w-3" />

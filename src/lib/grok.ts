@@ -7,7 +7,7 @@ import {
 } from "./captions";
 
 export const ScheduleItemSchema = z.object({
-  timeOffsetDays: z.number().int().min(0).max(120), // Support up to 4 months (120 days)
+  timeOffsetDays: z.number().int().min(0).max(3650), // Support up to 10 years (3650 days)
   timeOfDay: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be HH:MM format (24h)"),
   assetId: z.string().uuid().or(z.string().min(1)),
   caption: z.string().min(3).max(1024),
@@ -33,7 +33,7 @@ export const GrokScheduleResponseSchema = z.object({
 export type ScheduleItem = z.infer<typeof ScheduleItemSchema>;
 export type GrokScheduleResponse = z.infer<typeof GrokScheduleResponseSchema>;
 
-export type SchedulingStrategy = "REALISTIC" | "VARIABLE_1_2" | "FIXED_1" | "FIXED_2" | "RELAXED";
+export type SchedulingStrategy = "REALISTIC" | "VARIABLE_1_2" | "FIXED_1" | "FIXED_2" | "EVERY_2_DAYS" | "EVERY_3_DAYS" | "RELAXED";
 
 export interface ScheduleStats {
   totalPosts: number;
@@ -49,7 +49,7 @@ export interface ScheduleStats {
 export interface GenerateScheduleParams {
   modelName: string;
   channelTitle?: string | null;
-  targetDays?: number; // e.g. 14, 30, 60, 90, 120 days plan
+  targetDays?: number; // e.g. 14, 30, 60, 90, 365, 730, 1095, up to 3650 days (10 years)
   postsPerDay?: number; // e.g. 1 or 2 posts per day (legacy or fallback)
   strategy?: SchedulingStrategy;
   allowPauseDays?: boolean;
@@ -77,7 +77,7 @@ export async function generateGrokSchedule(params: GenerateScheduleParams): Prom
   const apiKey = process.env.XAI_API_KEY;
   const model = process.env.XAI_MODEL || "grok-4.20-non-reasoning";
 
-  const requestedDays = Math.min(Math.max(params.targetDays || 30, 1), 120);
+  const requestedDays = Math.min(Math.max(params.targetDays || 30, 1), 3650);
 
   if (!apiKey || apiKey === "demo_xai_key") {
     // If no live key is set, return a high-quality deterministic realistic plan
@@ -312,12 +312,37 @@ Respond in strict JSON with the following structure:
         const remainingUnused = unusedAssets.length - nextUnusedIdx;
         const remainingDays = requestedDays - d;
 
-        // Only pause if there are plenty of days left to schedule remaining assets
-        const isPauseDay = (params.allowPauseDays ?? true) && (remainingDays > remainingUnused) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
-        if (isPauseDay) continue;
+        const strategy = params.strategy || "REALISTIC";
+        let isPauseDay = false;
+        let postCount = 1;
 
-        // Schedule 2 posts on weekend peaks OR when there are more assets than remaining days
-        const postCount = ((dayOfWeek === 4 || dayOfWeek === 5) || remainingUnused > remainingDays) && remainingUnused >= 2 ? 2 : 1;
+        if (strategy === "EVERY_2_DAYS") {
+          isPauseDay = d % 2 !== 0;
+          postCount = 1;
+        } else if (strategy === "EVERY_3_DAYS") {
+          isPauseDay = d % 3 !== 0;
+          postCount = 1;
+        } else if (strategy === "RELAXED") {
+          // Mon, Wed, Fri
+          isPauseDay = !(dayOfWeek === 0 || dayOfWeek === 2 || dayOfWeek === 4);
+          postCount = 1;
+        } else if (strategy === "FIXED_1") {
+          isPauseDay = false;
+          postCount = 1;
+        } else if (strategy === "FIXED_2") {
+          isPauseDay = false;
+          postCount = 2;
+        } else if (strategy === "VARIABLE_1_2") {
+          isPauseDay = (params.allowPauseDays ?? true) && d % 10 === 6;
+          postCount = [1, 2, 1, 2, 2, 2, 1][dayOfWeek];
+        } else {
+          // REALISTIC
+          isPauseDay = (params.allowPauseDays ?? true) && (remainingDays > remainingUnused) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
+          postCount = ((dayOfWeek === 4 || dayOfWeek === 5) || remainingUnused > remainingDays) && remainingUnused >= 2 ? 2 : 1;
+        }
+
+        if (isPauseDay) continue;
+        postCount = Math.min(postCount, remainingUnused);
         for (let p = 0; p < postCount && nextUnusedIdx < unusedAssets.length; p++) {
           const asset = unusedAssets[nextUnusedIdx++];
           seenAssetIds.add(asset.id);
@@ -439,7 +464,7 @@ Respond in strict JSON with the following structure:
  */
 export function generateRealisticSchedule(params: GenerateScheduleParams): GrokScheduleResponse {
   const schedule: ScheduleItem[] = [];
-  const days = Math.min(Math.max(params.targetDays || 30, 1), 120);
+  const days = Math.min(Math.max(params.targetDays || 30, 1), 3650);
   const strategy: SchedulingStrategy = params.strategy || (params.postsPerDay === 2 ? "FIXED_2" : "REALISTIC");
   const allowPauseDays = params.allowPauseDays ?? (strategy === "REALISTIC" || strategy === "RELAXED");
   const assets = params.availableAssets;
@@ -568,6 +593,14 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
         } else {
           postCount = 0;
         }
+        break;
+      }
+      case "EVERY_2_DAYS": {
+        postCount = day % 2 === 0 ? 1 : 0;
+        break;
+      }
+      case "EVERY_3_DAYS": {
+        postCount = day % 3 === 0 ? 1 : 0;
         break;
       }
       default:
