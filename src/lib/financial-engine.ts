@@ -40,6 +40,8 @@ export interface ChannelFinancials {
   modelId: string;
   modelName?: string;
   channelTitle?: string | null;
+  slug?: string;
+  avatarUrl?: string | null;
   
   // Investments
   totalApprovedInvestUsd: number;
@@ -111,6 +113,8 @@ export function calculateChannelFinancials(
   meta?: {
     modelName?: string;
     channelTitle?: string | null;
+    slug?: string;
+    avatarUrl?: string | null;
     investorSharePercent?: number | null;
     enableExpenseRecoupment?: boolean | null;
   }
@@ -216,6 +220,8 @@ export function calculateChannelFinancials(
     modelId,
     modelName: meta?.modelName,
     channelTitle: meta?.channelTitle,
+    slug: meta?.slug,
+    avatarUrl: meta?.avatarUrl,
     enableExpenseRecoupment,
     investorSharePercent: sharePercent,
     managementSharePercent,

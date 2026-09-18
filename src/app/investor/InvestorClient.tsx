@@ -20,7 +20,11 @@ import {
   CalendarClock,
   Search,
   Eye,
+  Star,
+  BarChart3,
+  ArrowUpRight,
 } from "lucide-react";
+import { ModelStarsStatsModal } from "@/components/ModelStarsStatsModal";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +69,7 @@ export function InvestorClient({
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [selectedChannelForStats, setSelectedChannelForStats] = useState<any | null>(null);
 
   // Form
   const [selectedModelId, setSelectedModelId] = useState(assignedModels?.[0]?.id || "");
@@ -357,90 +362,126 @@ export function InvestorClient({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {portfolio.channels.map((channel) => (
-              <Card key={channel.modelId} className="border-border hover:border-primary/40 transition-all">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-base font-bold">{channel.modelName}</CardTitle>
-                      <CardDescription className="text-xs font-mono">
-                        {channel.channelTitle || channel.modelId}
-                      </CardDescription>
+              <Card
+                key={channel.modelId}
+                onClick={() => setSelectedChannelForStats(channel)}
+                className="border-border hover:border-amber-500/60 hover:shadow-lg hover:shadow-amber-500/10 transition-all cursor-pointer group flex flex-col justify-between"
+              >
+                <div>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-full overflow-hidden bg-muted border border-amber-500/30 shrink-0 flex items-center justify-center">
+                          {channel.avatarUrl ? (
+                            <img src={channel.avatarUrl} alt={channel.modelName} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center font-bold text-amber-400 bg-amber-500/10 text-xs">
+                              {channel.modelName?.charAt(0) || "M"}
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="text-base font-bold truncate group-hover:text-amber-300 transition-colors">
+                            {channel.modelName}
+                          </CardTitle>
+                          <CardDescription className="text-xs font-mono truncate">
+                            {channel.channelTitle || channel.modelId}
+                          </CardDescription>
+                        </div>
+                      </div>
+                      {channel.enableExpenseRecoupment === false ? (
+                        <Badge variant="info" className="shrink-0">{t.overview.directSplitBadge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
+                      ) : channel.isRecouped ? (
+                        <Badge variant="success" className="shrink-0">100% {t.overview.amortized100Badge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
+                      ) : (
+                        <Badge variant="warning" className="shrink-0">{t.overview.amortizing} ({channel.investorSharePercent ?? 50}%)</Badge>
+                      )}
                     </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4 pt-1 text-xs">
+                    {/* Recoupment meter or Direct Split notice */}
                     {channel.enableExpenseRecoupment === false ? (
-                      <Badge variant="info">{t.overview.directSplitBadge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
-                    ) : channel.isRecouped ? (
-                      <Badge variant="success">100% {t.overview.amortized100Badge} • {channel.investorSharePercent ?? 50}/{100 - (channel.investorSharePercent ?? 50)} {t.common.active}</Badge>
+                      <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 font-semibold text-blue-400">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>{t.investorPortal.directSplitNoticeTitle}</span>
+                        </div>
+                        <p className="text-muted-foreground text-[11px]">
+                          {language === "de"
+                            ? `Einnahmen werden direkt im Verhältnis ${channel.investorSharePercent ?? 50}% (Investor) zu ${100 - (channel.investorSharePercent ?? 50)}% (Agentur) aufgeteilt.`
+                            : `Revenues are split directly at ${channel.investorSharePercent ?? 50}% (Investor) / ${100 - (channel.investorSharePercent ?? 50)}% (Agency).`}
+                        </p>
+                      </div>
                     ) : (
-                      <Badge variant="warning">{t.overview.amortizing} ({channel.investorSharePercent ?? 50}%)</Badge>
-                    )}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-4 pt-1 text-xs">
-                  {/* Recoupment meter or Direct Split notice */}
-                  {channel.enableExpenseRecoupment === false ? (
-                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs space-y-1">
-                      <div className="flex items-center gap-1.5 font-semibold text-blue-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>{t.investorPortal.directSplitNoticeTitle}</span>
-                      </div>
-                      <p className="text-muted-foreground text-[11px]">
-                        {language === "de"
-                          ? `Einnahmen werden direkt im Verhältnis ${channel.investorSharePercent ?? 50}% (Investor) zu ${100 - (channel.investorSharePercent ?? 50)}% (Agentur) aufgeteilt.`
-                          : `Revenues are split directly at ${channel.investorSharePercent ?? 50}% (Investor) / ${100 - (channel.investorSharePercent ?? 50)}% (Agency).`}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">
-                          {t.investorPortal.channelAmortization} ({channel.recoupmentProgressPercent}%)
-                        </span>
-                        <span className="font-semibold text-foreground">
-                          {formatUsd(channel.recoupedUsd)} / {formatUsd(channel.totalApprovedInvestUsd)}
-                        </span>
-                      </div>
-                      <Progress
-                        value={channel.recoupmentProgressPercent}
-                        className="h-2"
-                        indicatorClassName={channel.isRecouped ? "bg-emerald-500" : "bg-blue-500"}
-                      />
-                    </div>
-                  )}
-
-                  {/* Channel Ledger Breakdown */}
-                  <div className="space-y-2 pt-2 border-t text-xs">
-                    <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">{t.investorPortal.grossStarsRevenue}</span>
-                      <span className="font-semibold">{formatUsd(channel.totalGrossRevenueUsd)}</span>
-                    </div>
-                    <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">{t.investorPortal.escrowLocked}</span>
-                      <span className="text-amber-400 font-semibold">{formatUsd(channel.pipeline.lockedPendingUsd)}</span>
-                    </div>
-                    {channel.enableExpenseRecoupment !== false && (
-                      <div className="flex justify-between py-1 border-b border-border/50">
-                        <span className="text-muted-foreground">{t.investorPortal.openInvestTarget}</span>
-                        <span className="text-blue-400 font-semibold">{formatUsd(channel.remainingInvestBalanceUsd)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between py-1 border-b border-border/50">
-                      <span className="text-muted-foreground">{t.investorPortal.alreadyDisbursed}</span>
-                      <span className="text-muted-foreground font-semibold">{formatUsd(channel.totalPaidOutUsd)}</span>
-                    </div>
-                    <div className="flex justify-between py-1 text-sm font-bold text-emerald-400 pt-1">
-                      <span>{t.investorPortal.liquidPayoutDue}</span>
-                      <span>
-                        {formatUsd(channel.investorAvailablePayoutUsd)}
-                        {channel.investorAvailablePayoutUsd === 0 && (
-                          <span className="text-[10px] text-muted-foreground ml-1.5 font-normal">
-                            {t.investorPortal.fullySettledNotice}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">
+                            {t.investorPortal.channelAmortization} ({channel.recoupmentProgressPercent}%)
                           </span>
-                        )}
-                      </span>
+                          <span className="font-semibold text-foreground">
+                            {formatUsd(channel.recoupedUsd)} / {formatUsd(channel.totalApprovedInvestUsd)}
+                          </span>
+                        </div>
+                        <Progress
+                          value={channel.recoupmentProgressPercent}
+                          className="h-2"
+                          indicatorClassName={channel.isRecouped ? "bg-emerald-500" : "bg-blue-500"}
+                        />
+                      </div>
+                    )}
+
+                    {/* Channel Ledger Breakdown */}
+                    <div className="space-y-2 pt-2 border-t text-xs">
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">{t.investorPortal.grossStarsRevenue}</span>
+                        <span className="font-semibold">{formatUsd(channel.totalGrossRevenueUsd)}</span>
+                      </div>
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">{t.investorPortal.escrowLocked}</span>
+                        <span className="text-amber-400 font-semibold">{formatUsd(channel.pipeline.lockedPendingUsd)}</span>
+                      </div>
+                      {channel.enableExpenseRecoupment !== false && (
+                        <div className="flex justify-between py-1 border-b border-border/50">
+                          <span className="text-muted-foreground">{t.investorPortal.openInvestTarget}</span>
+                          <span className="text-blue-400 font-semibold">{formatUsd(channel.remainingInvestBalanceUsd)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">{t.investorPortal.alreadyDisbursed}</span>
+                        <span className="text-muted-foreground font-semibold">{formatUsd(channel.totalPaidOutUsd)}</span>
+                      </div>
+                      <div className="flex justify-between py-1 text-sm font-bold text-emerald-400 pt-1">
+                        <span>{t.investorPortal.liquidPayoutDue}</span>
+                        <span>
+                          {formatUsd(channel.investorAvailablePayoutUsd)}
+                          {channel.investorAvailablePayoutUsd === 0 && (
+                            <span className="text-[10px] text-muted-foreground ml-1.5 font-normal">
+                              {t.investorPortal.fullySettledNotice}
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
+
+                    {/* Clickable CTA Button for Stars Statistics */}
+                    <div className="pt-3 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs font-bold gap-1.5 border-amber-500/40 text-amber-300 hover:bg-amber-500/15 hover:text-amber-200 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedChannelForStats(channel);
+                        }}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5 text-amber-400" />
+                        <span>{t.starsStats?.openStatsButton || "Sterne-Statistik ansehen"}</span>
+                        <ArrowUpRight className="h-3.5 w-3.5 ml-auto opacity-70 group-hover:opacity-100" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </div>
               </Card>
             ))}
           </div>
@@ -1087,6 +1128,16 @@ export function InvestorClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Historical Stars Statistics Modal */}
+      <ModelStarsStatsModal
+        isOpen={Boolean(selectedChannelForStats)}
+        onClose={() => setSelectedChannelForStats(null)}
+        modelSlug={selectedChannelForStats?.slug}
+        modelId={selectedChannelForStats?.modelId}
+        modelName={selectedChannelForStats?.modelName}
+        isMasterAdmin={investor?.role === "MASTER_ADMIN"}
+      />
     </div>
   );
 }

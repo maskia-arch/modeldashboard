@@ -46,6 +46,8 @@ export default async function InvestorPage({ searchParams }: InvestorPageProps) 
       {
         modelName: model.name,
         channelTitle: model.channelTitle,
+        slug: model.slug,
+        avatarUrl: model.avatarUrl,
         investorSharePercent: model.investorSharePercent,
         enableExpenseRecoupment: model.enableExpenseRecoupment,
       }

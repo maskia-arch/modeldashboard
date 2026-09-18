@@ -46,6 +46,7 @@ import {
   Minimize2,
   Maximize2,
   X,
+  BarChart3,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +62,7 @@ import { DirectPublishModal } from "@/components/DirectPublishModal";
 import { ManualClassifyModal } from "@/components/ManualClassifyModal";
 import { ScheduleAssetModal } from "@/components/ScheduleAssetModal";
 import { SourceChannelModal } from "@/components/SourceChannelModal";
+import { ModelStarsStatsModal } from "@/components/ModelStarsStatsModal";
 import { formatUsd, formatStars, truncateAddress, getMediaDisplayUrl, cn } from "@/lib/utils";
 import type { ModelFinancials } from "@/lib/financial-engine";
 import { format, formatDistanceToNow } from "date-fns";
@@ -127,6 +129,7 @@ export function ModelDetailClient({
   const [selectedPostForPublish, setSelectedPostForPublish] = useState<any>(null);
   const [selectedAssetForClassify, setSelectedAssetForClassify] = useState<any>(null);
   const [selectedAssetForSchedule, setSelectedAssetForSchedule] = useState<any>(null);
+  const [isStarsStatsOpen, setIsStarsStatsOpen] = useState(false);
 
   // Assign / Profit Split Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -1596,16 +1599,27 @@ export function ModelDetailClient({
 
         {/* Tab 4: Telegram Stars Transactions (MTProto) */}
         <TabsContent value="stars" className="space-y-4 pt-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-bold">{t.modelDetail.starsTitle}</h3>
               <p className="text-xs text-muted-foreground">
                 {t.modelDetail.starsSubtitle}
               </p>
             </div>
-            <Badge variant="outline" className="text-xs">
-              {t.modelDetail.maturityRuleBadge}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsStarsStatsOpen(true)}
+                className="gap-2 text-xs font-bold border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 shadow-sm"
+              >
+                <BarChart3 className="h-4 w-4 text-amber-400" />
+                <span>{t.starsStats?.openStatsButtonMaster || "Grafische Sterne-Statistik"}</span>
+              </Button>
+              <Badge variant="outline" className="text-xs">
+                {t.modelDetail.maturityRuleBadge}
+              </Badge>
+            </div>
           </div>
 
           <Card>
@@ -3010,6 +3024,16 @@ export function ModelDetailClient({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Historical Stars Statistics Modal */}
+      <ModelStarsStatsModal
+        isOpen={isStarsStatsOpen}
+        onClose={() => setIsStarsStatsOpen(false)}
+        modelSlug={model.slug}
+        modelId={model.id}
+        modelName={model.name}
+        isMasterAdmin={isMasterAdmin}
+      />
     </div>
   );
 }
