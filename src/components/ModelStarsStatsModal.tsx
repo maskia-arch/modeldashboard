@@ -205,16 +205,16 @@ export function ModelStarsStatsModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} className="max-w-4xl">
       <DialogContent
-        className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 border border-border/80 bg-background/95 backdrop-blur-xl shadow-2xl rounded-2xl"
+        className="w-full max-h-[92vh] overflow-y-auto p-0 border border-border/80 bg-background/95 backdrop-blur-xl shadow-2xl rounded-2xl"
         onClose={onClose}
       >
         {/* Modal Header */}
         <div className="p-5 sm:p-6 border-b bg-muted/20">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="h-12 w-12 rounded-full overflow-hidden bg-muted border-2 border-amber-500/40 shrink-0 flex items-center justify-center">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-8">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="h-12 w-12 rounded-full overflow-hidden bg-muted border-2 border-amber-500/30 shrink-0 flex items-center justify-center shadow-inner">
                 {data?.model.avatarUrl ? (
                   <img
                     src={data.model.avatarUrl}
@@ -223,28 +223,43 @@ export function ModelStarsStatsModal({
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center font-bold text-amber-400 bg-amber-500/10">
-                    <Star className="h-6 w-6 fill-current" />
+                    <Star className="h-6 w-6 fill-amber-400" />
                   </div>
                 )}
               </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <DialogTitle className="text-xl font-black tracking-tight text-foreground flex items-center gap-2">
-                    <span>{data?.model.name || modelName || t.starsStats?.modalTitle}</span>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <DialogTitle className="text-xl font-black tracking-tight text-foreground truncate">
+                    {data?.model.name || modelName || "Model"}
+                  </DialogTitle>
+                  
+                  {/* Slim Synced Status Badge */}
+                  {isSyncing ? (
                     <Badge
                       variant="outline"
-                      className="bg-amber-500/15 border-amber-500/40 text-amber-400 text-[11px] font-bold gap-1 py-0.5"
+                      className="bg-amber-500/10 border-amber-500/30 text-amber-300 text-[11px] font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap"
                     >
-                      <Star className="h-3 w-3 fill-current" />
-                      {t.starsStats?.modalTitle || "Sterne-Statistik"}
+                      <RefreshCw className="h-3 w-3 animate-spin text-amber-400" />
+                      <span>{t.starsStats?.syncing || "Synchronisiere..."}</span>
                     </Badge>
-                  </DialogTitle>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 text-[11px] font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                      <span>Synced</span>
+                    </Badge>
+                  )}
                 </div>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-                  <span>{data?.model.channelTitle || data?.model.telegramChannelId || ""}</span>
+
+                <DialogDescription className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-[11px] truncate max-w-[200px] sm:max-w-[320px]">
+                    {data?.model.channelTitle || data?.model.telegramChannelId || ""}
+                  </span>
                   <span className="text-border">•</span>
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
-                    <ShieldCheck className="h-3.5 w-3.5" />
+                  <span className="flex items-center gap-1 text-emerald-400 font-medium whitespace-nowrap text-[11px]">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
                     {t.starsStats?.verifiedBadge || "Verifizierte Telegram Stars Daten"}
                   </span>
                 </DialogDescription>
@@ -253,23 +268,23 @@ export function ModelStarsStatsModal({
 
             {/* Master Admin Sync Button */}
             {isMasterAdmin && (
-              <div className="flex flex-col items-end gap-1 shrink-0">
+              <div className="flex flex-col sm:items-end gap-1 shrink-0">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={handleManualSync}
                   disabled={isSyncing || loading}
-                  className="gap-1.5 text-xs font-bold border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 shadow-sm"
+                  className="h-8 gap-1.5 text-xs font-semibold whitespace-nowrap border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200 shadow-sm"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin text-amber-400")} />
                   <span>
                     {isSyncing
                       ? t.starsStats?.syncing || "Synchronisiere..."
-                      : t.starsStats?.syncNowButton || "Initial abfragen / Sync"}
+                      : "Synchronisieren"}
                   </span>
                 </Button>
                 {syncMessage && (
-                  <span className="text-[11px] text-amber-300 animate-in fade-in">
+                  <span className="text-[10px] text-amber-300 animate-in fade-in max-w-[220px] text-right truncate">
                     {syncMessage}
                   </span>
                 )}
