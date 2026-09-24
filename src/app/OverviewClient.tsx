@@ -528,39 +528,81 @@ export function OverviewClient({
                       </div>
                     )}
 
-                    {/* Explizite Aufschlüsselung: 21D Gesperrt, Amortisiert, Master-Anteil, Investor-Anteil */}
+                    {/* Bereits ausgezahlt Banner (falls schon Auszahlungen stattfanden) */}
+                    {fin.totalStarsWithdrawn > 0 && (
+                      <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded bg-emerald-950/20 border border-emerald-500/20 text-emerald-300">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                          <span className="font-semibold">{language === "de" ? "Bereits ausgezahlt:" : "Already Paid Out:"}</span>
+                        </span>
+                        <span className="font-mono font-bold">
+                          {fin.totalCryptoWithdrawn.toFixed(2)} {fin.payoutCurrency} ({formatUsd(fin.totalInvestorUsdPaid + fin.totalManagementUsdPaid)})
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Explizite Aufschlüsselung: 21D Gesperrt, Amortisiert, Master-Anteil (Ausgezahlt), Investor-Anteil (Ausgezahlt) */}
                     <div className="grid grid-cols-4 gap-2 pt-2 border-t text-center">
                       <div className="p-2 rounded bg-muted/40">
-                        <span className="text-[9px] text-muted-foreground block uppercase">
+                        <span className="text-[9px] text-muted-foreground block uppercase font-medium">
                           {t.overview.locked21d}
                         </span>
-                        <span className="text-xs font-bold text-amber-400">
+                        <span className="text-xs font-bold text-amber-400 block">
                           {formatUsd(fin.pipeline.lockedPendingUsd)}
                         </span>
+                        <span className="text-[8px] text-muted-foreground block">
+                          {language === "de" ? "In Treuhand" : "Holding"}
+                        </span>
                       </div>
+
                       <div className="p-2 rounded bg-muted/40">
-                        <span className="text-[9px] text-muted-foreground block uppercase">
+                        <span className="text-[9px] text-muted-foreground block uppercase font-medium">
                           {t.overview.recouping}
                         </span>
-                        <span className="text-xs font-bold text-blue-400">
+                        <span className="text-xs font-bold text-blue-400 block">
                           {formatUsd(fin.pipeline.recoupingUsd)}
                         </span>
+                        <span className="text-[8px] text-muted-foreground block">
+                          {fin.isRecouped ? (language === "de" ? "Getilgt" : "Recouped") : (language === "de" ? "Offen" : "Open")}
+                        </span>
                       </div>
+
                       <div className="p-2 rounded bg-indigo-950/20 border border-indigo-500/20">
-                        <span className="text-[9px] text-indigo-400 block uppercase">
+                        <span className="text-[9px] text-indigo-400 block uppercase font-medium">
                           {t.overview.masterCol} ({fin.managementSharePercent}%)
                         </span>
-                        <span className="text-xs font-bold text-indigo-300">
-                          {formatUsd(fin.managementTotalShareUsd)}
+                        <span className="text-xs font-bold text-indigo-300 block">
+                          {formatUsd(fin.totalManagementUsdPaid)}
                         </span>
+                        <span className="text-[8px] text-muted-foreground block">
+                          {fin.totalManagementCryptoRetained > 0
+                            ? `${fin.totalManagementCryptoRetained.toFixed(2)} ${fin.payoutCurrency}`
+                            : (language === "de" ? "Ausgezahlt" : "Paid out")}
+                        </span>
+                        {fin.managementAvailablePayoutUsd > 0 && (
+                          <span className="text-[8px] font-bold text-emerald-400 block mt-0.5">
+                            +{formatUsd(fin.managementAvailablePayoutUsd)} offen
+                          </span>
+                        )}
                       </div>
+
                       <div className="p-2 rounded bg-emerald-950/20 border border-emerald-500/20">
-                        <span className="text-[9px] text-emerald-400 block uppercase">
+                        <span className="text-[9px] text-emerald-400 block uppercase font-medium">
                           {t.overview.investorCol} ({fin.investorSharePercent}%)
                         </span>
-                        <span className="text-xs font-bold text-emerald-400">
-                          {formatUsd(fin.pipeline.availableForPayoutUsd)}
+                        <span className="text-xs font-bold text-emerald-400 block">
+                          {formatUsd(fin.totalInvestorUsdPaid)}
                         </span>
+                        <span className="text-[8px] text-muted-foreground block">
+                          {fin.totalInvestorCryptoPaid > 0
+                            ? `${fin.totalInvestorCryptoPaid.toFixed(2)} ${fin.payoutCurrency}`
+                            : (language === "de" ? "Ausgezahlt" : "Paid out")}
+                        </span>
+                        {fin.pipeline.availableForPayoutUsd > 0 && (
+                          <span className="text-[8px] font-bold text-amber-400 block mt-0.5">
+                            +{formatUsd(fin.pipeline.availableForPayoutUsd)} offen
+                          </span>
+                        )}
                       </div>
                     </div>
                   </CardContent>

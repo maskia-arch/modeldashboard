@@ -101,6 +101,9 @@ export interface ChannelFinancials {
   
   // Payouts & Liquid Available
   totalPaidOutUsd: number;
+  totalInvestorUsdPaid: number;
+  totalManagementUsdPaid: number;
+  payoutCurrency: string;
   investorAvailablePayoutUsd: number;
   managementAvailablePayoutUsd: number;
   managementProjectedPendingShareUsd: number;
@@ -248,23 +251,37 @@ export function calculateChannelFinancials(
 
   // 5. Payouts and Stars Withdrawn deduction
   let totalPaidOutUsd = 0;
+  let totalInvestorUsdPaid = 0;
+  let totalManagementUsdPaid = 0;
   let totalStarsWithdrawn = 0;
   let totalCryptoWithdrawn = 0;
   let totalInvestorCryptoPaid = 0;
   let totalManagementCryptoRetained = 0;
+  let payoutCurrency = "GRAM";
 
   for (const p of payouts) {
     const pInvestorUsd = (typeof p.investorUsd === 'number' && p.investorUsd > 0)
       ? p.investorUsd
       : Number(p.amountUsd || 0);
+    const pMgmtUsd = (typeof p.managementUsd === 'number' && p.managementUsd > 0)
+      ? p.managementUsd
+      : Math.max(0, Number(p.amountUsd || 0) - pInvestorUsd);
+
+    totalInvestorUsdPaid += pInvestorUsd;
+    totalManagementUsdPaid += pMgmtUsd;
     totalPaidOutUsd += pInvestorUsd;
     totalStarsWithdrawn += Number(p.starsWithdrawn || 0);
     totalCryptoWithdrawn += Number(p.amountCrypto || p.amountTon || 0);
     totalInvestorCryptoPaid += Number(p.investorCrypto || p.amountTon || 0);
     totalManagementCryptoRetained += Number(p.managementCrypto || 0);
+    if (p.currency) {
+      payoutCurrency = p.currency;
+    }
   }
 
   totalPaidOutUsd = Number(totalPaidOutUsd.toFixed(2));
+  totalInvestorUsdPaid = Number(totalInvestorUsdPaid.toFixed(2));
+  totalManagementUsdPaid = Number(totalManagementUsdPaid.toFixed(2));
   totalCryptoWithdrawn = Number(totalCryptoWithdrawn.toFixed(3));
   totalInvestorCryptoPaid = Number(totalInvestorCryptoPaid.toFixed(3));
   totalManagementCryptoRetained = Number(totalManagementCryptoRetained.toFixed(3));
@@ -381,6 +398,9 @@ export function calculateChannelFinancials(
     managementAvailablePayoutUsd,
     managementProjectedPendingShareUsd,
     totalPaidOutUsd,
+    totalInvestorUsdPaid,
+    totalManagementUsdPaid,
+    payoutCurrency,
     investorAvailablePayoutUsd,
     partnerAvailablePayoutUsd: investorAvailablePayoutUsd,
     pipeline,

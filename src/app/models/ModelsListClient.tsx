@@ -499,10 +499,15 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                         </span>
                       </div>
                       <div>
-                        <span>{t.models.liquidProfit}:</span>
+                        <span>{language === "de" ? "Ausgezahlt:" : "Paid Out:"}</span>
                         <span className="font-bold text-emerald-400 block text-sm">
-                          {formatUsd(fin?.pipeline?.availableForPayoutUsd || 0)}
+                          {formatUsd(fin?.totalPaidOutUsd || 0)}
                         </span>
+                        {fin?.pipeline?.availableForPayoutUsd > 0 && (
+                          <span className="text-[10px] text-amber-400 font-bold block">
+                            +{formatUsd(fin.pipeline.availableForPayoutUsd)} offen
+                          </span>
+                        )}
                       </div>
                     </div>
 
