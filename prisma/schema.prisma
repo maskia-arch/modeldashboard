@@ -158,12 +158,20 @@ model StarTransaction {
 }
 
 model Payout {
-  id          String   @id @default(uuid())
-  modelId     String
-  model       Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
-  amountTon   Float
-  amountUsd   Float
-  txHash      String   @unique
-  recipient   String
-  paidAt      DateTime @default(now())
+  id                String   @id @default(uuid())
+  modelId           String
+  model             Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  starsWithdrawn    Int      @default(0)
+  currency          String   @default("GRAM")
+  amountCrypto      Float    @default(0.0)
+  investorCrypto    Float    @default(0.0)
+  managementCrypto  Float    @default(0.0)
+  amountTon         Float    @default(0.0)
+  amountUsd         Float    @default(0.0)
+  investorUsd       Float    @default(0.0)
+  managementUsd     Float    @default(0.0)
+  txHash            String?  @unique
+  recipient         String
+  notes             String?
+  paidAt            DateTime @default(now())
 }

@@ -47,6 +47,8 @@ import {
   Maximize2,
   X,
   BarChart3,
+  ArrowDownToLine,
+  ShieldCheck,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -838,7 +840,6 @@ export function ModelDetailClient({
           <Button
             variant="ton"
             onClick={() => setIsPayoutModalOpen(true)}
-            disabled={financials.partnerAvailablePayoutUsd <= 0}
             className="gap-2 text-xs font-semibold"
           >
             <Wallet className="h-4 w-4" />
@@ -1622,7 +1623,66 @@ export function ModelDetailClient({
             </div>
           </div>
 
+          {/* Stars Balance & Withdrawal Status KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Card className="border-border">
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
+                    <Star className="h-3.5 w-3.5 text-amber-400" />
+                    <span>{language === "de" ? "Erwirtschaftet (Gesamt)" : "Total Earned"}</span>
+                  </div>
+                  <div className="text-xl font-black mt-1 text-foreground font-mono">
+                    {(financials.totalGrossStars || 0).toLocaleString()} ⭐
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    ~{formatUsd(financials.totalGrossRevenueUsd)}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-rose-500/30 bg-rose-950/10">
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-rose-400 font-semibold flex items-center gap-1.5">
+                    <ArrowDownToLine className="h-3.5 w-3.5 text-rose-400" />
+                    <span>{language === "de" ? "Bereits abgehoben" : "Withdrawn"}</span>
+                  </div>
+                  <div className="text-xl font-black mt-1 text-rose-300 font-mono">
+                    {(financials.totalStarsWithdrawn || 0) > 0 ? `-${(financials.totalStarsWithdrawn).toLocaleString()} ⭐` : "0 ⭐"}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {(financials.totalCryptoWithdrawn || 0)} Krypto ausgezahlt
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-amber-500/30 bg-amber-950/10">
+              <CardContent className="p-3.5 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-amber-400 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-amber-400" />
+                    <span>{language === "de" ? "Verfügbar im Channel" : "Available in Channel"}</span>
+                  </div>
+                  <div className="text-xl font-black mt-1 text-amber-300 font-mono">
+                    {(financials.availableStars || 0).toLocaleString()} ⭐
+                  </div>
+                  <div className="text-[11px] text-emerald-400 font-semibold">
+                    {formatUsd(financials.partnerAvailablePayoutUsd)} {language === "de" ? "Auszahlbar" : "Payout Ready"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
+            <CardHeader className="py-3 px-4 border-b">
+              <CardTitle className="text-xs uppercase font-semibold text-muted-foreground tracking-wider">
+                {language === "de" ? "Einnahmen-Historie (MTProto Stars Sync)" : "Revenue History (MTProto Stars Sync)"}
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1680,6 +1740,104 @@ export function ModelDetailClient({
                             </td>
                             <td className="p-3 font-mono text-muted-foreground">
                               {tx.telegramTxId}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Model-specific Payouts & Withdrawals Ledger */}
+          <Card>
+            <CardHeader className="py-3 px-4 border-b flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-xs uppercase font-semibold text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>{language === "de" ? "Getätigte Abhebungen & Krypto-Auszahlungen" : "Withdrawals & Crypto Payouts"}</span>
+                </CardTitle>
+                <CardDescription className="text-[11px] mt-0.5">
+                  {language === "de" ? "Alle von diesem Model abgehobenen Sterne und überwiesenen Anteile." : "All stars withdrawn and payouts disbursed for this model."}
+                </CardDescription>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsPayoutModalOpen(true)}
+                className="h-7 text-xs gap-1 text-primary border-primary/30"
+              >
+                <Plus className="h-3 w-3" />
+                <span>{language === "de" ? "Auszahlung erfassen" : "Log Payout"}</span>
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-muted-foreground text-left">
+                      <th className="p-3">{t.finances.date}</th>
+                      <th className="p-3">{language === "de" ? "Sterne Abzug" : "Stars Deducted"}</th>
+                      <th className="p-3">{language === "de" ? "Gesamt Erhalten" : "Total Received"}</th>
+                      <th className="p-3">{language === "de" ? "Investor Anteil" : "Investor Share"}</th>
+                      <th className="p-3">{language === "de" ? "Agentur Anteil" : "Agency Share"}</th>
+                      <th className="p-3">{language === "de" ? "Empfänger" : "Recipient"}</th>
+                      <th className="p-3">{language === "de" ? "TX Hash" : "TX Hash"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(!model.payouts || model.payouts.length === 0) ? (
+                      <tr>
+                        <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                          {language === "de" ? "Noch keine Auszahlungen für dieses Model erfasst." : "No payouts recorded for this model yet."}
+                        </td>
+                      </tr>
+                    ) : (
+                      model.payouts.map((p: any) => {
+                        const stars = p.starsWithdrawn || 0;
+                        const curr = p.currency || "GRAM";
+                        const cryptoAmt = Number(p.amountCrypto || p.amountTon || 0);
+                        const investorAmt = Number(p.investorCrypto || p.amountTon || 0);
+                        const mgmtAmt = Number(p.managementCrypto || 0);
+
+                        return (
+                          <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="p-3 whitespace-nowrap text-muted-foreground">
+                              {p.paidAt ? format(new Date(p.paidAt), "dd.MM.yyyy HH:mm") : "-"}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-rose-400">
+                              {stars > 0 ? `-${stars.toLocaleString()} ⭐` : "-"}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-foreground">
+                              {cryptoAmt.toFixed(2)} {curr}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-emerald-400">
+                              {investorAmt.toFixed(2)} {curr}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-blue-400">
+                              {mgmtAmt.toFixed(2)} {curr}
+                            </td>
+                            <td className="p-3 font-mono text-muted-foreground">
+                              <span title={p.recipient}>{truncateAddress(p.recipient, 8)}</span>
+                            </td>
+                            <td className="p-3 font-mono">
+                              {p.txHash && !p.txHash.startsWith("TX_MANUAL_") ? (
+                                <a
+                                  href={curr === "TON" ? `https://tonviewer.com/transaction/${p.txHash}` : `https://tonscan.org/tx/${p.txHash}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-1"
+                                >
+                                  {truncateAddress(p.txHash, 6)}
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground text-[10px]">
+                                  {p.txHash ? truncateAddress(p.txHash, 6) : "-"}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1794,6 +1952,10 @@ export function ModelDetailClient({
         modelName={model.name}
         defaultRecipient={model.investor?.tonAddress || null}
         maxAvailableUsd={financials.partnerAvailablePayoutUsd}
+        availableStars={financials.availableStars}
+        investorSharePercent={model.investorSharePercent}
+        enableExpenseRecoupment={model.enableExpenseRecoupment}
+        remainingInvestBalanceUsd={financials.remainingInvestBalanceUsd}
         onPayoutLogged={refreshData}
       />
 

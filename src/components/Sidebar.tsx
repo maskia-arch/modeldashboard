@@ -16,6 +16,7 @@ import {
   FileCheck2,
   PieChart,
   CalendarClock,
+  ArrowDownToLine,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -95,6 +96,11 @@ export function Sidebar() {
           label: t.sidebar.financialLedger,
           href: "/finances",
           icon: TrendingUp,
+        },
+        {
+          label: t.sidebar.payoutsAndWithdrawals || "Abhebungen & Auszahlungen",
+          href: "/admin/payouts",
+          icon: ArrowDownToLine,
         },
         {
           label: t.sidebar.investorKeys,

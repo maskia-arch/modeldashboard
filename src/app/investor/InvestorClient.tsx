@@ -435,7 +435,21 @@ export function InvestorClient({
                     <div className="space-y-2 pt-2 border-t text-xs">
                       <div className="flex justify-between py-1 border-b border-border/50">
                         <span className="text-muted-foreground">{t.investorPortal.grossStarsRevenue}</span>
-                        <span className="font-semibold">{formatUsd(channel.totalGrossRevenueUsd)}</span>
+                        <span className="font-semibold font-mono">
+                          {formatUsd(channel.totalGrossRevenueUsd)} ({channel.totalGrossStars?.toLocaleString() || 0} ⭐)
+                        </span>
+                      </div>
+                      {channel.totalStarsWithdrawn > 0 && (
+                        <div className="flex justify-between py-1 border-b border-border/50 text-rose-400">
+                          <span>{language === "de" ? "Bereits abgehoben:" : "Already withdrawn:"}</span>
+                          <span className="font-bold font-mono">-{channel.totalStarsWithdrawn.toLocaleString()} ⭐</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-1 border-b border-border/50">
+                        <span className="text-muted-foreground">{language === "de" ? "Verfügbar im Channel:" : "Available in channel:"}</span>
+                        <span className="font-bold font-mono text-amber-400">
+                          {channel.availableStars?.toLocaleString() || 0} ⭐
+                        </span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-border/50">
                         <span className="text-muted-foreground">{t.investorPortal.escrowLocked}</span>
@@ -920,8 +934,9 @@ export function InvestorClient({
                       <th className="p-3">{t.investorPortal.colStatus}</th>
                       <th className="p-3">{t.investorPortal.colDate}</th>
                       <th className="p-3">{language === "de" ? "Betroffener Channel" : "Channel"}</th>
-                      <th className="p-3">{t.modelDetail.colAmount}</th>
-                      <th className="p-3">{t.investorPortal.colTonAmount}</th>
+                      <th className="p-3">{language === "de" ? "Abgehobene Sterne" : "Stars Withdrawn"}</th>
+                      <th className="p-3">{language === "de" ? "Erhalten (Krypto)" : "Crypto Received"}</th>
+                      <th className="p-3">{language === "de" ? "USD Gegenwert" : "USD Equivalent"}</th>
                       <th className="p-3">{t.investorPortal.colRecipient}</th>
                       <th className="p-3">{t.investorPortal.colTxHash}</th>
                     </tr>
@@ -929,43 +944,61 @@ export function InvestorClient({
                   <tbody className="divide-y">
                     {fulfilledPayouts.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                        <td colSpan={8} className="p-6 text-center text-muted-foreground">
                           {t.investorPortal.noPayouts}
                         </td>
                       </tr>
                     ) : (
-                      fulfilledPayouts.map((p) => (
-                        <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="p-3">
-                            <Badge variant="success" className="gap-1 font-semibold">
-                              <CheckCircle2 className="h-3 w-3" />
-                              {language === "de" ? "Erfüllt" : "Fulfilled"}
-                            </Badge>
-                          </td>
-                          <td className="p-3 whitespace-nowrap text-muted-foreground">
-                            {p.paidAt ? (() => { try { return format(new Date(p.paidAt), "dd.MM.yyyy HH:mm"); } catch { return "-"; } })() : "-"}
-                          </td>
-                          <td className="p-3 font-semibold">{p.modelName}</td>
-                          <td className="p-3 font-bold text-emerald-400">{formatUsd(p.amountUsd)}</td>
-                          <td className="p-3 font-mono font-bold text-[#0098EA]">
-                            {p.amountTon.toFixed(3)} 💎
-                          </td>
-                          <td className="p-3 font-mono text-muted-foreground">
-                            <span title={p.recipient}>{truncateAddress(p.recipient, 8)}</span>
-                          </td>
-                          <td className="p-3 font-mono">
-                            <a
-                              href={`https://tonscan.org/tx/${p.txHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-primary hover:underline flex items-center gap-1"
-                            >
-                              {truncateAddress(p.txHash, 6)}
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          </td>
-                        </tr>
-                      ))
+                      fulfilledPayouts.map((p) => {
+                        const stars = p.starsWithdrawn || 0;
+                        const curr = p.currency || "GRAM";
+                        const cryptoAmt = Number(p.investorCrypto || p.amountCrypto || p.amountTon || 0);
+                        const usdAmt = Number(p.investorUsd || p.amountUsd || 0);
+
+                        return (
+                          <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="p-3">
+                              <Badge variant="success" className="gap-1 font-semibold">
+                                <CheckCircle2 className="h-3 w-3" />
+                                {language === "de" ? "Erfüllt" : "Fulfilled"}
+                              </Badge>
+                            </td>
+                            <td className="p-3 whitespace-nowrap text-muted-foreground">
+                              {p.paidAt ? (() => { try { return format(new Date(p.paidAt), "dd.MM.yyyy HH:mm"); } catch { return "-"; } })() : "-"}
+                            </td>
+                            <td className="p-3 font-semibold">{p.modelName}</td>
+                            <td className="p-3 font-mono font-bold text-rose-400">
+                              {stars > 0 ? `-${stars.toLocaleString()} ⭐` : "-"}
+                            </td>
+                            <td className="p-3 font-mono font-bold text-emerald-400">
+                              {cryptoAmt.toFixed(2)} {curr}
+                            </td>
+                            <td className="p-3 font-bold text-foreground">
+                              {formatUsd(usdAmt)}
+                            </td>
+                            <td className="p-3 font-mono text-muted-foreground">
+                              <span title={p.recipient}>{truncateAddress(p.recipient, 8)}</span>
+                            </td>
+                            <td className="p-3 font-mono">
+                              {p.txHash && !p.txHash.startsWith("TX_MANUAL_") ? (
+                                <a
+                                  href={curr === "TON" ? `https://tonviewer.com/transaction/${p.txHash}` : `https://tonscan.org/tx/${p.txHash}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-1"
+                                >
+                                  {truncateAddress(p.txHash, 6)}
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground text-[10px]">
+                                  {p.txHash ? truncateAddress(p.txHash, 6) : "-"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

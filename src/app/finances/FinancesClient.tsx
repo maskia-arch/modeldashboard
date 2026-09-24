@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { formatUsd, truncateAddress } from "@/lib/utils";
-import { Wallet, ArrowRight, ExternalLink, ShieldCheck, DollarSign, Calendar, TrendingUp } from "lucide-react";
+import { Wallet, ArrowRight, ExternalLink, ShieldCheck, DollarSign, Calendar, TrendingUp, ArrowDownToLine, Star } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ export function FinancesClient({
   totalPaidTon,
   payouts,
 }: FinancesClientProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
@@ -39,12 +39,20 @@ export function FinancesClient({
           </p>
         </div>
 
-        <Link href="/settings/wallet">
-          <Button variant="ton" className="gap-2 text-xs">
-            <Wallet className="h-4 w-4" />
-            {t.finances.manageWallet}
-          </Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Link href="/admin/payouts">
+            <Button className="gap-2 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black shadow-sm">
+              <ArrowDownToLine className="h-4 w-4" />
+              <span>{language === "de" ? "Abhebungen & Auszahlungen" : "Withdrawals & Payouts"}</span>
+            </Button>
+          </Link>
+          <Link href="/settings/wallet">
+            <Button variant="ton" className="gap-2 text-xs">
+              <Wallet className="h-4 w-4" />
+              {t.finances.manageWallet}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -131,9 +139,10 @@ export function FinancesClient({
                 <tr className="border-b bg-muted/40 text-muted-foreground text-left">
                   <th className="p-3">{t.finances.date}</th>
                   <th className="p-3">{t.finances.channel}</th>
-                  <th className="p-3">{t.finances.recipient}</th>
+                  <th className="p-3">{language === "de" ? "Sterne Abzug" : "Stars Deducted"}</th>
+                  <th className="p-3">{language === "de" ? "Ausgezahlt (Krypto)" : "Crypto Paid"}</th>
                   <th className="p-3">{t.finances.amountUsd}</th>
-                  <th className="p-3">{t.finances.amountTon}</th>
+                  <th className="p-3">{t.finances.recipient}</th>
                   <th className="p-3">{t.finances.hash}</th>
                   <th className="p-3 text-right">{t.common.action}</th>
                 </tr>
@@ -141,56 +150,65 @@ export function FinancesClient({
               <tbody className="divide-y">
                 {payouts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
                       {t.finances.noTransactions}
                     </td>
                   </tr>
                 ) : (
-                  payouts.map((payout) => (
-                    <tr key={payout.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-3 whitespace-nowrap text-muted-foreground">
-                        {format(new Date(payout.paidAt), "dd.MM.yyyy HH:mm")}
-                      </td>
-                      <td className="p-3 font-semibold text-foreground">
-                        <Link
-                          href={`/models/${payout.model.slug}`}
-                          className="hover:underline flex items-center gap-1"
-                        >
-                          {payout.model.name}
-                        </Link>
-                      </td>
-                      <td className="p-3 font-mono">
-                        {truncateAddress(payout.recipient)}
-                      </td>
-                      <td className="p-3 font-bold text-foreground">
-                        {formatUsd(payout.amountUsd)}
-                      </td>
-                      <td className="p-3 font-mono font-bold text-sky-400">
-                        {payout.amountTon.toFixed(2)} TON
-                      </td>
-                      <td className="p-3 font-mono text-muted-foreground">
-                        {payout.txHash ? (
-                          <span title={payout.txHash}>{truncateAddress(payout.txHash)}</span>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td className="p-3 text-right">
-                        {payout.txHash ? (
-                          <a
-                            href={`https://tonviewer.com/transaction/${payout.txHash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                  payouts.map((payout) => {
+                    const stars = payout.starsWithdrawn || 0;
+                    const curr = payout.currency || "GRAM";
+                    const cryptoAmt = Number(payout.amountCrypto || payout.amountTon || 0);
+
+                    return (
+                      <tr key={payout.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="p-3 whitespace-nowrap text-muted-foreground">
+                          {format(new Date(payout.paidAt), "dd.MM.yyyy HH:mm")}
+                        </td>
+                        <td className="p-3 font-semibold text-foreground">
+                          <Link
+                            href={`/models/${payout.model.slug}`}
+                            className="hover:underline flex items-center gap-1"
                           >
-                            {t.finances.viewExplorer} <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                            {payout.model.name}
+                          </Link>
+                        </td>
+                        <td className="p-3 font-mono font-bold text-rose-400">
+                          {stars > 0 ? `-${stars.toLocaleString()} ⭐` : "-"}
+                        </td>
+                        <td className="p-3 font-mono font-bold text-sky-400">
+                          {cryptoAmt.toFixed(2)} {curr}
+                        </td>
+                        <td className="p-3 font-bold text-foreground">
+                          {formatUsd(payout.amountUsd)}
+                        </td>
+                        <td className="p-3 font-mono">
+                          {truncateAddress(payout.recipient)}
+                        </td>
+                        <td className="p-3 font-mono text-muted-foreground">
+                          {payout.txHash ? (
+                            <span title={payout.txHash}>{truncateAddress(payout.txHash)}</span>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          {payout.txHash && !payout.txHash.startsWith("TX_MANUAL_") ? (
+                            <a
+                              href={curr === "TON" ? `https://tonviewer.com/transaction/${payout.txHash}` : `https://tonscan.org/tx/${payout.txHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              {t.finances.viewExplorer} <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -28,6 +28,30 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Safely extracts the star numeric count from any GramJS / MTProto return structure.
  * GramJS can return primitive number, bigint, or TypeStarsAmount { amount: long, nanos: int }.
  */
+export function isStarsNegative(val: any): boolean {
+  if (val == null) return false;
+  if (typeof val === "number") return val < 0;
+  if (typeof val === "bigint") return val < 0n;
+  if (typeof val === "string") {
+    const n = Number(val);
+    return !isNaN(n) && n < 0;
+  }
+  if (typeof val === "object") {
+    if (val.amount != null) return isStarsNegative(val.amount);
+    if (val.stars != null) return isStarsNegative(val.stars);
+    if (val.value != null) return isStarsNegative(val.value);
+    if (typeof val.toString === "function" && val.toString() !== "[object Object]") {
+      const n = Number(val.toString());
+      return !isNaN(n) && n < 0;
+    }
+  }
+  return false;
+}
+
+/**
+ * Safely extracts the star numeric count from any GramJS / MTProto return structure.
+ * GramJS can return primitive number, bigint, or TypeStarsAmount { amount: long, nanos: int }.
+ */
 export function extractStarsValue(val: any): number {
   if (val == null) return 0;
   if (typeof val === "number") return Math.abs(val);
@@ -226,6 +250,10 @@ export async function syncStarsForChannel(
       for (const tx of history) {
         // Skip failed or refunded transactions
         if (tx.failed || tx.refund) continue;
+
+        // Skip withdrawal / outgoing transactions so they do not add to incoming star revenue
+        const isWithdrawal = isStarsNegative(tx.stars) || Boolean(tx.withdrawal);
+        if (isWithdrawal) continue;
 
         const stars = extractStarsValue(tx.stars);
         if (stars <= 0) continue;

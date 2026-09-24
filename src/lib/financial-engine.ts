@@ -32,8 +32,20 @@ export interface StarTxRecord {
 }
 
 export interface PayoutRecord {
-  amountUsd: number;
-  paidAt: Date;
+  id?: string;
+  amountUsd?: number;
+  paidAt?: Date;
+  starsWithdrawn?: number;
+  currency?: string;
+  amountCrypto?: number;
+  investorCrypto?: number;
+  managementCrypto?: number;
+  amountTon?: number;
+  investorUsd?: number;
+  managementUsd?: number;
+  recipient?: string;
+  txHash?: string | null;
+  notes?: string | null;
 }
 
 export interface ChannelFinancials {
@@ -48,10 +60,22 @@ export interface ChannelFinancials {
   totalInvestTargetUsd: number; // Alias for backward compatibility
   pendingReviewInvestUsd: number;
   
-  // Revenue
+  // Stars Revenue Breakdown
+  totalGrossStars: number;
+  totalPendingStars: number;
+  totalMaturedStars: number;
+  totalStarsWithdrawn: number;
+  availableStars: number;
+
+  // USD Revenue
   totalPendingUsd: number;   // In 21-day holding period
   totalMaturedUsd: number;   // Liquid revenue on Telegram
   totalGrossRevenueUsd: number;
+
+  // Crypto Disbursed Metrics (GRAM & TON)
+  totalCryptoWithdrawn: number;
+  totalInvestorCryptoPaid: number;
+  totalManagementCryptoRetained: number;
 
   // Recoupment & Amortization
   enableExpenseRecoupment: boolean; // True: 100% recoupment first. False: direct profit split, no investment deduction.
@@ -89,6 +113,8 @@ export interface InvestorPortfolio {
   totalChannels: number;
   totalApprovedInvestUsd: number;
   totalPendingReviewInvestUsd: number;
+  totalGrossStars: number;
+  totalStarsWithdrawn: number;
   totalPendingUsd: number;
   totalMaturedUsd: number;
   totalGrossRevenueUsd: number;
@@ -97,6 +123,7 @@ export interface InvestorPortfolio {
   totalInvestorEarningsUsd: number;
   totalPaidOutUsd: number;
   totalAvailablePayoutUsd: number;
+  totalCryptoPaidOut: number;
   channels: ChannelFinancials[];
 }
 
@@ -142,19 +169,25 @@ export function calculateChannelFinancials(
   // 2. Aggregate transactions
   let totalPendingUsd = 0;
   let totalMaturedUsd = 0;
+  let totalPendingStars = 0;
+  let totalMaturedStars = 0;
 
   for (const tx of transactions) {
     const amount = Number(tx.estimatedUsd || 0);
+    const stars = Number(tx.starsAmount || 0);
     if (tx.status === 'PENDING') {
       totalPendingUsd += amount;
+      totalPendingStars += stars;
     } else if (tx.status === 'MATURED') {
       totalMaturedUsd += amount;
+      totalMaturedStars += stars;
     }
   }
 
   totalPendingUsd = Number(totalPendingUsd.toFixed(2));
   totalMaturedUsd = Number(totalMaturedUsd.toFixed(2));
   const totalGrossRevenueUsd = Number((totalPendingUsd + totalMaturedUsd).toFixed(2));
+  const totalGrossStars = totalPendingStars + totalMaturedStars;
 
   // 3. Profit split ratios
   const sharePercent = typeof meta?.investorSharePercent === "number" && !isNaN(meta.investorSharePercent)
@@ -201,10 +234,31 @@ export function calculateChannelFinancials(
     investorGrossEarningsUsd = Number((recoupedUsd + investorProfitShareUsd).toFixed(2));
   }
 
-  // 5. Payouts deduction
-  const totalPaidOutUsd = Number(
-    payouts.reduce((acc, p) => acc + (p.amountUsd || 0), 0).toFixed(2)
-  );
+  // 5. Payouts and Stars Withdrawn deduction
+  let totalPaidOutUsd = 0;
+  let totalStarsWithdrawn = 0;
+  let totalCryptoWithdrawn = 0;
+  let totalInvestorCryptoPaid = 0;
+  let totalManagementCryptoRetained = 0;
+
+  for (const p of payouts) {
+    const pInvestorUsd = (typeof p.investorUsd === 'number' && p.investorUsd > 0)
+      ? p.investorUsd
+      : Number(p.amountUsd || 0);
+    totalPaidOutUsd += pInvestorUsd;
+    totalStarsWithdrawn += Number(p.starsWithdrawn || 0);
+    totalCryptoWithdrawn += Number(p.amountCrypto || p.amountTon || 0);
+    totalInvestorCryptoPaid += Number(p.investorCrypto || p.amountTon || 0);
+    totalManagementCryptoRetained += Number(p.managementCrypto || 0);
+  }
+
+  totalPaidOutUsd = Number(totalPaidOutUsd.toFixed(2));
+  totalCryptoWithdrawn = Number(totalCryptoWithdrawn.toFixed(3));
+  totalInvestorCryptoPaid = Number(totalInvestorCryptoPaid.toFixed(3));
+  totalManagementCryptoRetained = Number(totalManagementCryptoRetained.toFixed(3));
+
+  const availableStars = Math.max(0, totalMaturedStars - totalStarsWithdrawn);
+
   const investorAvailablePayoutUsd = Number(
     Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd).toFixed(2)
   );
@@ -228,9 +282,17 @@ export function calculateChannelFinancials(
     totalApprovedInvestUsd,
     totalInvestTargetUsd: totalApprovedInvestUsd,
     pendingReviewInvestUsd,
+    totalGrossStars,
+    totalPendingStars,
+    totalMaturedStars,
+    totalStarsWithdrawn,
+    availableStars,
     totalPendingUsd,
     totalMaturedUsd,
     totalGrossRevenueUsd,
+    totalCryptoWithdrawn,
+    totalInvestorCryptoPaid,
+    totalManagementCryptoRetained,
     recoupedUsd,
     remainingInvestBalanceUsd,
     isRecouped,
@@ -256,6 +318,8 @@ export function calculateInvestorPortfolio(
 ): InvestorPortfolio {
   const totalApprovedInvestUsd = Number(channels.reduce((acc, c) => acc + c.totalApprovedInvestUsd, 0).toFixed(2));
   const totalPendingReviewInvestUsd = Number(channels.reduce((acc, c) => acc + c.pendingReviewInvestUsd, 0).toFixed(2));
+  const totalGrossStars = Number(channels.reduce((acc, c) => acc + (c.totalGrossStars || 0), 0));
+  const totalStarsWithdrawn = Number(channels.reduce((acc, c) => acc + (c.totalStarsWithdrawn || 0), 0));
   const totalPendingUsd = Number(channels.reduce((acc, c) => acc + c.totalPendingUsd, 0).toFixed(2));
   const totalMaturedUsd = Number(channels.reduce((acc, c) => acc + c.totalMaturedUsd, 0).toFixed(2));
   const totalGrossRevenueUsd = Number(channels.reduce((acc, c) => acc + c.totalGrossRevenueUsd, 0).toFixed(2));
@@ -264,12 +328,15 @@ export function calculateInvestorPortfolio(
   const totalInvestorEarningsUsd = Number(channels.reduce((acc, c) => acc + c.investorGrossEarningsUsd, 0).toFixed(2));
   const totalPaidOutUsd = Number(channels.reduce((acc, c) => acc + c.totalPaidOutUsd, 0).toFixed(2));
   const totalAvailablePayoutUsd = Number(channels.reduce((acc, c) => acc + c.investorAvailablePayoutUsd, 0).toFixed(2));
+  const totalCryptoPaidOut = Number(channels.reduce((acc, c) => acc + (c.totalInvestorCryptoPaid || 0), 0).toFixed(3));
 
   return {
     investorId,
     totalChannels: channels.length,
     totalApprovedInvestUsd,
     totalPendingReviewInvestUsd,
+    totalGrossStars,
+    totalStarsWithdrawn,
     totalPendingUsd,
     totalMaturedUsd,
     totalGrossRevenueUsd,
@@ -278,7 +345,98 @@ export function calculateInvestorPortfolio(
     totalInvestorEarningsUsd,
     totalPaidOutUsd,
     totalAvailablePayoutUsd,
+    totalCryptoPaidOut,
     channels,
+  };
+}
+
+export interface SplitCalculationResult {
+  starsWithdrawn: number;
+  currency: "GRAM" | "TON";
+  amountCrypto: number;
+  investorSharePercent: number;
+  managementSharePercent: number;
+  investorCrypto: number;
+  managementCrypto: number;
+  amountUsd: number;
+  investorUsd: number;
+  managementUsd: number;
+  recoupmentPortionUsd: number;
+  profitPortionUsd: number;
+}
+
+/**
+ * Calculates the exact split in crypto (GRAM / TON) and USD between Investor and Management
+ * based on the channel's recoupment rules and investor share percent.
+ */
+export function calculatePayoutSplit(
+  totalCrypto: number,
+  starsWithdrawn: number,
+  currency: "GRAM" | "TON" = "GRAM",
+  options?: {
+    investorSharePercent?: number;
+    enableExpenseRecoupment?: boolean;
+    remainingInvestBalanceUsd?: number;
+    customStarRate?: number;
+  }
+): SplitCalculationResult {
+  const rate = options?.customStarRate ?? Number(process.env.STAR_USD_RATE || 0.013);
+  const amountUsd = Number((starsWithdrawn * rate).toFixed(2));
+  
+  const enableExpenseRecoupment = options?.enableExpenseRecoupment !== false;
+  const remainingInvest = options?.remainingInvestBalanceUsd ?? 0;
+  const sharePct = typeof options?.investorSharePercent === "number" && !isNaN(options.investorSharePercent)
+    ? Math.max(0, Math.min(100, options.investorSharePercent))
+    : 50.0;
+  const mgmtPct = Number((100 - sharePct).toFixed(1));
+
+  let investorCrypto = 0;
+  let managementCrypto = 0;
+  let investorUsd = 0;
+  let managementUsd = 0;
+  let recoupmentPortionUsd = 0;
+  let profitPortionUsd = 0;
+
+  if (enableExpenseRecoupment && remainingInvest > 0) {
+    const recoupUsd = Math.min(amountUsd, remainingInvest);
+    recoupmentPortionUsd = Number(recoupUsd.toFixed(2));
+    const profitUsd = Math.max(0, amountUsd - recoupUsd);
+    profitPortionUsd = Number(profitUsd.toFixed(2));
+
+    const recoupFraction = amountUsd > 0 ? recoupUsd / amountUsd : 0;
+    const profitFraction = amountUsd > 0 ? profitUsd / amountUsd : 0;
+
+    const recoupCrypto = totalCrypto * recoupFraction;
+    const profitCrypto = totalCrypto * profitFraction;
+
+    const investorProfitCrypto = profitCrypto * (sharePct / 100);
+
+    investorCrypto = Number((recoupCrypto + investorProfitCrypto).toFixed(3));
+    managementCrypto = Number(Math.max(0, totalCrypto - investorCrypto).toFixed(3));
+
+    investorUsd = Number((recoupmentPortionUsd + (profitPortionUsd * (sharePct / 100))).toFixed(2));
+    managementUsd = Number(Math.max(0, amountUsd - investorUsd).toFixed(2));
+  } else {
+    // Direct Split (or already 100% recouped)
+    investorCrypto = Number((totalCrypto * (sharePct / 100)).toFixed(3));
+    managementCrypto = Number(Math.max(0, totalCrypto - investorCrypto).toFixed(3));
+    investorUsd = Number((amountUsd * (sharePct / 100)).toFixed(2));
+    managementUsd = Number(Math.max(0, amountUsd - investorUsd).toFixed(2));
+  }
+
+  return {
+    starsWithdrawn,
+    currency,
+    amountCrypto: Number(totalCrypto.toFixed(3)),
+    investorSharePercent: sharePct,
+    managementSharePercent: mgmtPct,
+    investorCrypto,
+    managementCrypto,
+    amountUsd,
+    investorUsd,
+    managementUsd,
+    recoupmentPortionUsd,
+    profitPortionUsd,
   };
 }
 
