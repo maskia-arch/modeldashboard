@@ -321,22 +321,23 @@ export async function syncStarsForChannel(
     if (overallRevenue > sumTransactionStars) {
       const baselineStars = overallRevenue - sumTransactionStars;
       const baselineUsd = starsToUsd(baselineStars, customUsdRate);
+      const baselineStatus: "PENDING" | "MATURED" = (availableBalance > 0 && availableBalance >= baselineStars) ? "MATURED" : "PENDING";
 
       await prisma.starTransaction.upsert({
         where: { telegramTxId: baselineTxId },
         update: {
           starsAmount: baselineStars,
           estimatedUsd: baselineUsd,
-          status: "MATURED",
+          status: baselineStatus,
         },
         create: {
           modelId,
           telegramTxId: baselineTxId,
           starsAmount: baselineStars,
           estimatedUsd: baselineUsd,
-          transactionDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // historical (> 21 days)
-          maturesAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
-          status: "MATURED",
+          transactionDate: baselineStatus === "MATURED" ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : new Date(),
+          maturesAt: baselineStatus === "MATURED" ? new Date(Date.now() - 9 * 24 * 60 * 60 * 1000) : new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
+          status: baselineStatus,
         },
       });
       sumTransactionStars = overallRevenue;

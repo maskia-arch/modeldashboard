@@ -89,8 +89,15 @@ export default async function OverviewPage() {
       {
         modelName: m.name,
         channelTitle: m.channelTitle,
+        slug: m.slug,
+        avatarUrl: m.avatarUrl,
         investorSharePercent: typeof m.investorSharePercent === "number" ? m.investorSharePercent : 50,
         enableExpenseRecoupment: m.enableExpenseRecoupment,
+        telegramAvailableStars: m.telegramAvailableStars,
+        telegramCurrentBalance: m.telegramCurrentBalance,
+        telegramOverallRevenue: m.telegramOverallRevenue,
+        telegramUsdRate: m.telegramUsdRate,
+        telegramWithdrawalEnabled: m.telegramWithdrawalEnabled,
       }
     ),
   }));
@@ -100,7 +107,7 @@ export default async function OverviewPage() {
   const totalRecouped = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.recoupedUsd || 0), 0).toFixed(2));
   const totalAvailablePayout = Number(modelsWithFin.reduce((acc, m) => acc + (m.investorId ? (m.fin?.investorAvailablePayoutUsd || 0) : 0), 0).toFixed(2));
   const totalGrossRevenue = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalGrossRevenueUsd || 0), 0).toFixed(2));
-  const totalManagementShare = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.managementTotalShareUsd || 0), 0).toFixed(2));
+  const totalManagementShare = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.managementAvailablePayoutUsd || 0), 0).toFixed(2));
   const totalDisbursed = Number(modelsWithFin.reduce((acc, m) => acc + (m.fin?.totalPaidOutUsd || 0), 0).toFixed(2));
 
   return (

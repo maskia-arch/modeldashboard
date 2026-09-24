@@ -102,6 +102,8 @@ export interface ChannelFinancials {
   // Payouts & Liquid Available
   totalPaidOutUsd: number;
   investorAvailablePayoutUsd: number;
+  managementAvailablePayoutUsd: number;
+  managementProjectedPendingShareUsd: number;
   partnerAvailablePayoutUsd: number; // Alias for backward compatibility
 
   pipeline: {
@@ -267,47 +269,75 @@ export function calculateChannelFinancials(
   totalInvestorCryptoPaid = Number(totalInvestorCryptoPaid.toFixed(3));
   totalManagementCryptoRetained = Number(totalManagementCryptoRetained.toFixed(3));
 
-  // Telegram's official "Belohnungen zur Abhebung verfügbar" (telegramAvailableStars) is the primary ground truth!
-  // If Telegram reports availableBalance directly, use it. Otherwise, fallback to matured minus withdrawn.
+  const starRate = meta?.telegramUsdRate || 0.013;
+
+  // 1. Determine Telegram Gross Stars
+  let effectiveGrossStars = totalGrossStars;
+  if (typeof meta?.telegramOverallRevenue === "number" && meta.telegramOverallRevenue > 0) {
+    effectiveGrossStars = Math.max(effectiveGrossStars, meta.telegramOverallRevenue);
+  }
+  const effectiveGrossRevenueUsd = Number((effectiveGrossStars * starRate).toFixed(2));
+
+  // 2. Telegram's official "Belohnungen zur Abhebung verfügbar" (telegramAvailableStars) is the primary ground truth!
   const hasTelegramAvailable = typeof meta?.telegramAvailableStars === "number";
   const availableStars = hasTelegramAvailable
     ? Math.max(0, meta.telegramAvailableStars!)
     : Math.max(0, totalMaturedStars - totalStarsWithdrawn);
 
-  // If Telegram's overall revenue is higher than local transaction sum, respect Telegram's gross count
-  const effectiveGrossStars = (typeof meta?.telegramOverallRevenue === "number" && meta.telegramOverallRevenue > totalGrossStars)
-    ? meta.telegramOverallRevenue
-    : totalGrossStars;
-
-  const starRate = meta?.telegramUsdRate || 0.013;
   const channelAvailableUsd = Number((availableStars * starRate).toFixed(2));
 
+  // 3. Align 21-Day Holding (Haltefrist) with Telegram reality:
+  // All unwithdrawn stars that are NOT yet withdrawable ("Belohnungen zur Abhebung verfügbar")
+  // are locked in the 21-day holding period!
+  let lockedPendingStars = totalPendingStars;
+  let lockedPendingUsd = totalPendingUsd;
+
+  if (hasTelegramAvailable) {
+    const unwithdrawnGrossStars = Math.max(0, effectiveGrossStars - totalStarsWithdrawn);
+    lockedPendingStars = Math.max(0, unwithdrawnGrossStars - availableStars);
+    lockedPendingUsd = Number((lockedPendingStars * starRate).toFixed(2));
+    totalMaturedStars = availableStars;
+    totalMaturedUsd = channelAvailableUsd;
+  }
+
+  // 4. Calculate Claims & Available Payouts:
+  // If availableStars === 0, then Telegram has 0 withdrawable funds.
+  // There is NO payout claim due currently ("es gibt keinen auszahlungsanspruch aktuell").
   let investorAvailablePayoutUsd = 0;
+  let managementAvailablePayoutUsd = 0;
+
   if (availableStars <= 0) {
-    // If Telegram reports 0 stars available for withdrawal ("Belohnungen zur Abhebung verfügbar"),
-    // then exactly $0.00 is available for payout!
     investorAvailablePayoutUsd = 0;
+    managementAvailablePayoutUsd = 0;
   } else if (!hasTelegramAvailable) {
     investorAvailablePayoutUsd = Number(
       Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd).toFixed(2)
     );
+    managementAvailablePayoutUsd = Number((totalMaturedUsd * managementRatio).toFixed(2));
   } else {
-    // We have Telegram's real-time withdrawable balance:
+    // Liquid withdrawable stars from Telegram split according to business rules:
     if (!enableExpenseRecoupment) {
       investorAvailablePayoutUsd = Number((channelAvailableUsd * investorRatio).toFixed(2));
+      managementAvailablePayoutUsd = Number((channelAvailableUsd * managementRatio).toFixed(2));
     } else {
       const recoupAmount = Math.min(channelAvailableUsd, remainingInvestBalanceUsd);
-      const profitAmount = Math.max(0, channelAvailableUsd - recoupAmount) * investorRatio;
-      investorAvailablePayoutUsd = Number((recoupAmount + profitAmount).toFixed(2));
+      const profitAmount = Math.max(0, channelAvailableUsd - recoupAmount);
+      investorAvailablePayoutUsd = Number((recoupAmount + (profitAmount * investorRatio)).toFixed(2));
+      managementAvailablePayoutUsd = Number((profitAmount * managementRatio).toFixed(2));
     }
-    // Cap at investor's remaining lifetime gross earnings minus what has already been disbursed
-    const maxLifetimeEligible = Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd);
-    investorAvailablePayoutUsd = Number(Math.min(investorAvailablePayoutUsd, maxLifetimeEligible).toFixed(2));
   }
+
+  // Projected management share from unreleased holding funds (for transparency)
+  const managementProjectedPendingShareUsd = Number((lockedPendingUsd * managementRatio).toFixed(2));
+
+  // Management's currently realizable share: strictly what is available to withdraw right now
+  const effectiveManagementShareUsd = hasTelegramAvailable && availableStars <= 0
+    ? 0
+    : (managementAvailablePayoutUsd > 0 ? managementAvailablePayoutUsd : (hasTelegramAvailable ? 0 : managementTotalShareUsd));
 
   // 6. Pipeline metrics
   const pipeline = {
-    lockedPendingUsd: totalPendingUsd,
+    lockedPendingUsd,
     recoupingUsd: recoupedUsd,
     availableForPayoutUsd: investorAvailablePayoutUsd,
   };
@@ -325,7 +355,7 @@ export function calculateChannelFinancials(
     totalInvestTargetUsd: totalApprovedInvestUsd,
     pendingReviewInvestUsd,
     totalGrossStars: effectiveGrossStars,
-    totalPendingStars,
+    totalPendingStars: lockedPendingStars,
     totalMaturedStars,
     totalStarsWithdrawn,
     availableStars,
@@ -334,9 +364,9 @@ export function calculateChannelFinancials(
     telegramOverallRevenue: meta?.telegramOverallRevenue ?? undefined,
     telegramUsdRate: meta?.telegramUsdRate ?? undefined,
     telegramWithdrawalEnabled: meta?.telegramWithdrawalEnabled ?? undefined,
-    totalPendingUsd,
+    totalPendingUsd: lockedPendingUsd,
     totalMaturedUsd,
-    totalGrossRevenueUsd,
+    totalGrossRevenueUsd: effectiveGrossRevenueUsd,
     totalCryptoWithdrawn,
     totalInvestorCryptoPaid,
     totalManagementCryptoRetained,
@@ -346,8 +376,10 @@ export function calculateChannelFinancials(
     recoupmentProgressPercent,
     grossProfitUsd,
     partnerTotalShareUsd: investorProfitShareUsd,
-    investorGrossEarningsUsd,
-    managementTotalShareUsd,
+    investorGrossEarningsUsd: investorAvailablePayoutUsd,
+    managementTotalShareUsd: effectiveManagementShareUsd,
+    managementAvailablePayoutUsd,
+    managementProjectedPendingShareUsd,
     totalPaidOutUsd,
     investorAvailablePayoutUsd,
     partnerAvailablePayoutUsd: investorAvailablePayoutUsd,

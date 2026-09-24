@@ -56,7 +56,7 @@ export function OverviewClient({
   totalManagementShare = 0,
   totalDisbursed = 0,
 }: OverviewClientProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [modelsWithFin, setModelsWithFin] = useState(initialModelsWithFin);
 
   // Quick-Settings / Split Modal
@@ -184,7 +184,9 @@ export function OverviewClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            {t.overview.masterShareDesc}
+            {totalManagementShare > 0
+              ? (language === "de" ? "Aktuell zur Entnahme verfügbar" : "Available to disburse")
+              : (language === "de" ? "Aktuell kein Auszahlungsanspruch (Wartet auf 21-Tage Reifung)" : "No claim due (Waiting for 21-day maturity)")}
           </CardContent>
         </Card>
 
@@ -200,7 +202,9 @@ export function OverviewClient({
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-muted-foreground">
-            {t.overview.investorPayoutsDesc}
+            {totalAvailablePayout > 0
+              ? t.overview.investorPayoutsDesc
+              : (language === "de" ? "Aktuell kein offener Auszahlungsanspruch" : "No open payout due")}
           </CardContent>
         </Card>
       </div>

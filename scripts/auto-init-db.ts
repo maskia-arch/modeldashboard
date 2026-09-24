@@ -119,6 +119,20 @@ async function autoSetupDatabase() {
           console.log(`🧹 [Auto-Init] Purged ${purgedWrong.count} erroneously credited withdrawal/baseline transactions for Mausi.`);
         }
 
+        // Reset any false MATURED status to PENDING while availableBalance on Telegram is 0
+        const updatedMatured = await prisma.starTransaction.updateMany({
+          where: {
+            modelId: mausi.id,
+            status: "MATURED",
+          },
+          data: {
+            status: "PENDING",
+          },
+        });
+        if (updatedMatured.count > 0) {
+          console.log(`🔄 [Auto-Init] Reset ${updatedMatured.count} falsely matured transactions for Mausi to PENDING (all funds in 21-day holding).`);
+        }
+
         // C. Record the first payout of 1,800 Telegram Stars -> 16.44 GRAM (75% = 12.32 GRAM, 25% = 4.12 GRAM)
         const existingPayout = await prisma.payout.findFirst({
           where: {
