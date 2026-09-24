@@ -70,8 +70,15 @@ export default async function ModelDetailPage({ params }: PageProps) {
     {
       modelName: model.name,
       channelTitle: model.channelTitle,
+      slug: model.slug,
+      avatarUrl: model.avatarUrl,
       investorSharePercent: model.investorSharePercent,
       enableExpenseRecoupment: model.enableExpenseRecoupment,
+      telegramAvailableStars: model.telegramAvailableStars,
+      telegramCurrentBalance: model.telegramCurrentBalance,
+      telegramOverallRevenue: model.telegramOverallRevenue,
+      telegramUsdRate: model.telegramUsdRate,
+      telegramWithdrawalEnabled: model.telegramWithdrawalEnabled,
     }
   );
 

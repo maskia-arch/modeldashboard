@@ -65,6 +65,11 @@ export default async function AdminPayoutsPage() {
         avatarUrl: m.avatarUrl,
         investorSharePercent: m.investorSharePercent,
         enableExpenseRecoupment: m.enableExpenseRecoupment,
+        telegramAvailableStars: m.telegramAvailableStars,
+        telegramCurrentBalance: m.telegramCurrentBalance,
+        telegramOverallRevenue: m.telegramOverallRevenue,
+        telegramUsdRate: m.telegramUsdRate,
+        telegramWithdrawalEnabled: m.telegramWithdrawalEnabled,
       }
     );
 

@@ -81,6 +81,14 @@ model Model {
   channelTitle      String?
   avatarUrl         String?
   openInvestBalance Float             @default(0.0) // Offene Investitionen, die getilgt werden müssen ($)
+
+  // Telegram Official Revenue Stats ("Belohnungen zur Abhebung verfügbar")
+  telegramAvailableStars    Int             @default(0)     // Exakt verfügbare Sterne zur Abhebung (status.availableBalance)
+  telegramCurrentBalance    Int             @default(0)     // Aktueller Sternesaldo
+  telegramOverallRevenue    Int             @default(0)     // Gesamte historische Einnahmen
+  telegramUsdRate           Float           @default(0.013) // USD-Kurs pro Stern
+  telegramWithdrawalEnabled Boolean         @default(false) // Ob Abhebung auf Telegram freigeschaltet ist
+
   createdAt         DateTime          @default(now())
 
   // Assigned Investor (Channel-specific investor)

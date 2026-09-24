@@ -66,6 +66,11 @@ export interface ChannelFinancials {
   totalMaturedStars: number;
   totalStarsWithdrawn: number;
   availableStars: number;
+  telegramAvailableStars?: number;
+  telegramCurrentBalance?: number;
+  telegramOverallRevenue?: number;
+  telegramUsdRate?: number;
+  telegramWithdrawalEnabled?: boolean;
 
   // USD Revenue
   totalPendingUsd: number;   // In 21-day holding period
@@ -144,6 +149,11 @@ export function calculateChannelFinancials(
     avatarUrl?: string | null;
     investorSharePercent?: number | null;
     enableExpenseRecoupment?: boolean | null;
+    telegramAvailableStars?: number | null;
+    telegramCurrentBalance?: number | null;
+    telegramOverallRevenue?: number | null;
+    telegramUsdRate?: number | null;
+    telegramWithdrawalEnabled?: boolean | null;
   }
 ): ChannelFinancials {
   const enableExpenseRecoupment = meta?.enableExpenseRecoupment !== false;
@@ -257,11 +267,43 @@ export function calculateChannelFinancials(
   totalInvestorCryptoPaid = Number(totalInvestorCryptoPaid.toFixed(3));
   totalManagementCryptoRetained = Number(totalManagementCryptoRetained.toFixed(3));
 
-  const availableStars = Math.max(0, totalMaturedStars - totalStarsWithdrawn);
+  // Telegram's official "Belohnungen zur Abhebung verfügbar" (telegramAvailableStars) is the primary ground truth!
+  // If Telegram reports availableBalance directly, use it. Otherwise, fallback to matured minus withdrawn.
+  const hasTelegramAvailable = typeof meta?.telegramAvailableStars === "number";
+  const availableStars = hasTelegramAvailable
+    ? Math.max(0, meta.telegramAvailableStars!)
+    : Math.max(0, totalMaturedStars - totalStarsWithdrawn);
 
-  const investorAvailablePayoutUsd = Number(
-    Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd).toFixed(2)
-  );
+  // If Telegram's overall revenue is higher than local transaction sum, respect Telegram's gross count
+  const effectiveGrossStars = (typeof meta?.telegramOverallRevenue === "number" && meta.telegramOverallRevenue > totalGrossStars)
+    ? meta.telegramOverallRevenue
+    : totalGrossStars;
+
+  const starRate = meta?.telegramUsdRate || 0.013;
+  const channelAvailableUsd = Number((availableStars * starRate).toFixed(2));
+
+  let investorAvailablePayoutUsd = 0;
+  if (availableStars <= 0) {
+    // If Telegram reports 0 stars available for withdrawal ("Belohnungen zur Abhebung verfügbar"),
+    // then exactly $0.00 is available for payout!
+    investorAvailablePayoutUsd = 0;
+  } else if (!hasTelegramAvailable) {
+    investorAvailablePayoutUsd = Number(
+      Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd).toFixed(2)
+    );
+  } else {
+    // We have Telegram's real-time withdrawable balance:
+    if (!enableExpenseRecoupment) {
+      investorAvailablePayoutUsd = Number((channelAvailableUsd * investorRatio).toFixed(2));
+    } else {
+      const recoupAmount = Math.min(channelAvailableUsd, remainingInvestBalanceUsd);
+      const profitAmount = Math.max(0, channelAvailableUsd - recoupAmount) * investorRatio;
+      investorAvailablePayoutUsd = Number((recoupAmount + profitAmount).toFixed(2));
+    }
+    // Cap at investor's remaining lifetime gross earnings minus what has already been disbursed
+    const maxLifetimeEligible = Math.max(0, investorGrossEarningsUsd - totalPaidOutUsd);
+    investorAvailablePayoutUsd = Number(Math.min(investorAvailablePayoutUsd, maxLifetimeEligible).toFixed(2));
+  }
 
   // 6. Pipeline metrics
   const pipeline = {
@@ -282,11 +324,16 @@ export function calculateChannelFinancials(
     totalApprovedInvestUsd,
     totalInvestTargetUsd: totalApprovedInvestUsd,
     pendingReviewInvestUsd,
-    totalGrossStars,
+    totalGrossStars: effectiveGrossStars,
     totalPendingStars,
     totalMaturedStars,
     totalStarsWithdrawn,
     availableStars,
+    telegramAvailableStars: meta?.telegramAvailableStars ?? undefined,
+    telegramCurrentBalance: meta?.telegramCurrentBalance ?? undefined,
+    telegramOverallRevenue: meta?.telegramOverallRevenue ?? undefined,
+    telegramUsdRate: meta?.telegramUsdRate ?? undefined,
+    telegramWithdrawalEnabled: meta?.telegramWithdrawalEnabled ?? undefined,
     totalPendingUsd,
     totalMaturedUsd,
     totalGrossRevenueUsd,
@@ -450,8 +497,15 @@ export const calculateFinancials = (
   meta?: {
     modelName?: string;
     channelTitle?: string | null;
+    slug?: string;
+    avatarUrl?: string | null;
     investorSharePercent?: number | null;
     enableExpenseRecoupment?: boolean | null;
+    telegramAvailableStars?: number | null;
+    telegramCurrentBalance?: number | null;
+    telegramOverallRevenue?: number | null;
+    telegramUsdRate?: number | null;
+    telegramWithdrawalEnabled?: boolean | null;
   }
 ) => calculateChannelFinancials(modelId, baseInvestBalance, expenses, transactions, payouts, meta);
 

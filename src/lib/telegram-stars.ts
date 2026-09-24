@@ -10,6 +10,8 @@ export interface ChannelSyncResult {
   transactionsCount: number;
   totalStars: number;
   overallRevenue?: number;
+  availableBalance?: number;
+  currentBalance?: number;
   error?: string;
 }
 
@@ -191,26 +193,40 @@ export async function syncStarsForChannel(
     }
 
     let overallRevenue = 0;
+    let availableBalance = 0;
+    let currentBalance = 0;
+    let withdrawalEnabled = false;
     let customUsdRate: number | undefined;
 
-    // 1. Attempt to fetch channel revenue statistics (lifetime cumulative stars & USD rate)
+    // 1. Attempt to fetch channel revenue statistics (lifetime cumulative stars, USD rate, and withdrawable balance)
     try {
       const statsRes = (await client.invoke(
         new Api.payments.GetStarsRevenueStats({ peer })
       )) as any;
 
-      if (statsRes?.usdRate) {
+      if (statsRes?.usdRate != null) {
         customUsdRate = Number(statsRes.usdRate);
       }
-      if (statsRes?.status?.overallRevenue) {
-        overallRevenue = extractStarsValue(statsRes.status.overallRevenue);
+      if (statsRes?.status) {
+        const s = statsRes.status;
+        if (s.overallRevenue != null) {
+          overallRevenue = extractStarsValue(s.overallRevenue);
+        }
+        if (s.availableBalance != null) {
+          // Genau "Belohnungen zur Abhebung verfügbar" direkt von Telegram
+          availableBalance = extractStarsValue(s.availableBalance);
+        }
+        if (s.currentBalance != null) {
+          currentBalance = extractStarsValue(s.currentBalance);
+        }
+        withdrawalEnabled = Boolean(s.withdrawalEnabled);
       }
     } catch (statsErr: any) {
       // GetStarsRevenueStats may fail if channel is below monetization threshold or user lacks admin rights
       console.log(`[Telegram Stars Engine] Note: GetStarsRevenueStats not available for ${telegramChannelId}: ${statsErr.message}`);
     }
 
-    // 2. Full historical pagination loop via payments.GetStarsTransactions
+    // 2. Full historical pagination loop via payments.GetStarsTransactions (inbound only to exclude withdrawals)
     let nextOffset = "";
     let page = 0;
     const MAX_PAGES = 50; // up to 5,000 transactions per channel
@@ -225,6 +241,7 @@ export async function syncStarsForChannel(
             peer,
             offset: nextOffset,
             limit: 100,
+            inbound: true,
           })
         )) as any;
       } catch (invokeErr: any) {
@@ -331,8 +348,24 @@ export async function syncStarsForChannel(
       });
     }
 
+    // 4. Update Model record with Telegram's official live balance & revenue metrics
+    try {
+      await prisma.model.update({
+        where: { id: modelId },
+        data: {
+          telegramAvailableStars: availableBalance,
+          telegramCurrentBalance: currentBalance,
+          telegramOverallRevenue: overallRevenue,
+          telegramUsdRate: customUsdRate ?? 0.013,
+          telegramWithdrawalEnabled: withdrawalEnabled,
+        },
+      });
+    } catch (modelUpdateErr: any) {
+      console.warn(`[Telegram Stars Engine] Could not update Model ${modelId} with telegram stats:`, modelUpdateErr.message);
+    }
+
     console.log(
-      `[Telegram Stars Engine] Synced channel ${telegramChannelId} (${modelId}): ${totalSyncedCount} transactions, ${sumTransactionStars} total stars.`
+      `[Telegram Stars Engine] Synced channel ${telegramChannelId} (${modelId}): ${totalSyncedCount} transactions, ${sumTransactionStars} total stars, ${availableBalance} stars available for withdrawal ("Belohnungen zur Abhebung verfügbar").`
     );
 
     return {
@@ -342,6 +375,8 @@ export async function syncStarsForChannel(
       transactionsCount: totalSyncedCount,
       totalStars: sumTransactionStars,
       overallRevenue,
+      availableBalance,
+      currentBalance,
     };
   } catch (err: any) {
     console.error(`[Telegram Stars Engine] Error syncing channel ${telegramChannelId}:`, err.message);

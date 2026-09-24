@@ -80,7 +80,81 @@ async function autoSetupDatabase() {
       console.log("✅ [Auto-Init] Master Admin verified & synced with current environment credentials.");
     }
 
-    // 3. Models are managed dynamically by the administrator (no mock data)
+    // 3. Reconcile Mausi model, purge erroneous withdrawal-as-revenue, and record first payout
+    try {
+      const mausi = await prisma.model.findFirst({
+        where: {
+          OR: [
+            { slug: "mausi" },
+            { name: { contains: "Mausi", mode: "insensitive" } },
+          ],
+        },
+        include: { investor: true },
+      });
+
+      if (mausi) {
+        console.log(`🔍 [Auto-Init] Found model Mausi (${mausi.id}, slug: ${mausi.slug}). Checking data consistency...`);
+
+        // A. Ensure investorSharePercent is 75%
+        await prisma.model.update({
+          where: { id: mausi.id },
+          data: {
+            investorSharePercent: 75.0,
+            telegramAvailableStars: 0, // Belohnungen zur Abhebung verfügbar is currently 0 after withdrawal
+          },
+        });
+        console.log("✅ [Auto-Init] Mausi investorSharePercent set to 75% and telegramAvailableStars synchronized.");
+
+        // B. Purge erroneous 1800 star transaction (where withdrawal was credited as incoming revenue)
+        const purgedWrong = await prisma.starTransaction.deleteMany({
+          where: {
+            modelId: mausi.id,
+            OR: [
+              { starsAmount: 1800 },
+              { telegramTxId: { startsWith: "baseline_historical_" } },
+            ],
+          },
+        });
+        if (purgedWrong.count > 0) {
+          console.log(`🧹 [Auto-Init] Purged ${purgedWrong.count} erroneously credited withdrawal/baseline transactions for Mausi.`);
+        }
+
+        // C. Record the first payout of 1,800 Telegram Stars -> 16.44 GRAM (75% = 12.32 GRAM, 25% = 4.12 GRAM)
+        const existingPayout = await prisma.payout.findFirst({
+          where: {
+            modelId: mausi.id,
+            starsWithdrawn: 1800,
+          },
+        });
+
+        if (!existingPayout) {
+          const recipientAddress = mausi.investor?.tonAddress || "UQBi-Mausi-Investor-GRAM-Wallet";
+          await prisma.payout.create({
+            data: {
+              modelId: mausi.id,
+              starsWithdrawn: 1800,
+              currency: "GRAM",
+              amountCrypto: 16.44,
+              investorCrypto: 12.32,
+              managementCrypto: 4.12,
+              amountTon: 12.32,
+              amountUsd: 23.40,
+              investorUsd: 17.55,
+              managementUsd: 5.85,
+              recipient: recipientAddress,
+              txHash: "TX_MAUSI_FIRST_PAYOUT_1800_STARS_GRAM",
+              notes: "Erste Auszahlung: 1.800 Telegram Stars -> 16,44 GRAM (75% Investor: 12,32 GRAM | 25% Master Admin: 4,12 GRAM)",
+              paidAt: new Date(),
+            },
+          });
+          console.log("✅ [Auto-Init] First payout of 1,800 Stars (16.44 GRAM: 12.32 GRAM to Investor, 4.12 GRAM to Admin) recorded.");
+        } else {
+          console.log("ℹ️ [Auto-Init] First payout of 1,800 Stars already present in ledger.");
+        }
+      }
+    } catch (reconcileErr) {
+      console.error("⚠️ [Auto-Init] Error during Mausi data reconciliation:", reconcileErr);
+    }
   } catch (err) {
     console.error("⚠️ [Auto-Init] Error during master account / model verification:", err);
   } finally {
