@@ -14,10 +14,11 @@ import { cn } from "@/lib/utils";
 
 interface TonWalletGeneratorProps {
   currentAddress?: string | null;
+  hasEncryptedWallet?: boolean;
   onAddressSaved?: (newAddress: string) => void;
 }
 
-export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWalletGeneratorProps) {
+export function TonWalletGenerator({ currentAddress, hasEncryptedWallet, onAddressSaved }: TonWalletGeneratorProps) {
   const { t, language } = useLanguage();
   const [activeMode, setActiveMode] = useState<"manual" | "generate">("manual");
   const [mnemonic, setMnemonic] = useState<string[]>([]);
@@ -28,6 +29,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [activeAddress, setActiveAddress] = useState<string>(currentAddress || "");
+  const [isDbWallet, setIsDbWallet] = useState<boolean>(Boolean(hasEncryptedWallet));
 
   // Manual entry state
   const [manualInput, setManualInput] = useState<string>("");
@@ -89,6 +91,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       if (res.ok) {
         setSaveSuccess(true);
         setActiveAddress(generatedAddress);
+        setIsDbWallet(true);
         try {
           if (mnemonic.length === 24) {
             localStorage.setItem("dashboard_ton_wallet_last", JSON.stringify({ address: generatedAddress, mnemonic }));
@@ -131,6 +134,7 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
 
       setManualSaveSuccess(true);
       setActiveAddress(clean);
+      setIsDbWallet(false);
       setManualInput("");
       if (onAddressSaved) onAddressSaved(clean);
     } catch (err: any) {
@@ -168,19 +172,39 @@ export function TonWalletGenerator({ currentAddress, onAddressSaved }: TonWallet
       <CardContent className="space-y-4">
         {/* Currently configured active address banner */}
         {effectiveAddress && (
-          <div className="p-3.5 rounded-lg bg-muted/40 border text-sm flex items-center justify-between">
-            <div className="min-w-0 flex-1 mr-2">
-              <span className="text-xs text-muted-foreground block">{t.walletGenerator.activeAddressLabel}</span>
-              <span className="font-mono text-xs font-semibold text-[#0098EA] break-all">{effectiveAddress}</span>
+          <div className="p-3.5 rounded-lg bg-muted/40 border text-sm space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1 mr-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs text-muted-foreground block">{t.walletGenerator.activeAddressLabel}</span>
+                  {isDbWallet ? (
+                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 py-0">
+                      {language === "de" ? "Dashboard Wallet" : "Dashboard Wallet"}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 py-0">
+                      {language === "de" ? "Externe Wallet (Watch-Only)" : "External Wallet (Watch-Only)"}
+                    </Badge>
+                  )}
+                </div>
+                <span className="font-mono text-xs font-semibold text-[#0098EA] break-all">{effectiveAddress}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => copyToClipboard(effectiveAddress, "address")}
+                className="shrink-0"
+              >
+                {isCopiedAddress ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => copyToClipboard(effectiveAddress, "address")}
-              className="shrink-0"
-            >
-              {isCopiedAddress ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-            </Button>
+            {!isDbWallet && (
+              <p className="text-[11px] text-muted-foreground bg-amber-500/10 border border-amber-500/20 rounded p-2 text-amber-200/90 leading-relaxed">
+                ℹ️ {language === "de"
+                  ? "Hinweis: Dies ist eine externe Wallet. Auszahlungen werden an diese Adresse gesendet. Das Dashboard hat keine privaten Schlüssel. Für Überweisungen nutzen Sie bitte Ihre externe Wallet-App (z. B. Tonkeeper)."
+                  : "Notice: This is an external wallet. Payouts are routed here. The dashboard holds no private keys. To send crypto, please use your external wallet app (e.g. Tonkeeper)."}
+              </p>
+            )}
           </div>
         )}
 

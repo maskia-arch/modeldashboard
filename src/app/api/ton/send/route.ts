@@ -99,6 +99,15 @@ export async function POST(req: Request) {
     }
 
     if (words.length !== 24) {
+      if (dbUser.tonAddress) {
+        return NextResponse.json(
+          {
+            error: "Externe Wallet erkannt: Für diese Adresse sind keine privaten Schlüssel im Dashboard hinterlegt. Auszahlungen werden an diese Adresse empfangen, Überweisungen müssen jedoch direkt in Ihrer externen Wallet-App (z. B. Tonkeeper oder Telegram Wallet) ausgeführt werden.",
+            isExternalWallet: true,
+          },
+          { status: 400 }
+        );
+      }
       return NextResponse.json(
         {
           error: "Kein aktiver Wallet-Schlüssel gefunden. Bitte richten Sie Ihr Wallet in den Einstellungen neu ein oder sichern Sie es ab.",
@@ -133,8 +142,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // Rate-limit safety: Toncenter public API limits to 1 req/sec without API key.
+    // Adding a short throttle prevents rapid sequential calls from triggering HTTP 429 Too Many Requests.
+    if (!apiKey) {
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+
     // 8. Get Seqno & Send Transfer
     const seqno = await wallet.getSeqno();
+
+    if (!apiKey) {
+      await new Promise((r) => setTimeout(r, 1100));
+    }
 
     await wallet.sendTransfer({
       seqno,
@@ -168,6 +187,25 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("[TON Send Error]:", error);
+
+    const errMsg = String(error?.message || "");
+    const isRateLimit =
+      error?.status === 429 ||
+      error?.response?.status === 429 ||
+      errMsg.includes("429") ||
+      errMsg.toLowerCase().includes("too many requests") ||
+      errMsg.toLowerCase().includes("rate limit");
+
+    if (isRateLimit) {
+      return NextResponse.json(
+        {
+          error: "TON Blockchain Rate-Limit (Fehlercode 429): Die Toncenter RPC-Schnittstelle ist kurzzeitig überlastet (Limit von 1 Anfrage pro Sekunde). Bitte warten Sie ca. 5 bis 10 Sekunden und versuchen Sie es erneut.",
+          code: 429,
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       { error: error.message || "Fehler beim Versenden der TON-Transaktion." },
       { status: 500 }

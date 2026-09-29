@@ -23,6 +23,7 @@ import {
   EyeOff,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Clock,
   ArrowRight,
   Lock,
@@ -43,6 +44,7 @@ interface CurrentUser {
   email?: string | null;
   role: string;
   tonAddress?: string | null;
+  hasEncryptedWallet?: boolean;
 }
 
 interface TonWalletManagerProps {
@@ -59,6 +61,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
   const [address, setAddress] = useState<string>(currentUser.tonAddress || "");
   const [mnemonic, setMnemonic] = useState<string[]>([]);
   const [hasLocalKeys, setHasLocalKeys] = useState<boolean>(false);
+  const [hasDbWallet, setHasDbWallet] = useState<boolean>(Boolean(currentUser.hasEncryptedWallet));
 
   // Live on-chain data
   const [balanceTon, setBalanceTon] = useState<string>("0.00");
@@ -66,6 +69,10 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
   const [tonRateUsd, setTonRateUsd] = useState<number>(5.60);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Derived wallet access state
+  const hasAnyKeys = hasLocalKeys || hasDbWallet;
+  const isExternalWallet = Boolean(address && !hasAnyKeys);
 
   // Modals
   const [isSendOpen, setIsSendOpen] = useState<boolean>(false);
@@ -99,6 +106,45 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
   // Copy feedback
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showSeed, setShowSeed] = useState<boolean>(false);
+
+  // Decrypt & Reveal from DB state
+  const [revealPassword, setRevealPassword] = useState<string>("");
+  const [isRevealing, setIsRevealing] = useState<boolean>(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  const handleRevealMnemonic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!revealPassword) return;
+    setIsRevealing(true);
+    setRevealError(null);
+    try {
+      const res = await fetch("/api/user/ton-address/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: revealPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Fehler beim Entschlüsseln");
+      }
+      if (Array.isArray(data.mnemonic) && data.mnemonic.length === 24) {
+        setMnemonic(data.mnemonic);
+        setHasLocalKeys(true);
+        setShowSeed(true);
+        setRevealPassword("");
+        try {
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({ address: data.tonAddress || address, mnemonic: data.mnemonic })
+          );
+        } catch {}
+      }
+    } catch (err: any) {
+      setRevealError(err.message);
+    } finally {
+      setIsRevealing(false);
+    }
+  };
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -136,6 +182,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
       if (candidateMnemonic.length === 24) {
         setMnemonic(candidateMnemonic);
         setHasLocalKeys(true);
+        setHasDbWallet(true);
         const resolvedAddr = candidateAddress || address;
         if (!address && candidateAddress) {
           setAddress(candidateAddress);
@@ -152,6 +199,21 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
             mnemonic: candidateMnemonic,
           }),
         }).catch(() => {});
+      } else {
+        // Query backend for hasEncryptedWallet state if no local keys found
+        fetch("/api/user/ton-address")
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data) {
+              if (data.hasEncryptedWallet !== undefined) {
+                setHasDbWallet(Boolean(data.hasEncryptedWallet));
+              }
+              if (data.tonAddress && !address) {
+                setAddress(data.tonAddress);
+              }
+            }
+          })
+          .catch(() => {});
       }
     } catch {
       // Storage unavailable or unparseable
@@ -232,6 +294,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
         );
         setMnemonic(wordsToSave);
         setHasLocalKeys(true);
+        setHasDbWallet(true);
       }
 
       setAddress(addrToSave);
@@ -285,6 +348,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
 
       setAddress(clean);
       setHasLocalKeys(false);
+      setHasDbWallet(false);
       setMnemonic([]);
       localStorage.removeItem(storageKey);
       setIsSetupOpen(false);
@@ -333,6 +397,9 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 429 || data.code === 429) {
+          throw new Error(data.error || t.wallet.rateLimitError);
+        }
         throw new Error(data.error || (language === "de" ? "Fehler beim Senden" : "Failed to send transaction"));
       }
 
@@ -430,15 +497,15 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  {hasLocalKeys ? (
+                  {hasAnyKeys ? (
                     <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1 py-0.5">
                       <CheckCircle2 className="h-3 w-3" />
                       {t.wallet.fullAccessBadge}
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 py-0.5">
-                      <ShieldCheck className="h-3 w-3" />
-                      {t.wallet.watchOnlyBadge}
+                    <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 gap-1 py-0.5">
+                      <ShieldAlert className="h-3 w-3" />
+                      {t.wallet.externalWalletBadge}
                     </Badge>
                   )}
                 </div>
@@ -503,6 +570,23 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 </div>
               </div>
 
+              {/* Prominent External Wallet Warning Box */}
+              {isExternalWallet && (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-400">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span>{t.wallet.externalWalletWarningTitle}</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    {t.wallet.externalWalletWarningDesc}
+                  </p>
+                  <div className="p-2 rounded-lg bg-background/50 border border-amber-500/20 text-[11px] text-amber-300 font-medium flex items-start gap-1.5">
+                    <span className="shrink-0">💡</span>
+                    <span>{t.wallet.externalWalletActionHint}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
                 <Button
@@ -526,10 +610,12 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                   {t.wallet.receiveButton}
                 </Button>
 
-                {hasLocalKeys && (
+                {hasAnyKeys && (
                   <Button
                     onClick={() => {
                       setShowSeed(false);
+                      setRevealError(null);
+                      setRevealPassword("");
                       setIsBackupOpen(true);
                     }}
                     variant="outline"
@@ -728,7 +814,87 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
             </DialogDescription>
           </DialogHeader>
 
-          {sendSuccessMessage ? (
+          {isExternalWallet ? (
+            <div className="py-2 space-y-4 text-left">
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2.5">
+                <div className="flex items-center gap-2 font-bold text-amber-400">
+                  <ShieldAlert className="h-5 w-5 shrink-0 text-amber-400" />
+                  <span>{t.wallet.externalWalletSendTitle}</span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t.wallet.externalWalletSendNotice}
+                </p>
+                <div className="p-2.5 rounded-lg bg-background/60 border border-amber-500/20 text-xs text-foreground space-y-1">
+                  <div className="text-[11px] text-muted-foreground">
+                    {language === "de" ? "Verfügbares Guthaben auf dieser Adresse:" : "Available balance at this address:"}
+                  </div>
+                  <div className="font-bold font-mono text-sm text-[#0098EA]">{balanceTon} TON</div>
+                </div>
+              </div>
+
+              {/* Step-by-step guidance */}
+              <div className="space-y-3 text-xs">
+                <p className="text-muted-foreground leading-relaxed text-[11px]">
+                  {language === "de"
+                    ? "Um Guthaben von Ihrer externen Wallet zu transferieren, öffnen Sie bitte Ihre Wallet-App (z. B. Tonkeeper oder Telegram @wallet). Das Dashboard hält keine privaten Schlüssel für externe Wallets."
+                    : "To transfer funds from your external wallet, please open your wallet app (e.g. Tonkeeper or Telegram @wallet). The dashboard holds no private keys for external wallets."}
+                </p>
+
+                {/* Optional prefill inputs for deep-linking */}
+                <div className="p-3 rounded-lg bg-muted/40 border space-y-2">
+                  <label className="text-[11px] font-semibold text-muted-foreground block">
+                    {language === "de" ? "Empfängeradresse für Weiterleitung (optional):" : "Recipient address for forwarding (optional):"}
+                  </label>
+                  <Input
+                    value={sendRecipient}
+                    onChange={(e) => setSendRecipient(e.target.value)}
+                    placeholder={t.wallet.recipientPlaceholder}
+                    className="font-mono text-xs h-8"
+                  />
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={sendAmount}
+                    onChange={(e) => setSendAmount(e.target.value)}
+                    placeholder={t.wallet.amountPlaceholder}
+                    className="font-mono text-xs h-8"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1">
+                  <a
+                    href={
+                      sendRecipient && isValidTonAddress(sendRecipient)
+                        ? `https://app.tonkeeper.com/transfer/${sendRecipient.trim()}?amount=${toNano(sendAmount || "0").toString()}`
+                        : "https://app.tonkeeper.com/"
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-md bg-[#0098EA] hover:bg-[#0087d1] text-white text-xs font-bold transition-colors shadow-sm"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {t.wallet.openInTonkeeper}
+                  </a>
+
+                  <a
+                    href={`https://tonviewer.com/${address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full inline-flex items-center justify-center gap-2 h-9 rounded-md border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {t.wallet.viewExplorer}
+                  </a>
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button variant="ghost" onClick={() => setIsSendOpen(false)} className="w-full text-xs">
+                  {t.common.close}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : sendSuccessMessage ? (
             <div className="py-6 text-center space-y-3">
               <div className="h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
                 <CheckCircle2 className="h-6 w-6" />
@@ -744,9 +910,23 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
           ) : (
             <form onSubmit={handleSendTon} className="space-y-3.5 py-1">
               {sendError && (
-                <div className="p-3 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{sendError}</span>
+                <div className={cn(
+                  "p-3 rounded-lg border text-xs flex items-start gap-2",
+                  sendError.includes("429")
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-200"
+                    : "bg-destructive/15 border-destructive/30 text-destructive"
+                )}>
+                  {sendError.includes("429") ? (
+                    <Clock className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <span className="font-semibold block">
+                      {sendError.includes("429") ? t.wallet.rateLimitBadge : t.common.error}
+                    </span>
+                    <span className="text-[11px] block leading-relaxed">{sendError}</span>
+                  </div>
                 </div>
               )}
 
@@ -959,57 +1139,127 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               <div>{t.wallet.backupWarning}</div>
             </div>
 
-            {/* Reveal / Hide Button */}
-            <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowSeed(!showSeed)}
-                className="gap-1.5 text-xs"
-              >
-                {showSeed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                {showSeed ? (language === "de" ? "Wörter verbergen" : "Hide Words") : (language === "de" ? "Wörter jetzt aufdecken" : "Reveal Words")}
-              </Button>
+            {mnemonic.length !== 24 ? (
+              <form onSubmit={handleRevealMnemonic} className="space-y-3 p-4 rounded-xl bg-muted/40 border">
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <Lock className="h-4 w-4 text-[#0098EA]" />
+                  <span>
+                    {language === "de"
+                      ? "Passwort eingeben, um Schlüssel aus Ihrem Profil zu entschlüsseln"
+                      : "Enter password to decrypt recovery phrase from your profile"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {language === "de"
+                    ? "Ihre 24 Wörter sind sicher mit AES-256-GCM in Ihrem Profil gespeichert. Bestätigen Sie Ihr Account-Passwort, um sie anzuzeigen."
+                    : "Your 24 words are stored securely with AES-256-GCM in your profile. Enter your account password to reveal them."}
+                </p>
 
-              {showSeed && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleCopy(mnemonic.join(" "), "backup_words")}
-                  className="gap-1.5 text-xs"
-                >
-                  {copiedId === "backup_words" ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-400" />
-                      {t.common.copied}
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      {t.wallet.copyMnemonic}
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-
-            {/* 24 Word Grid */}
-            {showSeed && mnemonic.length === 24 ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                {mnemonic.map((word, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2 rounded-md bg-muted/60 border text-xs font-mono flex items-center justify-between"
-                  >
-                    <span className="text-[10px] text-muted-foreground">{idx + 1}.</span>
-                    <span className="font-bold text-foreground">{word}</span>
+                {revealError && (
+                  <div className="p-2.5 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{revealError}</span>
                   </div>
-                ))}
-              </div>
+                )}
+
+                <div className="space-y-2">
+                  <Input
+                    type="password"
+                    required
+                    value={revealPassword}
+                    onChange={(e) => setRevealPassword(e.target.value)}
+                    placeholder={t.wallet.passwordPlaceholder}
+                    className="text-xs h-9"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={isRevealing || !revealPassword}
+                    className="w-full gap-1.5 bg-[#0098EA] hover:bg-[#0087d1] text-white text-xs font-bold"
+                  >
+                    {isRevealing ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        {language === "de" ? "Wird entschlüsselt..." : "Decrypting..."}
+                      </>
+                    ) : (
+                      <>
+                        <KeyRound className="h-4 w-4" />
+                        {language === "de" ? "Wörter jetzt entschlüsseln" : "Decrypt & Reveal Words"}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
             ) : (
-              <div className="p-8 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
-                {language === "de" ? "Klicken Sie auf „Wörter jetzt aufdecken“, um Ihre 24 Wörter sichtbar zu machen." : "Click 'Reveal Words' to display your 24 words."}
-              </div>
+              <>
+                {/* Reveal / Hide Button */}
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowSeed(!showSeed)}
+                    className="gap-1.5 text-xs"
+                  >
+                    {showSeed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showSeed ? (language === "de" ? "Wörter verbergen" : "Hide Words") : (language === "de" ? "Wörter jetzt aufdecken" : "Reveal Words")}
+                  </Button>
+
+                  {showSeed && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopy(mnemonic.join(" "), "backup_words")}
+                      className="gap-1.5 text-xs"
+                    >
+                      {copiedId === "backup_words" ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-400" />
+                          {t.common.copied}
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          {t.wallet.copyMnemonic}
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* 24 Word Grid */}
+                {showSeed ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      {mnemonic.map((word, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-md bg-muted/60 border text-xs font-mono flex items-center justify-between"
+                        >
+                          <span className="text-[10px] text-muted-foreground">{idx + 1}.</span>
+                          <span className="font-bold text-foreground">{word}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Exodus & External App Import Advice */}
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-xs space-y-1.5 text-blue-200">
+                      <div className="font-bold flex items-center gap-1.5 text-blue-400">
+                        <Sparkles className="h-4 w-4" />
+                        <span>{language === "de" ? "In Exodus oder Tonkeeper importieren" : "Import into Exodus or Tonkeeper"}</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        {language === "de"
+                          ? "Sie können diese 24 Wörter jederzeit in Exodus, Tonkeeper oder MyTonWallet unter „Bestehende Wallet wiederherstellen / importieren“ eingeben. Dadurch haben Sie die volle Kontrolle über Ihr Guthaben direkt in Ihrer gewohnten App und können Transaktionen jederzeit unabhängig vom Dashboard durchführen."
+                          : "You can import these 24 words into Exodus, Tonkeeper, or MyTonWallet under 'Restore existing wallet / import mnemonic'. This gives you full independent control directly in your app."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 rounded-xl bg-muted/20 border border-dashed text-center text-xs text-muted-foreground">
+                    {language === "de" ? "Klicken Sie auf „Wörter jetzt aufdecken“, um Ihre 24 Wörter sichtbar zu machen." : "Click 'Reveal Words' to display your 24 words."}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

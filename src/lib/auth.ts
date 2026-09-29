@@ -12,6 +12,7 @@ export interface SessionUser {
   name?: string | null;
   role: "MASTER_ADMIN" | "INVESTOR";
   tonAddress?: string | null;
+  hasEncryptedWallet?: boolean;
   isActive: boolean;
 }
 
@@ -31,6 +32,7 @@ export function signToken(user: SessionUser): string {
       name: user.name,
       role: user.role,
       tonAddress: user.tonAddress,
+      hasEncryptedWallet: user.hasEncryptedWallet,
       isActive: user.isActive,
     },
     JWT_SECRET,
@@ -61,7 +63,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   // Verify from DB if active
   const dbUser = await prisma.user.findUnique({
     where: { id: session.id },
-    select: { id: true, email: true, name: true, role: true, tonAddress: true, isActive: true },
+    select: { id: true, email: true, name: true, role: true, tonAddress: true, tonWalletEncrypted: true, isActive: true },
   });
 
   if (!dbUser || !dbUser.isActive) return null;
@@ -72,6 +74,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     name: dbUser.name,
     role: dbUser.role as "MASTER_ADMIN" | "INVESTOR",
     tonAddress: dbUser.tonAddress,
+    hasEncryptedWallet: Boolean(dbUser.tonWalletEncrypted),
     isActive: dbUser.isActive,
   };
 }

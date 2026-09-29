@@ -63,6 +63,7 @@ export function InvestorClient({
   const [expenses, setExpenses] = useState(initialExpenses || []);
   const [fulfilledPayouts, setFulfilledPayouts] = useState(initialPayouts || []);
   const [currentTonAddress, setCurrentTonAddress] = useState<string | null>(investor?.tonAddress || null);
+  const [hasEncryptedWallet, setHasEncryptedWallet] = useState<boolean>(Boolean(investor?.hasEncryptedWallet));
   
   // Mandatory first-login prompt if no TON address exists yet
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(!investor?.tonAddress);
@@ -110,8 +111,28 @@ export function InvestorClient({
     }
   };
 
+  useEffect(() => {
+    // If hasEncryptedWallet not defined, query profile
+    fetch("/api/user/ton-address")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.hasEncryptedWallet !== undefined) {
+          setHasEncryptedWallet(Boolean(data.hasEncryptedWallet));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleWalletSaved = (newAddress: string) => {
     setCurrentTonAddress(newAddress);
+    fetch("/api/user/ton-address")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.hasEncryptedWallet !== undefined) {
+          setHasEncryptedWallet(Boolean(data.hasEncryptedWallet));
+        }
+      })
+      .catch(() => {});
   };
 
   // Schedule Tab State (Read-Only)
@@ -218,9 +239,20 @@ export function InvestorClient({
           <div className="mt-3 flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">{language === "de" ? "Auszahlungsadresse:" : "Payout Address:"}</span>
             {currentTonAddress ? (
-              <span className="font-mono font-bold text-[#0098EA] bg-[#0098EA]/10 px-2 py-0.5 rounded border border-[#0098EA]/20">
-                {truncateAddress(currentTonAddress, 10)}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono font-bold text-[#0098EA] bg-[#0098EA]/10 px-2 py-0.5 rounded border border-[#0098EA]/20">
+                  {truncateAddress(currentTonAddress, 10)}
+                </span>
+                {hasEncryptedWallet ? (
+                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 py-0.5">
+                    {language === "de" ? "Dashboard Wallet" : "Dashboard Wallet"}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30 py-0.5">
+                    {language === "de" ? "Externe Wallet (Watch-Only)" : "External Wallet (Watch-Only)"}
+                  </Badge>
+                )}
+              </div>
             ) : (
               <Button
                 variant="outline"
@@ -1029,6 +1061,7 @@ export function InvestorClient({
 
           <TonWalletGenerator
             currentAddress={currentTonAddress}
+            hasEncryptedWallet={hasEncryptedWallet}
             onAddressSaved={handleWalletSaved}
           />
 

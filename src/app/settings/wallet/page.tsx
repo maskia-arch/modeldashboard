@@ -20,6 +20,7 @@ export default async function WalletSettingsPage() {
       email: true,
       role: true,
       tonAddress: true,
+      tonWalletEncrypted: true,
     },
   });
 
@@ -27,9 +28,18 @@ export default async function WalletSettingsPage() {
     redirect("/login");
   }
 
+  const currentUserProps = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    tonAddress: user.tonAddress,
+    hasEncryptedWallet: Boolean(user.tonWalletEncrypted),
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-300">
-      <TonWalletManager currentUser={user} />
+      <TonWalletManager currentUser={currentUserProps} />
     </div>
   );
 }
