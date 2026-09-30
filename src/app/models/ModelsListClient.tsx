@@ -58,6 +58,8 @@ interface TelegramDialog {
   isGroup: boolean;
   type: "channel" | "group";
   participantsCount: number | null;
+  isCreator?: boolean;
+  isAdmin?: boolean;
 }
 
 interface InvestorItem {
@@ -686,7 +688,17 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {d.isCreator && (
+                              <Badge className="text-[10px] py-0 px-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                {language === "de" ? "Inhaber" : "Owner"}
+                              </Badge>
+                            )}
+                            {d.isAdmin && !d.isCreator && (
+                              <Badge className="text-[10px] py-0 px-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                Admin
+                              </Badge>
+                            )}
                             <Badge variant={d.isChannel ? "info" : "ppv"} className="text-[10px] py-0 px-1.5">
                               {d.isChannel ? t.models.telegramChannel : t.models.telegramGroup}
                             </Badge>

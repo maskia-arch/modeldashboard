@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
@@ -37,6 +37,8 @@ export async function GET() {
     for (const d of dialogs) {
       if (d.isChannel || d.isGroup) {
         const entity: any = d.entity;
+        const isCreator = Boolean(entity?.creator);
+        const isAdmin = Boolean(entity?.adminRights);
         formattedDialogs.push({
           id: String(d.id),
           title: d.title || (entity?.title ?? "Unnamed"),
@@ -45,12 +47,19 @@ export async function GET() {
           isGroup: Boolean(d.isGroup),
           type: d.isChannel ? "channel" : "group",
           participantsCount: entity?.participantsCount ?? null,
+          isCreator,
+          isAdmin,
         });
       }
     }
 
-    // Sort by title
-    formattedDialogs.sort((a, b) => a.title.localeCompare(b.title));
+    // Sort: Channels where user is Creator/Admin first, then by title
+    formattedDialogs.sort((a, b) => {
+      const aPriority = a.isCreator ? 2 : a.isAdmin ? 1 : 0;
+      const bPriority = b.isCreator ? 2 : b.isAdmin ? 1 : 0;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      return a.title.localeCompare(b.title);
+    });
 
     return NextResponse.json({
       success: true,
