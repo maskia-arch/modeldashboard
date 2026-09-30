@@ -2,6 +2,8 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import qrcodeTerminal from "qrcode-terminal";
 import readline from "readline";
+import fs from "fs";
+import path from "path";
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -12,54 +14,84 @@ function question(query: string): Promise<string> {
   return new Promise((resolve) => rl.question(query, resolve));
 }
 
+function updateEnvFile(apiId: number, apiHash: string, session: string) {
+  const envPath = path.join(process.cwd(), ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  let content = fs.readFileSync(envPath, "utf-8");
+
+  if (content.includes("TELEGRAM_API_ID=")) {
+    content = content.replace(/TELEGRAM_API_ID=".*?"/g, `TELEGRAM_API_ID="${apiId}"`);
+  } else {
+    content += `\nTELEGRAM_API_ID="${apiId}"`;
+  }
+
+  if (content.includes("TELEGRAM_API_HASH=")) {
+    content = content.replace(/TELEGRAM_API_HASH=".*?"/g, `TELEGRAM_API_HASH="${apiHash}"`);
+  } else {
+    content += `\nTELEGRAM_API_HASH="${apiHash}"`;
+  }
+
+  if (content.includes("TELEGRAM_SESSION_STRING=")) {
+    content = content.replace(/TELEGRAM_SESSION_STRING=".*?"/g, `TELEGRAM_SESSION_STRING="${session}"`);
+  } else {
+    content += `\nTELEGRAM_SESSION_STRING="${session}"`;
+  }
+
+  fs.writeFileSync(envPath, content, "utf-8");
+  console.log("💾 .env Datei wurde automatisch mit der neuen Session aktualisiert!");
+}
+
 async function main() {
   console.log("==================================================");
-  console.log("  Telegram MTProto Session String Generator       ");
+  console.log("  Telegram Userbot Login / Session Generator     ");
   console.log("==================================================");
 
   const envApiId = process.env.TELEGRAM_API_ID;
   const envApiHash = process.env.TELEGRAM_API_HASH;
 
-  const apiIdStr = envApiId && envApiId !== "123456" ? envApiId : await question("Enter your Telegram API_ID: ");
-  const apiHash = envApiHash && envApiHash !== "demo_hash" ? envApiHash : await question("Enter your Telegram API_HASH: ");
+  // Use Telegram Desktop official API credentials as standard defaults
+  const apiId = (envApiId && envApiId !== "123456") ? parseInt(envApiId.trim(), 10) : 2040;
+  const apiHash = (envApiHash && envApiHash !== "demo_hash") ? envApiHash.trim() : "b18441a1ff607e10a989891a5462e627";
 
-  const apiId = parseInt(apiIdStr.trim(), 10);
   const stringSession = new StringSession("");
 
-  console.log("\nConnecting to Telegram Network...");
-  const client = new TelegramClient(stringSession, apiId, apiHash.trim(), {
+  console.log("\nVerbinde mit dem Telegram-Netzwerk...");
+  const client = new TelegramClient(stringSession, apiId, apiHash, {
     connectionRetries: 5,
   });
 
   await client.connect();
 
-  console.log("\n================ LOGIN METHOD ================");
-  console.log("1) QR-Code scannen mit der Telegram-App (EMPFOHLEN - Kein SMS-Zugriff nötig!)");
-  console.log("2) Telefonnummer & SMS/In-App Code");
-  console.log("==============================================");
-  const choice = (await question("Wähle Methode (1 oder 2, Standard = 1): ")).trim();
+  console.log("\n================ LOGIN METHODE ================");
+  console.log("1) Telefonnummer & In-App Code / SMS (EMPFOHLEN)");
+  console.log("2) QR-Code scannen");
+  console.log("===============================================");
+  const choice = (await question("Wähle Methode (1 oder 2, Standard = 1): ")).trim() || "1";
 
-  if (choice === "2") {
+  if (choice === "1") {
     // Phone / SMS Flow
-    const phoneNumber = (await question("\nEnter your Telegram Phone Number (+49...): ")).trim();
-    console.log(`\nRequesting verification code from Telegram for ${phoneNumber}...`);
-    
+    const defaultPhone = "+447438600294";
+    const phoneInput = (await question(`\nTelegram Telefonnummer eingeben [Standard: ${defaultPhone}]: `)).trim();
+    const phoneNumber = phoneInput || defaultPhone;
+    console.log(`\nFordere Bestätigungscode von Telegram für ${phoneNumber} an...`);
+
     let sendCodeResult;
     try {
       sendCodeResult = await client.sendCode(
         {
           apiId,
-          apiHash: apiHash.trim(),
+          apiHash,
         },
         phoneNumber
       );
     } catch (err: any) {
       if (err.errorMessage && err.errorMessage.startsWith("PHONE_MIGRATE_")) {
-        console.log(`[Info] Phone registered on other DC. Migrating...`);
+        console.log(`[Info] Telefonnummer liegt auf anderem DC. Migriere...`);
         sendCodeResult = await client.sendCode(
           {
             apiId,
-            apiHash: apiHash.trim(),
+            apiHash,
           },
           phoneNumber
         );
@@ -68,17 +100,16 @@ async function main() {
       }
     }
 
-    console.log("\n📩 Code request processed by Telegram!");
-    console.log(`[Telegram Info] Delivery method: ${(sendCodeResult as any)?.type?.className || "Telegram App / SMS"}`);
-    console.log("👉 Check your Telegram App or SMS.");
+    console.log("\n📩 Code wurde von Telegram gesendet!");
+    console.log(`👉 Bitte Telegram-App auf deinem Handy/Desktop prüfen (oder SMS).`);
 
-    const code = (await question("\nEnter the Verification Code: ")).trim();
+    const code = (await question("\nGib den Bestätigungscode ein: ")).trim();
 
     try {
       await client.signInUser(
         {
           apiId,
-          apiHash: apiHash.trim(),
+          apiHash,
         },
         {
           phoneNumber: async () => phoneNumber,
@@ -88,11 +119,11 @@ async function main() {
       );
     } catch (loginErr: any) {
       if (loginErr.errorMessage === "SESSION_PASSWORD_NEEDED") {
-        const password = await question("Enter your 2FA Cloud Password: ");
+        const password = await question("\n🔐 2FA Cloud-Passwort eingeben: ");
         await client.signInWithPassword(
           {
             apiId,
-            apiHash: apiHash.trim(),
+            apiHash,
           },
           {
             password,
@@ -103,8 +134,8 @@ async function main() {
       }
     }
   } else {
-    // QR Code Login Flow (Bypasses SMS completely!)
-    console.log("\n📱 Generating Telegram QR Code...");
+    // QR Code Login Flow
+    console.log("\n📱 Generiere Telegram QR-Code...");
     console.log("👉 Öffne auf deinem Smartphone: Telegram -> Einstellungen -> Geräte -> 'Desktop-Gerät verbinden'");
     console.log("👉 Scanne den untenstehenden QR-Code mit der Telegram-Kamera:\n");
 
@@ -112,7 +143,7 @@ async function main() {
       await client.signInUserWithQrCode(
         {
           apiId,
-          apiHash: apiHash.trim(),
+          apiHash,
         },
         {
           qrCode: async (code) => {
@@ -137,7 +168,7 @@ async function main() {
         await client.signInWithPassword(
           {
             apiId,
-            apiHash: apiHash.trim(),
+            apiHash,
           },
           {
             password,
@@ -149,14 +180,16 @@ async function main() {
     }
   }
 
-  console.log("\n✅ Login successful!");
+  const me: any = await client.getMe();
+  console.log("\n✅ Login erfolgreich!");
+  console.log(`Benutzer: ${me.firstName || ""} ${me.lastName || ""} (@${me.username || "n/a"})`);
+  console.log(`Nummer: +${me.phone}`);
+
   const session = client.session.save() as unknown as string;
 
-  console.log("\n================ YOUR SESSION STRING ================");
-  console.log(session);
-  console.log("=====================================================");
-  console.log("\nKopiere diesen String und trage ihn in Coolify / .env ein als:");
-  console.log(`TELEGRAM_SESSION_STRING="${session}"\n`);
+  console.log("\n================ SESSION ERSTELLT ================");
+  updateEnvFile(apiId, apiHash, session);
+  console.log("==================================================");
 
   await client.disconnect();
   rl.close();
@@ -164,7 +197,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Session generation failed:", err);
+  console.error("\n❌ Anmeldung fehlgeschlagen:", err.message || err);
   rl.close();
   process.exit(1);
 });
