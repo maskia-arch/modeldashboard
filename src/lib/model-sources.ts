@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { prisma } from "./prisma";
-import { createTelegramClient, resolveChannelPeer } from "./telegram-stars";
+import { createTelegramClient, resolveChannelPeer, resolveClientAndPeerForChannel } from "./telegram-stars";
 import { saveUploadedBuffer, getAssetLocalPath, isPhotoExtension, isVideoOrGifExtension } from "./assets";
 import { classifyImageWithGrokVision } from "./grok";
 
@@ -216,23 +216,20 @@ async function syncMediaFromSourceChannelInternal(
     };
   }
 
-  const client = await createTelegramClient();
-  if (!client) {
+  const resolved = await resolveClientAndPeerForChannel(sourceConfig.sourceChannelId);
+  if (!resolved) {
     return {
       success: false,
       importedCount: 0,
-      message: "Telegram Userbot ist nicht konfiguriert (TELEGRAM_SESSION_STRING fehlt).",
+      message: `Quellkanal ${sourceConfig.sourceChannelId} konnte von keinem aktiven Telegram Userbot aufgelöst werden. Bitte prüfen, ob Userbot 1 oder 2 Zugriff hat.`,
     };
   }
 
-  try {
-    console.log(`[SourceChannel] Resolving source peer ${sourceConfig.sourceChannelId} for model ${model.name}...`);
-    if (onProgress) onProgress({ importedCount: 0, skippedCount: 0, message: "Quellkanal wird aufgelöst..." });
+  const { client, peer, userbotLabel } = resolved;
 
-    const peer = await resolveChannelPeer(client, sourceConfig.sourceChannelId);
-    if (!peer) {
-      throw new Error(`Quellkanal ${sourceConfig.sourceChannelId} konnte nicht aufgelöst werden.`);
-    }
+  try {
+    console.log(`[SourceChannel] Resolving source peer ${sourceConfig.sourceChannelId} for model ${model.name} via ${userbotLabel}...`);
+    if (onProgress) onProgress({ importedCount: 0, skippedCount: 0, message: `Quellkanal wird aufgelöst (${userbotLabel})...` });
 
     // Lightweight lookup of already imported Telegram message IDs without loading heavy base64 strings into memory
     const existingMsgIds = new Set<number>();
@@ -714,16 +711,13 @@ export async function restoreAssetMediaFile(assetId: string): Promise<{
       return { success: false, error: "Source channel not configured for model" };
     }
 
-    const client = await createTelegramClient();
-    if (!client) {
-      return { success: false, error: "Telegram Userbot not configured" };
+    const resolved = await resolveClientAndPeerForChannel(sourceConfig.sourceChannelId);
+    if (!resolved) {
+      return { success: false, error: "Failed to resolve source channel peer with any active userbot" };
     }
+    const { client, peer } = resolved;
 
     try {
-      const peer = await resolveChannelPeer(client, sourceConfig.sourceChannelId);
-      if (!peer) {
-        return { success: false, error: "Failed to resolve source channel peer" };
-      }
 
       console.log(`[AssetRestore] Fetching message #${msgId} for asset ${asset.title || asset.id}...`);
       const messages = await client.getMessages(peer, { ids: [msgId] });

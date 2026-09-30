@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { Api, TelegramClient, helpers, utils } from "telegram";
 import { CustomFile } from "telegram/client/uploads";
-import { createTelegramClient, resolveChannelPeer } from "./telegram-stars";
+import { createTelegramClient, resolveChannelPeer, resolveClientAndPeerForChannel, getUserbotConfigs } from "./telegram-stars";
 import { getAssetLocalPath } from "./assets";
 import { extractMp4DurationFromFile } from "./video-metadata";
 
@@ -135,22 +135,18 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
     };
   }
 
-  const client = await getOrInitUserbotClient();
-  if (!client) {
+  const resolved = await resolveClientAndPeerForChannel(channelId);
+  if (!resolved) {
     return {
       success: false,
-      error: "Userbot ist nicht verbunden! Bitte stellen Sie sicher, dass TELEGRAM_SESSION_STRING, TELEGRAM_API_ID und TELEGRAM_API_HASH in Ihrer Umgebung konfiguriert sind.",
+      error: `Kanal "${channelId}" konnte von keinem der aktiven Userbots aufgelöst werden. Bitte prüfen Sie, ob Userbot 1 oder Userbot 2 Administrator des Kanals ist.`,
     };
   }
 
+  const { client, peer, accountIndex, userbotLabel } = resolved;
+  console.log(`[Userbot Publisher] Kanal "${channelId}" wird über ${userbotLabel} (Account ${accountIndex}) bespielt...`);
+
   try {
-    const peer = await resolveChannelPeer(client, channelId);
-    if (!peer) {
-      return {
-        success: false,
-        error: `Kanal "${channelId}" konnte im Userbot nicht aufgelöst werden. Bitte prüfen Sie, ob der Userbot Mitglied oder Administrator des Kanals ist.`,
-      };
-    }
 
     const localPath = getAssetLocalPath(params.fileUrl);
     const isLocal = !!localPath && fs.existsSync(localPath);
@@ -484,18 +480,8 @@ async function publishViaBotApi(params: SendMediaParams): Promise<TelegramPublis
  * Prioritizes the configured Userbot (GramJS MTProto), with optional Bot API fallback.
  */
 export async function publishToTelegram(params: SendMediaParams): Promise<TelegramPublishResult> {
-  const sessionString = process.env.TELEGRAM_SESSION_STRING;
-  const apiId = process.env.TELEGRAM_API_ID;
-  const apiHash = process.env.TELEGRAM_API_HASH;
-
-  const hasUserbotConfig = Boolean(
-    sessionString &&
-    sessionString.length > 20 &&
-    apiId &&
-    apiId !== "123456" &&
-    apiHash &&
-    apiHash !== "demo_hash"
-  );
+  const configs = getUserbotConfigs();
+  const hasUserbotConfig = configs.length > 0;
 
   // If Userbot is configured, publish exclusively via Userbot
   if (hasUserbotConfig) {
@@ -511,6 +497,6 @@ export async function publishToTelegram(params: SendMediaParams): Promise<Telegr
   // If neither is configured, prompt user clearly to configure the Userbot
   return {
     success: false,
-    error: "Userbot nicht konfiguriert! Bitte stellen Sie sicher, dass TELEGRAM_SESSION_STRING, TELEGRAM_API_ID und TELEGRAM_API_HASH in Ihrer .env Datei bzw. in Coolify hinterlegt sind (oder führen Sie 'npm run telegram:login' aus).",
+    error: "Kein Userbot konfiguriert! Bitte stellen Sie sicher, dass TELEGRAM_SESSION_STRING oder TELEGRAM_SESSION_STRING_2 in Ihrer .env Datei bzw. in Coolify hinterlegt sind (oder führen Sie 'npm run telegram:login' aus).",
   };
 }

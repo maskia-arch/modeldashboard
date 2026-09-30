@@ -14,7 +14,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "worker": "tsx scripts/auto-init-db.ts && tsx src/worker/index.ts",
     "worker:dev": "tsx watch src/worker/index.ts",
-    "telegram:login": "tsx scripts/generate-session.ts"
+    "telegram:login": "tsx scripts/generate-session.ts",
+    "telegram:login:2": "tsx scripts/generate-session.ts 2"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

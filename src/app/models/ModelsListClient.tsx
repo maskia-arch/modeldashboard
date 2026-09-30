@@ -60,6 +60,8 @@ interface TelegramDialog {
   participantsCount: number | null;
   isCreator?: boolean;
   isAdmin?: boolean;
+  userbotIndex?: number;
+  userbotLabel?: string;
 }
 
 interface InvestorItem {
@@ -689,6 +691,15 @@ export function ModelsListClient({ initialModels, investors = [] }: ModelsListCl
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
+                            {d.userbotIndex === 2 ? (
+                              <Badge className="text-[10px] py-0 px-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                Bot 2 (Sicherheit)
+                              </Badge>
+                            ) : (
+                              <Badge className="text-[10px] py-0 px-1.5 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                Bot 1
+                              </Badge>
+                            )}
                             {d.isCreator && (
                               <Badge className="text-[10px] py-0 px-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                                 {language === "de" ? "Inhaber" : "Owner"}

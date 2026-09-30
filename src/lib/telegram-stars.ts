@@ -80,30 +80,134 @@ export function extractStarsValue(val: any): number {
   return 0;
 }
 
-/**
- * Creates and connects a GramJS MTProto TelegramClient using environment credentials.
- */
-export async function createTelegramClient(): Promise<TelegramClient | null> {
-  const apiId = Number(process.env.TELEGRAM_API_ID || "0");
-  const apiHash = process.env.TELEGRAM_API_HASH || "";
-  const sessionString = process.env.TELEGRAM_SESSION_STRING || "";
+export interface UserbotAccountConfig {
+  index: number;
+  label: string;
+  apiId: number;
+  apiHash: string;
+  sessionString: string;
+}
 
-  if (!apiId || !apiHash || !sessionString) {
-    console.warn("[Telegram Stars Engine] MTProto credentials missing in environment.");
+/**
+ * Returns all configured userbot accounts from environment variables.
+ * Account 1: TELEGRAM_SESSION_STRING (or TELEGRAM_SESSION_STRING_1)
+ * Account 2: TELEGRAM_SESSION_STRING_2 (Security userbot)
+ */
+export function getUserbotConfigs(): UserbotAccountConfig[] {
+  const configs: UserbotAccountConfig[] = [];
+
+  // Account 1 (Primary / redo)
+  const session1 = process.env.TELEGRAM_SESSION_STRING || process.env.TELEGRAM_SESSION_STRING_1;
+  const apiId1 = Number(process.env.TELEGRAM_API_ID || process.env.TELEGRAM_API_ID_1 || "2040");
+  const apiHash1 = process.env.TELEGRAM_API_HASH || process.env.TELEGRAM_API_HASH_1 || "b18441a1ff607e10a989891a5462e627";
+
+  if (session1 && session1.length > 20 && apiId1 && apiHash1) {
+    configs.push({
+      index: 1,
+      label: "Userbot 1",
+      apiId: apiId1,
+      apiHash: apiHash1,
+      sessionString: session1,
+    });
+  }
+
+  // Account 2 (Security account)
+  const session2 = process.env.TELEGRAM_SESSION_STRING_2;
+  const apiId2 = Number(process.env.TELEGRAM_API_ID_2 || process.env.TELEGRAM_API_ID || "2040");
+  const apiHash2 = process.env.TELEGRAM_API_HASH_2 || process.env.TELEGRAM_API_HASH || "b18441a1ff607e10a989891a5462e627";
+
+  if (session2 && session2.length > 20 && apiId2 && apiHash2) {
+    configs.push({
+      index: 2,
+      label: "Userbot 2 (Sicherheit)",
+      apiId: apiId2,
+      apiHash: apiHash2,
+      sessionString: session2,
+    });
+  }
+
+  return configs;
+}
+
+/**
+ * Creates and connects a GramJS MTProto TelegramClient for a specific account index (default = 1).
+ */
+export async function createTelegramClient(accountIndex: number = 1): Promise<TelegramClient | null> {
+  const configs = getUserbotConfigs();
+  const config = configs.find((c) => c.index === accountIndex) || (accountIndex === 1 ? configs[0] : null);
+
+  if (!config) {
+    console.warn(`[Telegram Stars Engine] MTProto credentials missing for Userbot ${accountIndex}.`);
     return null;
   }
 
   try {
-    const session = new StringSession(sessionString);
-    const client = new TelegramClient(session, apiId, apiHash, {
+    const session = new StringSession(config.sessionString);
+    const client = new TelegramClient(session, config.apiId, config.apiHash, {
       connectionRetries: 5,
     });
     await client.connect();
     return client;
   } catch (err: any) {
-    console.error("[Telegram Stars Engine] Failed to connect MTProto client:", err.message);
+    console.error(`[Telegram Stars Engine] Failed to connect MTProto client (Userbot ${accountIndex}):`, err.message);
     return null;
   }
+}
+
+/**
+ * Returns connected clients for all configured userbot accounts.
+ */
+export async function getAllTelegramClients(): Promise<Array<{ index: number; label: string; client: TelegramClient }>> {
+  const configs = getUserbotConfigs();
+  const results: Array<{ index: number; label: string; client: TelegramClient }> = [];
+
+  for (const c of configs) {
+    try {
+      const session = new StringSession(c.sessionString);
+      const client = new TelegramClient(session, c.apiId, c.apiHash, { connectionRetries: 3 });
+      await client.connect();
+      results.push({ index: c.index, label: c.label, client });
+    } catch (e: any) {
+      console.error(`[Telegram Stars Engine] Failed to connect ${c.label}:`, e.message);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Automatically discovers which userbot (Account 1 or Account 2) has access to a given channel ID.
+ * Returns the connected client, the peer, and the bot metadata.
+ */
+export async function resolveClientAndPeerForChannel(
+  channelId: string,
+  options?: { clients?: Array<{ index: number; label: string; client: TelegramClient }> }
+): Promise<{ client: TelegramClient; peer: any; accountIndex: number; userbotLabel: string } | null> {
+  const cleanId = String(channelId).trim();
+  const allClients = options?.clients || (await getAllTelegramClients());
+
+  if (allClients.length === 0) {
+    console.warn("[Telegram Routing] No active Telegram userbots configured.");
+    return null;
+  }
+
+  for (const item of allClients) {
+    try {
+      const peer = await resolveChannelPeer(item.client, cleanId);
+      if (peer) {
+        return {
+          client: item.client,
+          peer,
+          accountIndex: item.index,
+          userbotLabel: item.label,
+        };
+      }
+    } catch {
+      // Channel not accessible by this bot, try next
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -165,32 +269,36 @@ export async function resolveChannelPeer(client: TelegramClient, channelId: stri
 export async function syncStarsForChannel(
   modelId: string,
   telegramChannelId: string,
-  options?: { client?: TelegramClient }
+  options?: { client?: TelegramClient; allClients?: Array<{ index: number; label: string; client: TelegramClient }> }
 ): Promise<ChannelSyncResult> {
   let client = options?.client || null;
-  let shouldDisconnect = false;
+  let peer: any = null;
+  let shouldDisconnect = !options?.client && !options?.allClients;
 
-  if (!client) {
-    client = await createTelegramClient();
-    shouldDisconnect = true;
+  if (client) {
+    try {
+      peer = await resolveChannelPeer(client, telegramChannelId);
+    } catch {}
+  } else {
+    const resolved = await resolveClientAndPeerForChannel(telegramChannelId, { clients: options?.allClients });
+    if (resolved) {
+      client = resolved.client;
+      peer = resolved.peer;
+    }
   }
 
-  if (!client) {
+  if (!client || !peer) {
     return {
       modelId,
       channelId: telegramChannelId,
       success: false,
       transactionsCount: 0,
       totalStars: 0,
-      error: "MTProto client not available (check TELEGRAM_SESSION_STRING).",
+      error: `Kanal "${telegramChannelId}" konnte keinem aktiven Userbot zugeordnet werden. Bitte Berechtigungen in Telegram prüfen.`,
     };
   }
 
   try {
-    const peer = await resolveChannelPeer(client, telegramChannelId);
-    if (!peer) {
-      throw new Error(`Could not resolve Telegram peer for channel: ${telegramChannelId}`);
-    }
 
     let overallRevenue = 0;
     let availableBalance = 0;
@@ -403,31 +511,35 @@ export async function syncStarsForChannel(
  * Reconciles historical transactions across every channel.
  */
 export async function syncAllModelsStars(providedClient?: TelegramClient): Promise<AllModelsSyncResult> {
-  let client = providedClient || null;
+  let allClients: Array<{ index: number; label: string; client: TelegramClient }> = [];
   let shouldDisconnect = false;
 
-  if (!client) {
-    client = await createTelegramClient();
+  if (providedClient) {
+    allClients = [{ index: 1, label: "Userbot 1", client: providedClient }];
+  } else {
+    allClients = await getAllTelegramClients();
     shouldDisconnect = true;
   }
 
-  if (!client) {
+  if (allClients.length === 0) {
     return {
       success: false,
       syncedModels: 0,
       totalTransactions: 0,
       totalStars: 0,
       channels: [],
-      error: "Telegram MTProto client could not be connected. Check TELEGRAM_SESSION_STRING.",
+      error: "Kein Telegram MTProto Userbot konnte verbunden werden. Bitte TELEGRAM_SESSION_STRING / TELEGRAM_SESSION_STRING_2 prüfen.",
     };
   }
 
   try {
-    // Prime entity cache once upfront
-    try {
-      await client.getDialogs({ limit: 100 });
-    } catch (e: any) {
-      console.warn("[Telegram Stars Engine] Dialog pre-caching warning:", e.message);
+    // Prime entity cache for all connected clients
+    for (const c of allClients) {
+      try {
+        await c.client.getDialogs({ limit: 100 });
+      } catch (e: any) {
+        console.warn(`[Telegram Stars Engine] Dialog pre-caching warning for ${c.label}:`, e.message);
+      }
     }
 
     const models = await prisma.model.findMany({
@@ -435,7 +547,7 @@ export async function syncAllModelsStars(providedClient?: TelegramClient): Promi
       select: { id: true, name: true, telegramChannelId: true },
     });
 
-    console.log(`[Telegram Stars Engine] Starting sync for ${models.length} models...`);
+    console.log(`[Telegram Stars Engine] Starting sync for ${models.length} models across ${allClients.length} userbots...`);
 
     const results: ChannelSyncResult[] = [];
     let totalTransactions = 0;
@@ -445,7 +557,7 @@ export async function syncAllModelsStars(providedClient?: TelegramClient): Promi
       const model = models[i];
       if (!model.telegramChannelId) continue;
 
-      const res = await syncStarsForChannel(model.id, model.telegramChannelId, { client });
+      const res = await syncStarsForChannel(model.id, model.telegramChannelId, { allClients });
       results.push(res);
       totalTransactions += res.transactionsCount;
       totalStars += res.totalStars;
@@ -474,10 +586,12 @@ export async function syncAllModelsStars(providedClient?: TelegramClient): Promi
       error: err.message,
     };
   } finally {
-    if (shouldDisconnect && client) {
-      try {
-        await client.disconnect();
-      } catch {}
+    if (shouldDisconnect) {
+      for (const c of allClients) {
+        try {
+          await c.client.disconnect();
+        } catch {}
+      }
     }
   }
 }
