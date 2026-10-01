@@ -86,7 +86,8 @@ interface ModelDetailClientProps {
 }
 
 function getTierBadgeInfo(tags: string[] = []) {
-  const t = tags.map((x: string) => x.toLowerCase());
+  const safeTags = Array.isArray(tags) ? tags : [];
+  const t = safeTags.filter(Boolean).map((x: any) => String(x).toLowerCase());
   if (t.includes("tier5") || t.includes("explizit")) {
     return { label: "Tier 5: Explizit", className: "bg-red-500/25 text-red-300 border-red-500/50" };
   }
@@ -746,11 +747,12 @@ export function ModelDetailClient({
   };
 
   const unclassifiedAssets = (model.assets || []).filter((a: any) => {
-    if (a.isUsed) return false;
-    const isUnclassifiedTag = a.tags?.includes("unclassified");
+    if (!a || a.isUsed) return false;
+    const tags = Array.isArray(a.tags) ? a.tags : [];
+    const isUnclassifiedTag = tags.includes("unclassified");
     const isQuelleGeneric =
-      a.tags?.includes("quelle") &&
-      (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
+      tags.includes("quelle") &&
+      (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || (typeof a.title === "string" && a.title.startsWith("Quell-Medium")));
     return isUnclassifiedTag || isQuelleGeneric;
   });
 
@@ -874,19 +876,19 @@ export function ModelDetailClient({
           </TabsTrigger>
           <TabsTrigger value="posts" className="gap-1.5 text-xs">
             <Calendar className="h-3.5 w-3.5" />
-            {t.modelDetail.tabPosts} ({model.posts.length})
+            {t.modelDetail.tabPosts} ({(model.posts || []).length})
           </TabsTrigger>
           <TabsTrigger value="assets" className="gap-1.5 text-xs">
             <ImageIcon className="h-3.5 w-3.5" />
-            {t.modelDetail.tabVault} ({model.assets.length})
+            {t.modelDetail.tabVault} ({(model.assets || []).length})
           </TabsTrigger>
           <TabsTrigger value="stars" className="gap-1.5 text-xs">
             <Star className="h-3.5 w-3.5" />
-            {t.modelDetail.tabStars} ({model.starTransactions.length})
+            {t.modelDetail.tabStars} ({(model.starTransactions || []).length})
           </TabsTrigger>
           <TabsTrigger value="expenses" className="gap-1.5 text-xs">
             <DollarSign className="h-3.5 w-3.5" />
-            {t.modelDetail.tabExpenses} ({model.expenses.length})
+            {t.modelDetail.tabExpenses} ({(model.expenses || []).length})
           </TabsTrigger>
         </TabsList>
 
@@ -1310,12 +1312,14 @@ export function ModelDetailClient({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {model.assets.map((asset: any) => {
+            {(model.assets || []).map((asset: any) => {
+              if (!asset) return null;
               const isSelected = selectedAssetIds.has(asset.id);
+              const tags = Array.isArray(asset.tags) ? asset.tags : [];
               const isUnclassified =
-                asset.tags?.includes("unclassified") ||
-                (asset.tags?.includes("quelle") && (!asset.theme || asset.theme === "Allgemein" || asset.theme === "Unklassifiziert" || asset.title?.startsWith("Quell-Medium")));
-              const tierBadge = getTierBadgeInfo(asset.tags || []);
+                tags.includes("unclassified") ||
+                (tags.includes("quelle") && (!asset.theme || asset.theme === "Allgemein" || asset.theme === "Unklassifiziert" || (typeof asset.title === "string" && asset.title.startsWith("Quell-Medium"))));
+              const tierBadge = getTierBadgeInfo(tags);
 
               return (
                 <Card
@@ -1361,7 +1365,7 @@ export function ModelDetailClient({
                       </div>
 
                       {asset.fileUrl ? (
-                        asset.type === "VIDEO" || asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i) ? (
+                        asset.type === "VIDEO" || (typeof asset.fileUrl === "string" && asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i)) ? (
                           <video
                             src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
                             className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
@@ -1474,9 +1478,9 @@ export function ModelDetailClient({
                       )}
 
                       <div className="flex flex-wrap gap-1 pt-1">
-                        {asset.tags?.map((tag: string, i: number) => (
+                        {tags.map((tag: any, i: number) => (
                           <span key={i} className="text-[9px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground font-mono">
-                            #{tag}
+                            #{String(tag)}
                           </span>
                         ))}
                       </div>
@@ -1940,7 +1944,7 @@ export function ModelDetailClient({
         modelId={model.id}
         modelName={model.name}
         channelTitle={model.channelTitle}
-        availableAssets={model.assets.filter((a: any) => !a.isUsed)}
+        availableAssets={(model.assets || []).filter((a: any) => !a?.isUsed)}
         onScheduleCreated={refreshData}
       />
 

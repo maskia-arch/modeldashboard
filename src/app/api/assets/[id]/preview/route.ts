@@ -35,12 +35,22 @@ export async function GET(
 
     let localPath = !forceReload ? getAssetLocalPath(asset.fileUrl) : null;
 
-    // If file missing on disk or reload forced, attempt automatic self-healing restoration
+    // If file missing on disk:
+    // 1. Instant local DB backup restore (<5ms) if available
+    // 2. Telegram MTProto network download ONLY if explicitly requested via ?reload=1
+    // This prevents 50 concurrent Telegram download requests from freezing the server during bulk vault viewing!
     if (!localPath || !fs.existsSync(localPath)) {
-      console.log(`[AssetPreview] File for asset ${assetId} (${asset.title || "Untitled"}) missing on disk. Restoring...`);
-      const restored = await restoreAssetMediaFile(assetId);
-      if (restored.success && restored.filePath && fs.existsSync(restored.filePath)) {
-        localPath = restored.filePath;
+      const hasDbBackup = Boolean(asset.notes && asset.notes.includes("[BACKUP_DATA:"));
+      if (hasDbBackup || forceReload) {
+        try {
+          console.log(`[AssetPreview] Restoring asset ${assetId} (${hasDbBackup ? "from DB backup" : "via Telegram network"})...`);
+          const restored = await restoreAssetMediaFile(assetId);
+          if (restored.success && restored.filePath && fs.existsSync(restored.filePath)) {
+            localPath = restored.filePath;
+          }
+        } catch (rErr: any) {
+          console.warn(`[AssetPreview] Restore failed for asset ${assetId}:`, rErr.message);
+        }
       }
     }
 

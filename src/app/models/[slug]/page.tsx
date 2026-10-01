@@ -82,9 +82,31 @@ export default async function ModelDetailPage({ params }: PageProps) {
     }
   );
 
+  // Sanitize heavy base64 strings from notes to prevent bloated HTML/RSC payloads (>50MB) and browser/proxy crashes
+  const sanitizedAssets = (model.assets || []).map((a) => ({
+    ...a,
+    notes: a.notes ? a.notes.replace(/\s*\|\s*\[BACKUP_DATA:[^\]]+\]/g, "").trim() : a.notes,
+  }));
+
+  const sanitizedPosts = (model.posts || []).map((p) => ({
+    ...p,
+    asset: p.asset
+      ? {
+          ...p.asset,
+          notes: p.asset.notes ? p.asset.notes.replace(/\s*\|\s*\[BACKUP_DATA:[^\]]+\]/g, "").trim() : p.asset.notes,
+        }
+      : p.asset,
+  }));
+
+  const sanitizedModel = {
+    ...model,
+    assets: sanitizedAssets,
+    posts: sanitizedPosts,
+  };
+
   return (
     <ModelDetailClient
-      initialModel={model}
+      initialModel={sanitizedModel}
       initialFinancials={financials}
       investors={investors}
       isMasterAdmin={user.role === "MASTER_ADMIN"}

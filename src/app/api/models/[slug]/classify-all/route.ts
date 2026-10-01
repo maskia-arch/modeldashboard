@@ -42,10 +42,11 @@ export async function POST(
 
     // Identify assets to classify
     const unclassifiedAssets = model.assets.filter((a) => {
-      const isUnclassifiedTag = a.tags?.includes("unclassified");
+      const tags = Array.isArray(a.tags) ? a.tags : [];
+      const isUnclassifiedTag = tags.includes("unclassified");
       const isQuelleGeneric =
-        a.tags?.includes("quelle") &&
-        (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || a.title?.startsWith("Quell-Medium"));
+        tags.includes("quelle") &&
+        (!a.theme || a.theme === "Allgemein" || a.theme === "Unklassifiziert" || (typeof a.title === "string" && a.title.startsWith("Quell-Medium")));
       return isUnclassifiedTag || isQuelleGeneric;
     });
 
