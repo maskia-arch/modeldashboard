@@ -57,7 +57,7 @@ export async function POST(
         const { restoreAssetMediaFile } = await import("@/lib/model-sources");
         const restorePromise = restoreAssetMediaFile(asset.id);
         const timeoutPromise = new Promise<{ success: boolean; filePath?: string; error?: string }>((resolve) =>
-          setTimeout(() => resolve({ success: false, error: "Telegram restore timeout" }), 20000)
+          setTimeout(() => resolve({ success: false, error: "Telegram restore timeout" }), 5000)
         );
         const restored = await Promise.race([restorePromise, timeoutPromise]);
         if (restored.success && restored.filePath) {
@@ -97,16 +97,12 @@ export async function POST(
         videoDurationFormatted: durationFormatted || undefined,
       });
     } catch (grokErr: any) {
-      console.warn(
-        `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Applying resilient fallback classification.`
+      console.error(
+        `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Aborting without fallback.`
       );
-      const { generateFallbackClassification } = await import("@/lib/grok");
-      classification = generateFallbackClassification(
-        visionFilePath,
-        asset.model.name,
-        isVideo,
-        durationFormatted || undefined,
-        durationSeconds || undefined
+      return NextResponse.json(
+        { error: `Grok AI Analysefehler: ${grokErr.message}` },
+        { status: 502 }
       );
     }
 

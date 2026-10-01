@@ -563,7 +563,7 @@ export function ModelDetailClient({
           : null
       );
 
-      const MAX_RETRIES = 3;
+      const MAX_RETRIES = 2;
       let handled = false;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -576,7 +576,7 @@ export function ModelDetailClient({
               : `🔄 ${assetLabel}: Retry attempt (${attempt}/${MAX_RETRIES}) due to server delay...`
           );
           setBatchProgress((prev) => (prev ? { ...prev, logs: [...logs] } : null));
-          await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
         try {
@@ -642,11 +642,6 @@ export function ModelDetailClient({
             }
           : null
       );
-
-      // Periodically refresh dashboard data in background so cards update live
-      if ((i + 1) % 2 === 0 || i === eligibleAssets.length - 1) {
-        refreshData().catch(() => {});
-      }
     }
 
     setBatchProgress((prev) => (prev ? { ...prev, isFinished: true } : null));

@@ -832,6 +832,7 @@ export async function classifyImageWithGrokVision(params: {
     throw new Error("GIFs are excluded from direct image Vision. Please classify them manually.");
   }
 
+  // Ensure file exists
   if (!fs.existsSync(imagePath)) {
     throw new Error(`File not found on disk: ${imagePath}`);
   }
@@ -941,9 +942,9 @@ STRICT JSON OUTPUT FORMAT:
   let response: Response | null = null;
   let lastErrorText = "";
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     try {
       const res = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -974,7 +975,7 @@ STRICT JSON OUTPUT FORMAT:
             },
           ],
           temperature: 0.1,
-          max_tokens: 2000,
+          max_tokens: 600,
           response_format: { type: "json_object" },
         }),
       });
@@ -985,7 +986,7 @@ STRICT JSON OUTPUT FORMAT:
       }
 
       lastErrorText = await res.text();
-      console.warn(`[GrokVision] Attempt ${attempt}/3 failed (HTTP ${res.status}): ${lastErrorText.slice(0, 160)}`);
+      console.warn(`[GrokVision] Attempt ${attempt}/2 failed (HTTP ${res.status}): ${lastErrorText.slice(0, 160)}`);
 
       // If it's a permanent error (not 429 or 5xx), break immediately to let refusal/fallback handle it
       if (res.status !== 429 && res.status < 500) {
@@ -993,14 +994,14 @@ STRICT JSON OUTPUT FORMAT:
         break;
       }
 
-      // If rate limited or transient server error, wait before retry
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      // If rate limited or transient server error, wait briefly before retry
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
       }
     } catch (fetchErr: any) {
-      console.warn(`[GrokVision] Attempt ${attempt}/3 fetch exception: ${fetchErr.message}`);
-      if (attempt >= 3) throw fetchErr;
-      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      console.warn(`[GrokVision] Attempt ${attempt}/2 fetch exception: ${fetchErr.message}`);
+      if (attempt >= 2) throw fetchErr;
+      await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
     } finally {
       clearTimeout(timeoutId);
     }
@@ -1101,8 +1102,7 @@ STRICT JSON OUTPUT FORMAT:
   }
 
   if (!rawJson) {
-    console.warn("Empty response from Grok Vision, using fallback classification.");
-    return generateFallbackClassification(params.localFilePath, params.modelName, isVideo, params.videoDurationFormatted, params.videoDurationSeconds);
+    throw new Error("Grok 4.20 Vision hat keine Daten zurückgegeben (leere Antwort).");
   }
 
   // Robust JSON extraction removing markdown fences, leading/trailing text
@@ -1118,8 +1118,7 @@ STRICT JSON OUTPUT FORMAT:
   try {
     parsed = JSON.parse(cleanJson);
   } catch (parseErr) {
-    console.warn("[GrokVision] JSON parse failed on raw output, using fallback parser:", rawJson);
-    return generateFallbackClassification(params.localFilePath, params.modelName, isVideo, params.videoDurationFormatted, params.videoDurationSeconds);
+    throw new Error(`Grok 4.20 Vision Antwort konnte nicht als JSON interpretiert werden: ${cleanJson.slice(0, 100)}`);
   }
 
   const classification = parsed.classification || {
