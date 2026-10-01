@@ -404,8 +404,8 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
       }
 
       setSendSuccessMessage(language === "de"
-        ? `${amt} TON erfolgreich an ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)} versendet!`
-        : `${amt} TON successfully sent to ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)}!`);
+        ? `${amt} GRAM erfolgreich an ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)} versendet!`
+        : `${amt} GRAM successfully sent to ${sendRecipient.slice(0, 6)}...${sendRecipient.slice(-4)}!`);
       setSendAmount("");
       setSendRecipient("");
       setSendMemo("");
@@ -420,7 +420,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
     }
   };
 
-  // Calculate Max transferable balance (leaving ~0.03 TON for network reserve)
+  // Calculate Max transferable balance (leaving ~0.03 GRAM for network reserve)
   const handleSetMax = () => {
     const bal = parseFloat(balanceTon);
     const maxVal = Math.max(0, bal - 0.03);
@@ -484,14 +484,14 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-[#0098EA]/20 text-[#0098EA] flex items-center justify-center font-black text-xs">
-                    TON
+                    GRAM
                   </div>
                   <div>
                     <CardTitle className="text-base font-bold flex items-center gap-2">
                       {t.wallet.balanceTitle}
                     </CardTitle>
                     <span className="text-[11px] text-muted-foreground">
-                      The Open Network (Mainnet)
+                      GRAM Blockchain (ehemals The Open Network)
                     </span>
                   </div>
                 </div>
@@ -518,10 +518,10 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 <div>
                   <div className="text-3xl sm:text-4xl font-black tracking-tight text-foreground flex items-baseline gap-2">
                     {balanceTon}
-                    <span className="text-lg sm:text-xl font-bold text-[#0098EA]">TON</span>
+                    <span className="text-lg sm:text-xl font-bold text-[#0098EA]">GRAM</span>
                   </div>
                   <div className="text-xs text-muted-foreground font-medium mt-1">
-                    ≈ ${balanceUsd.toFixed(2)} USD (Kurs: ${tonRateUsd.toFixed(2)} / TON)
+                    ≈ ${balanceUsd.toFixed(2)} USD (Kurs: ${tonRateUsd.toFixed(2)} / GRAM)
                   </div>
                 </div>
 
@@ -681,8 +681,8 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
             <h3 className="text-lg font-bold text-foreground">{t.wallet.noWalletConfigured}</h3>
             <p className="text-xs text-muted-foreground">
               {language === "de"
-                ? "Erstellen Sie in Sekundenschnelle ein Dashboard-eigenes TON-Wallet oder verknüpfen Sie Ihre bestehende Adresse (Tonkeeper / Telegram Wallet), um Auszahlungen zu empfangen."
-                : "Generate a dashboard-native TON wallet in seconds or link your existing address (Tonkeeper / Telegram Wallet) to receive payouts."}
+                ? "Erstellen Sie in Sekundenschnelle ein Dashboard-eigenes GRAM-Wallet (ehemals TON) oder verknüpfen Sie Ihre bestehende Adresse (Tonkeeper / Telegram Wallet), um Auszahlungen zu empfangen."
+                : "Generate a dashboard-native GRAM wallet (formerly TON) in seconds or link your existing address (Tonkeeper / Telegram Wallet) to receive payouts."}
             </p>
           </div>
           <Button
@@ -711,7 +711,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                 {t.wallet.recentTransactions}
               </CardTitle>
               <CardDescription className="text-xs">
-                {language === "de" ? "Echtzeit-Transaktionen direkt aus der TON-Blockchain" : "Real-time transactions directly from the TON Blockchain"}
+                {language === "de" ? "Echtzeit-Transaktionen direkt aus der GRAM-Blockchain (ehemals TON)" : "Real-time transactions directly from the GRAM Blockchain"}
               </CardDescription>
             </div>
             <Button
@@ -773,7 +773,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                         "font-mono font-bold text-sm",
                         tx.isIncoming ? "text-emerald-400" : "text-foreground"
                       )}>
-                        {tx.isIncoming ? "+" : "-"}{tx.amountTon} TON
+                        {tx.isIncoming ? "+" : "-"}{tx.amountTon} GRAM
                       </div>
                       <a
                         href={`https://tonviewer.com/transaction/${tx.hash}`}
@@ -828,7 +828,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                   <div className="text-[11px] text-muted-foreground">
                     {language === "de" ? "Verfügbares Guthaben auf dieser Adresse:" : "Available balance at this address:"}
                   </div>
-                  <div className="font-bold font-mono text-sm text-[#0098EA]">{balanceTon} TON</div>
+                  <div className="font-bold font-mono text-sm text-[#0098EA]">{balanceTon} GRAM</div>
                 </div>
               </div>
 
@@ -964,7 +964,7 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
                     {t.wallet.amountLabel}
                   </label>
                   <span className="text-[11px] text-muted-foreground">
-                    {language === "de" ? "Verfügbar:" : "Available:"} <strong className="text-foreground">{balanceTon} TON</strong>
+                    {language === "de" ? "Verfügbar:" : "Available:"} <strong className="text-foreground">{balanceTon} GRAM</strong>
                   </span>
                 </div>
                 <div className="relative">
@@ -1279,10 +1279,10 @@ export function TonWalletManager({ currentUser }: TonWalletManagerProps) {
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-[#0098EA]" />
-              <DialogTitle>{language === "de" ? "TON Wallet einrichten & verknüpfen" : "Set Up & Link TON Wallet"}</DialogTitle>
+              <DialogTitle>{language === "de" ? "GRAM Wallet einrichten & verknüpfen" : "Set Up & Link GRAM Wallet"}</DialogTitle>
             </div>
             <DialogDescription className="text-xs">
-              {language === "de" ? "Wählen Sie, wie Sie Ihr TON-Wallet im Dashboard aktivieren möchten." : "Select how you would like to activate your TON wallet."}
+              {language === "de" ? "Wählen Sie, wie Sie Ihr GRAM-Wallet (ehemals TON) im Dashboard aktivieren möchten." : "Select how you would like to activate your GRAM wallet (formerly TON)."}
             </DialogDescription>
           </DialogHeader>
 

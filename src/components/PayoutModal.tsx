@@ -243,7 +243,7 @@ export function PayoutModal({
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                  {language === "de" ? "Krypto-Währung" : "Cryptocurrency"}
+                  {language === "de" ? "Auszahlungs-Währung" : "Payout Currency"}
                 </label>
                 <div className="grid grid-cols-2 gap-1.5 h-9 p-0.5 bg-muted/60 rounded-md border">
                   <button
@@ -266,11 +266,11 @@ export function PayoutModal({
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    TON 💎
+                    TON (Legacy)
                   </button>
                 </div>
                 <span className="text-[10px] text-muted-foreground mt-0.5 block">
-                  {currency === "GRAM" ? "Gram Token (Fragment / TON)" : "The Open Network (Toncoin)"}
+                  {currency === "GRAM" ? "GRAM (ehemals TON / On-Chain)" : "The Open Network (Legacy TON Bezeichnung)"}
                 </span>
               </div>
             </div>
@@ -362,8 +362,8 @@ export function PayoutModal({
             <div>
               <label className="text-xs font-semibold text-muted-foreground block mb-1">
                 {language === "de"
-                  ? `Investor Empfänger-Adresse (${currency} / TON Wallet)`
-                  : `Investor Recipient Address (${currency} / TON Wallet)`}
+                  ? `Investor Empfänger-Adresse (${currency} / Blockchain Wallet)`
+                  : `Investor Recipient Address (${currency} / Blockchain Wallet)`}
               </label>
               <Input
                 required

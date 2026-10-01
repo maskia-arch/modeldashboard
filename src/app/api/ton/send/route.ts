@@ -116,77 +116,123 @@ export async function POST(req: Request) {
       );
     }
 
-    // 6. Initialize TonClient & Contract
-    const endpoint = process.env.TON_API_ENDPOINT || "https://toncenter.com/api/v2/jsonRPC";
+    // 6. Initialize TonClient & Contract with Multi-RPC Failover and Auto-Retry on 429
+    const defaultEndpoint = process.env.TON_API_ENDPOINT || "https://toncenter.com/api/v2/jsonRPC";
     const apiKey = process.env.TON_API_KEY || undefined;
 
-    const client = new TonClient({
-      endpoint,
-      apiKey,
-    });
+    // List of candidate RPC endpoints to failover if an endpoint is throttled
+    const candidateEndpoints = [
+      defaultEndpoint,
+      "https://toncenter.com/api/v2/jsonRPC",
+    ].filter((val, idx, self) => Boolean(val) && self.indexOf(val) === idx);
 
+    let activeClientIndex = 0;
+    const getClient = () => {
+      const ep = candidateEndpoints[activeClientIndex] || candidateEndpoints[0];
+      return new TonClient({
+        endpoint: ep,
+        apiKey: ep.includes("toncenter.com") ? apiKey : undefined,
+      });
+    };
+
+    let client = getClient();
     const keyPair = await mnemonicToPrivateKey(words);
     const walletContract = WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey });
-    const wallet = client.open(walletContract);
+    let wallet = client.open(walletContract);
 
-    // 7. Verify Balance
-    const balanceNano = await wallet.getBalance();
+    // Resilient RPC executor with exponential backoff on HTTP 429
+    const executeWithRetry = async <T>(operationName: string, op: () => Promise<T>, maxRetries = 4): Promise<T> => {
+      let attempt = 0;
+      while (attempt <= maxRetries) {
+        try {
+          return await op();
+        } catch (err: any) {
+          attempt++;
+          const errMsg = String(err?.message || "");
+          const is429 =
+            err?.status === 429 ||
+            err?.response?.status === 429 ||
+            errMsg.includes("429") ||
+            errMsg.toLowerCase().includes("too many requests") ||
+            errMsg.toLowerCase().includes("rate limit");
+
+          console.warn(`[TON Send API] ${operationName} failed (attempt ${attempt}/${maxRetries}):`, errMsg);
+
+          if (is429 && attempt <= maxRetries) {
+            // Wait with progressive backoff: 1.5s, 2.5s, 3.5s...
+            const delayMs = 1200 + attempt * 1000;
+            console.log(`[TON Send API] 429 encountered during ${operationName}. Waiting ${delayMs}ms before retry...`);
+            await new Promise((r) => setTimeout(r, delayMs));
+
+            // Switch to next candidate endpoint if multiple available
+            if (candidateEndpoints.length > 1) {
+              activeClientIndex = (activeClientIndex + 1) % candidateEndpoints.length;
+              client = getClient();
+              wallet = client.open(walletContract);
+            }
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw new Error(`Max retries reached for ${operationName}`);
+    };
+
+    // 7. Verify Balance (with retry)
+    const balanceNano = await executeWithRetry("getBalance", () => wallet.getBalance());
     const requiredNano = toNano(parsedAmount.toString()) + toNano("0.02");
 
     if (balanceNano < requiredNano) {
       return NextResponse.json(
         {
-          error: `Unzureichendes Guthaben. Aktuell verfügbar: ${fromNano(balanceNano)} TON. Erforderlich: ${fromNano(requiredNano)} TON (inkl. ca. 0.02 TON Netzwerk-Reserve).`,
+          error: `Unzureichendes Guthaben. Aktuell verfügbar: ${fromNano(balanceNano)} GRAM. Erforderlich: ${fromNano(requiredNano)} GRAM (inkl. ca. 0.02 GRAM Netzwerk-Reserve).`,
         },
         { status: 400 }
       );
     }
 
-    // Rate-limit safety: Toncenter public API limits to 1 req/sec without API key.
-    // Adding a short throttle prevents rapid sequential calls from triggering HTTP 429 Too Many Requests.
-    if (!apiKey) {
-      await new Promise((r) => setTimeout(r, 1100));
-    }
+    // Rate-limit safety: Spaced execution to respect public RPC rate limit (1 req/sec)
+    await new Promise((r) => setTimeout(r, 1250));
 
-    // 8. Get Seqno & Send Transfer
-    const seqno = await wallet.getSeqno();
+    // 8. Get Seqno & Send Transfer (with retry)
+    const seqno = await executeWithRetry("getSeqno", () => wallet.getSeqno());
 
-    if (!apiKey) {
-      await new Promise((r) => setTimeout(r, 1100));
-    }
+    await new Promise((r) => setTimeout(r, 1250));
 
-    await wallet.sendTransfer({
-      seqno,
-      secretKey: keyPair.secretKey,
-      messages: [
-        internal({
-          to: Address.parse(recipient.trim()),
-          value: toNano(parsedAmount.toString()),
-          body: comment ? comment.trim() : "",
-          bounce: false,
-        }),
-      ],
-    });
+    await executeWithRetry("sendTransfer", () =>
+      wallet.sendTransfer({
+        seqno,
+        secretKey: keyPair.secretKey,
+        messages: [
+          internal({
+            to: Address.parse(recipient.trim()),
+            value: toNano(parsedAmount.toString()),
+            body: comment ? comment.trim() : "",
+            bounce: false,
+          }),
+        ],
+      })
+    );
 
     // 9. Log activity
     const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
     const userAgent = req.headers.get("user-agent") || "unknown";
     await logUserActivity(
       currentUser.id,
-      `SEND_TON: ${parsedAmount} TON to ${recipient.slice(0, 8)}...`,
+      `SEND_GRAM: ${parsedAmount} GRAM to ${recipient.slice(0, 8)}...`,
       clientIp,
       userAgent
     );
 
     return NextResponse.json({
       success: true,
-      message: `${parsedAmount} TON erfolgreich versendet!`,
+      message: `${parsedAmount} GRAM erfolgreich versendet!`,
       amount: parsedAmount,
       recipient: recipient.trim(),
       sender: walletContract.address.toString({ testOnly: false, bounceable: false }),
     });
   } catch (error: any) {
-    console.error("[TON Send Error]:", error);
+    console.error("[TON/GRAM Send Error]:", error);
 
     const errMsg = String(error?.message || "");
     const isRateLimit =
@@ -199,7 +245,7 @@ export async function POST(req: Request) {
     if (isRateLimit) {
       return NextResponse.json(
         {
-          error: "TON Blockchain Rate-Limit (Fehlercode 429): Die Toncenter RPC-Schnittstelle ist kurzzeitig überlastet (Limit von 1 Anfrage pro Sekunde). Bitte warten Sie ca. 5 bis 10 Sekunden und versuchen Sie es erneut.",
+          error: "Blockchain Rate-Limit (Fehlercode 429): Die Toncenter RPC-Schnittstelle ist kurzzeitig stark ausgelastet. Bitte warten Sie einen kurzen Augenblick und versuchen Sie es erneut.",
           code: 429,
         },
         { status: 429 }
@@ -207,7 +253,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { error: error.message || "Fehler beim Versenden der TON-Transaktion." },
+      { error: error.message || "Fehler beim Versenden der GRAM-Transaktion." },
       { status: 500 }
     );
   }

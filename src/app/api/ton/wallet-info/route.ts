@@ -27,13 +27,24 @@ export async function GET(req: Request) {
 
     const parsedAddress = Address.parse(cleanAddress);
 
-    // 1. Fetch live balance
+    // 1. Fetch live balance with failover/retry
     let balanceTon = "0";
     try {
-      const balanceNano = await client.getBalance(parsedAddress);
-      balanceTon = fromNano(balanceNano);
+      let balNano;
+      try {
+        balNano = await client.getBalance(parsedAddress);
+      } catch (firstErr: any) {
+        if (firstErr?.message?.includes("429") || firstErr?.status === 429) {
+          // Wait and retry once
+          await new Promise((r) => setTimeout(r, 1200));
+          balNano = await client.getBalance(parsedAddress);
+        } else {
+          throw firstErr;
+        }
+      }
+      balanceTon = fromNano(balNano);
     } catch (err: any) {
-      console.warn("[TON API] Could not fetch balance:", err.message);
+      console.warn("[TON/GRAM API] Could not fetch balance:", err.message);
     }
 
     // 2. Fetch approx TON rate in USD

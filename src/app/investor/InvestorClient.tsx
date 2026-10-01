@@ -275,7 +275,7 @@ export function InvestorClient({
             className="gap-1.5 text-xs font-semibold text-[#0098EA] border-[#0098EA]/30"
           >
             <Wallet className="h-4 w-4" />
-            {currentTonAddress ? t.investorPortal.manageWallet : (language === "de" ? "TON Wallet einrichten" : "Set Up TON Wallet")}
+            {currentTonAddress ? t.investorPortal.manageWallet : (language === "de" ? "GRAM Wallet einrichten" : "Set Up GRAM Wallet")}
           </Button>
 
           <Button onClick={() => setIsSubmitModalOpen(true)} className="gap-2 font-semibold text-xs">
@@ -948,8 +948,8 @@ export function InvestorClient({
               <h3 className="text-lg font-bold">{t.investorPortal.tablePayoutsTitle}</h3>
               <p className="text-xs text-muted-foreground">
                 {language === "de"
-                  ? "Vom Master Admin händisch auf deine TON Wallet überwiesen und auf der Blockchain verifiziert"
-                  : "Transferred manually by Master Admin to your TON wallet and verified on the blockchain"}
+                  ? "Vom Master Admin auf deine GRAM Wallet (ehemals TON) überwiesen und auf der Blockchain verifiziert"
+                  : "Transferred by Master Admin to your GRAM wallet (formerly TON) and verified on the blockchain"}
               </p>
             </div>
             <Badge variant="outline" className="text-xs font-mono">
@@ -1049,11 +1049,11 @@ export function InvestorClient({
                 <Wallet className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle>{language === "de" ? "TON Auszahlungsadresse einrichten" : "Set Up TON Payout Address"}</DialogTitle>
+                <DialogTitle>{language === "de" ? "GRAM Auszahlungsadresse einrichten (ehemals TON)" : "Set Up GRAM Payout Address (formerly TON)"}</DialogTitle>
                 <DialogDescription>
                   {currentTonAddress
-                    ? (language === "de" ? "Deine aktive TON Auszahlungsadresse im System" : "Your active TON payout address in the system")
-                    : (language === "de" ? "Wichtig: Hinterlegen Sie Ihre TON-Auszahlungsadresse. Sie können direkt ein neues Wallet erzeugen oder Ihre bestehende Adresse (z. B. Tonkeeper / Telegram Wallet) manuell angeben." : "Important: Set up your TON payout address. You can generate a new wallet or enter your existing address (e.g. Tonkeeper / Telegram Wallet) manually.")}
+                    ? (language === "de" ? "Deine aktive GRAM Auszahlungsadresse im System" : "Your active GRAM payout address in the system")
+                    : (language === "de" ? "Wichtig: Hinterlegen Sie Ihre Auszahlungsadresse. Sie können direkt ein neues Wallet erzeugen oder Ihre bestehende Adresse (z. B. Tonkeeper / Telegram Wallet) manuell angeben." : "Important: Set up your payout address. You can generate a new wallet or enter your existing address (e.g. Tonkeeper / Telegram Wallet) manually.")}
                 </DialogDescription>
               </div>
             </div>

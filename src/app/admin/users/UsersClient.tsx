@@ -313,7 +313,7 @@ export function UsersClient({ initialUsers, allModels }: UsersClientProps) {
                   <th className="p-3">Investor / User</th>
                   <th className="p-3">{t.adminUsers.roleLabel}</th>
                   <th className="p-3">{t.adminUsers.assignedChannels}</th>
-                  <th className="p-3">TON Wallet (Payout)</th>
+                  <th className="p-3">GRAM Wallet (Payout)</th>
                   <th className="p-3">Registration Key</th>
                   <th className="p-3">{t.adminUsers.status}</th>
                   <th className="p-3">{t.adminUsers.lastSeen}</th>
