@@ -67,13 +67,48 @@ export async function POST(req: Request) {
       let tags: string[] = ["upload", model.slug];
       let notes = isVideoOrGif ? "Manuell zu klassifizieren (Video/GIF)" : "Hochgeladen";
 
-      // Grok 4.1 Vision: Only evaluate photos, strictly exclude videos and GIFs
-      if (isPhoto && autoClassify) {
+      // If video, extract and save the video thumbnail (Titelbild) to disk immediately upon upload
+      let durationSeconds: number | null = null;
+      let durationFormatted: string | null = null;
+      if (isVideoOrGif) {
         try {
+          const { ensureVideoThumbnailExists } = await import("@/lib/video-thumbnails");
+          await ensureVideoThumbnailExists(filePath);
+          console.log(`[Upload] Extracted and cached video thumbnail for ${file.name} -> ${filePath}`);
+        } catch (tErr: any) {
+          console.warn(`[Upload] Video thumbnail generation notice for ${file.name}:`, tErr.message);
+        }
+
+        try {
+          const { getAssetVideoDuration } = await import("@/lib/video-metadata");
+          const dur = await getAssetVideoDuration({ type: "VIDEO", fileUrl });
+          if (dur) {
+            durationSeconds = dur.seconds;
+            durationFormatted = dur.formatted;
+          }
+        } catch {}
+      }
+
+      // Grok 4.20 Vision classification (Photos evaluate the image; Videos evaluate the thumbnail + duration in numbers)
+      if (autoClassify) {
+        try {
+          const { ensureVideoThumbnailExists } = await import("@/lib/video-thumbnails");
+          const visionFilePath = isVideoOrGif
+            ? await ensureVideoThumbnailExists(filePath)
+            : filePath;
+
           const classification = await classifyImageWithGrokVision({
-            localFilePath: filePath,
+            localFilePath: visionFilePath,
             modelName: model.name,
+            isVideo: isVideoOrGif,
+            videoDurationSeconds: durationSeconds || undefined,
+            videoDurationFormatted: durationFormatted || undefined,
           });
+
+          if (isVideoOrGif) {
+            classification.explicitLevel = "PPV";
+            classification.suggestedStarsPrice = Math.max(classification.suggestedStarsPrice || 0, 25);
+          }
 
           title = classification.title || title;
           theme = classification.theme || theme;
@@ -81,7 +116,7 @@ export async function POST(req: Request) {
           tags = Array.from(new Set([...tags, ...(classification.tags || [])]));
           notes = `${classification.notes} | Caption: "${classification.suggestedCaption}" | Stars: ${classification.suggestedStarsPrice}`;
         } catch (visionErr: any) {
-          console.warn(`Vision classification failed for ${file.name}:`, visionErr?.message || visionErr);
+          console.warn(`Vision classification notice for ${file.name}:`, visionErr?.message || visionErr);
         }
       }
 

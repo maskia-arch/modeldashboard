@@ -197,25 +197,24 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             workers: 4,
           });
 
-          // Upload video thumbnail if video: required by Telegram to generate messageExtendedMediaPreview
+          // Upload video thumbnail if video: required by Telegram to generate and censor messageExtendedMediaPreview
           let uploadedThumb: any = undefined;
           if (isVideo) {
             try {
-              const possibleThumbPath = localPath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
-              let thumbBuf: Buffer;
-              if (fs.existsSync(possibleThumbPath)) {
-                thumbBuf = fs.readFileSync(possibleThumbPath);
-              } else {
-                // Minimal valid JPEG buffer for video preview
-                const defaultJpegBase64 =
-                  "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
-                thumbBuf = Buffer.from(defaultJpegBase64, "base64");
+              const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
+              let thumbPath = findExistingVideoThumbnail(localPath);
+              if (!thumbPath) {
+                thumbPath = await ensureVideoThumbnailExists(localPath);
               }
-              const thumbCustomFile = new CustomFile("thumb.jpg", thumbBuf.length, "", thumbBuf);
-              uploadedThumb = await client.uploadFile({
-                file: thumbCustomFile,
-                workers: 1,
-              });
+              if (thumbPath && fs.existsSync(thumbPath)) {
+                const thumbBuf = fs.readFileSync(thumbPath);
+                const thumbCustomFile = new CustomFile("thumb.jpg", thumbBuf.length, "", thumbBuf);
+                uploadedThumb = await client.uploadFile({
+                  file: thumbCustomFile,
+                  workers: 1,
+                });
+                console.log(`[Userbot Publisher] Uploaded video thumbnail (${thumbBuf.length} bytes) for Telegram preview censorship.`);
+              }
             } catch (thumbErr: any) {
               console.warn(`[Userbot Publisher] Thumbnail upload notice: ${thumbErr.message}`);
             }
@@ -310,6 +309,13 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
       } else {
         // 1b. Standard Free Media (Photo or Video)
         console.log(`[Userbot Publisher] Sending free media via sendFile (isVideo=${isVideo}, duration=${durationSec}s) to ${channelId}...`);
+
+        let freeThumbPath: string | undefined = undefined;
+        if (isVideo) {
+          const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
+          freeThumbPath = findExistingVideoThumbnail(localPath) || (await ensureVideoThumbnailExists(localPath));
+        }
+
         try {
           sentResult = await client.sendFile(peer, {
             file: localPath,
@@ -317,6 +323,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             parseMode: "html",
             forceDocument: false,
             supportsStreaming: isVideo,
+            thumb: freeThumbPath,
             attributes: videoAttributes,
             workers: 4,
           });
@@ -327,6 +334,7 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             caption: params.caption || "",
             forceDocument: false,
             supportsStreaming: isVideo,
+            thumb: freeThumbPath,
             attributes: videoAttributes,
             workers: 4,
           });
@@ -391,11 +399,26 @@ async function publishPaidMediaViaBotApi(
     formData.append("chat_id", chatId);
     formData.append("star_count", String(Math.max(1, params.starsPrice || 100)));
 
-    const mediaItem = {
+    const mediaItem: any = {
       type: isVideo ? "video" : "photo",
       media: `attach://${fileName}`,
       ...(isVideo ? { supports_streaming: true } : {}),
     };
+
+    if (isVideo) {
+      try {
+        const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
+        const thumbPath = findExistingVideoThumbnail(localPath) || (await ensureVideoThumbnailExists(localPath));
+        if (thumbPath && fs.existsSync(thumbPath)) {
+          const thumbBuf = await fs.promises.readFile(thumbPath);
+          formData.append("thumb_file", new Blob([thumbBuf], { type: "image/jpeg" }), "thumb.jpg");
+          mediaItem.thumbnail = "attach://thumb_file";
+        }
+      } catch (tErr: any) {
+        console.warn(`[BotApi Publisher] Video thumbnail attach notice:`, tErr.message);
+      }
+    }
+
     formData.append("media", JSON.stringify([mediaItem]));
     if (params.caption) {
       formData.append("caption", params.caption);
@@ -453,6 +476,16 @@ async function publishViaBotApi(params: SendMediaParams): Promise<TelegramPublis
 
       if (isVideo) {
         formData.append("supports_streaming", "true");
+        try {
+          const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
+          const thumbPath = findExistingVideoThumbnail(localPath) || (await ensureVideoThumbnailExists(localPath));
+          if (thumbPath && fs.existsSync(thumbPath)) {
+            const thumbBuf = await fs.promises.readFile(thumbPath);
+            formData.append("thumbnail", new Blob([thumbBuf], { type: "image/jpeg" }), "thumb.jpg");
+          }
+        } catch (tErr: any) {
+          console.warn(`[BotApi Publisher] Video thumbnail attach notice:`, tErr.message);
+        }
       }
       formData.append(fileField, new Blob([fileBuffer]), fileName);
 

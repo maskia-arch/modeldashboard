@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for Next.js App
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat openssl ffmpeg
 WORKDIR /app
 
 FROM base AS deps

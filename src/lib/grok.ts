@@ -822,12 +822,10 @@ export async function classifyImageWithGrokVision(params: {
   const isVideo = Boolean(params.isVideo) || isVideoExt;
 
   let imagePath = params.localFilePath;
-  if (isVideoExt) {
-    // If a video container was passed directly, look for its thumbnail image
-    const candidateThumb = params.localFilePath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
-    if (fs.existsSync(candidateThumb)) {
-      imagePath = candidateThumb;
-    }
+  if (isVideo) {
+    // For videos, strictly resolve to the thumbnail image (Titelbild), never pass the video container
+    const { ensureVideoThumbnailExists } = await import("./video-thumbnails");
+    imagePath = await ensureVideoThumbnailExists(params.localFilePath);
   } else if ([".gif"].includes(ext)) {
     throw new Error("GIFs are excluded from direct image Vision. Please classify them manually.");
   }
@@ -861,23 +859,30 @@ export async function classifyImageWithGrokVision(params: {
 
   const base64Data = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
 
-  const durationLabel = params.videoDurationFormatted || (params.videoDurationSeconds ? `${params.videoDurationSeconds} Sekunden` : "Video-Clip");
+  const durationSec = typeof params.videoDurationSeconds === "number" && params.videoDurationSeconds > 0
+    ? params.videoDurationSeconds
+    : 0;
+  const durationLabel = params.videoDurationFormatted || (durationSec > 0 ? `${durationSec} Sekunden` : "Video-Clip");
 
   const promptBody = isVideo
     ? `You are Grok 4.20 Vision, the expert VIP Content Auditor for OnlyFans and Telegram Stars VIP Channels.
-Analyze the provided preview THUMBNAIL for a VIDEO of creator "${params.modelName || "Creator"}".
-Video Duration: ${durationLabel}.
+Audit the provided preview THUMBNAIL (cover image) for a VIDEO of creator "${params.modelName || "Creator"}".
+Video Duration: ${durationSec} seconds (${durationLabel}).
 
 CRITICAL BUSINESS RULES FOR VIDEOS:
-1. EVERY VIDEO IS VIP CONTENT:
+1. INPUT PROVIDED:
+   - You are provided exclusively with:
+     a) The video's THUMBNAIL preview image (Titelbild).
+     b) The exact VIDEO DURATION in numbers: ${durationSec} seconds (${durationLabel}).
+2. EVERY VIDEO IS VIP CONTENT:
    - For all videos, explicitLevel MUST be "PPV"! No video can be free.
-2. STARS PRICING:
-   - Even video teasers / previews REQUIRE Stars!
+3. STARS PRICING (BASED ON DURATION & EXCLUSIVITY):
+   - Every video requires Stars (minimum 25 Stars).
    - Short teaser clips (< 45s): 25 to 75 Stars.
    - Standard videos (45s - 3 min): 100 to 250 Stars.
    - Long / exclusive videos (> 3 min or high nudity): 250 to 500+ Stars.
-3. AUTHENTIC CAPTION:
-   - The suggested caption MUST refer to the video format and duration:
+4. AUTHENTIC CAPTION:
+   - The suggested caption MUST refer to the video format and duration (${durationLabel}):
      e.g. "${durationLabel} Exklusiv-Content für euch 🔥 Direkt unten freischalten 🔓✨",
      "Ganze ${durationLabel} unzensierter VIP-Content nur für euch...".
    - NEVER refer to it as a photo or snapshot!
@@ -963,7 +968,9 @@ STRICT JSON OUTPUT FORMAT:
               content: [
                 {
                   type: "text",
-                  text: "Auditiere das Bild objektiv: 1. Beschreibe in visual_audit.clothing_detected die sichtbare Kleidung genau. 2. Wenn normale Oberbekleidung wie T-Shirt, Shirt, Hoodie getragen wird, MUSS es Tier 0 (SFW) sein, auch wenn im Hintergrund ein Bett steht. Erfinde niemals Lingerie/Dessous. Gib striktes JSON zurück.",
+                  text: isVideo
+                    ? `Hier ist das Titelbild (Vorschaubild) des Videos. Die Videolänge beträgt ${durationSec} Sekunden (${durationLabel}). Auditiere das Video objektiv anhand des Titelbilds und der Videolänge. Klassifiziere das Video als VIP Content (PPV) und bestimme Sterne-Preis, Titel, Thema, Tags und eine passende deutsche Bildunterschrift.`
+                    : "Auditiere das Bild objektiv: 1. Beschreibe in visual_audit.clothing_detected die sichtbare Kleidung genau. 2. Wenn normale Oberbekleidung wie T-Shirt, Shirt, Hoodie getragen wird, MUSS es Tier 0 (SFW) sein, auch wenn im Hintergrund ein Bett steht. Erfinde niemals Lingerie/Dessous. Gib striktes JSON zurück.",
                 },
                 {
                   type: "image_url",

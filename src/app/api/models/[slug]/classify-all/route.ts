@@ -116,7 +116,7 @@ export async function POST(
 
       let visionFilePath = localPath;
       if (isVideo && asset.fileUrl) {
-        const { getOrCreateVideoThumbnail } = await import("@/lib/video-thumbnails");
+        const { getOrCreateVideoThumbnail, ensureVideoThumbnailExists } = await import("@/lib/video-thumbnails");
         const thumbInfo = await getOrCreateVideoThumbnail({
           id: asset.id,
           fileUrl: asset.fileUrl,
@@ -126,9 +126,12 @@ export async function POST(
           model: { slug: model.slug, id: model.id },
         });
         visionFilePath = thumbInfo.thumbnailPath;
+        if ((!visionFilePath || !require("fs").existsSync(visionFilePath)) && localPath) {
+          visionFilePath = await ensureVideoThumbnailExists(localPath);
+        }
       }
 
-      if (!visionFilePath) {
+      if (!visionFilePath || !require("fs").existsSync(visionFilePath)) {
         skippedCount++;
         errors.push(`Datei nicht auf Festplatte: ${asset.title || asset.id}`);
         continue;

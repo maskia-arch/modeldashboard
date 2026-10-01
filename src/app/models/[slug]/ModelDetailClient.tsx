@@ -1363,6 +1363,7 @@ export function ModelDetailClient({
                         asset.type === "VIDEO" || (typeof asset.fileUrl === "string" && asset.fileUrl.match(/\.(mp4|mov|mkv|avi)$/i)) ? (
                           <video
                             src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
+                            poster={getMediaDisplayUrl(asset.fileUrl, asset.id) + "?thumb=1"}
                             className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
                             muted
                           />

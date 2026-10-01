@@ -68,10 +68,10 @@ export async function POST(
       }
     }
 
-    // For videos: resolve or download video thumbnail for Grok Vision preview
+    // For videos: resolve, extract, or download video thumbnail for Grok Vision preview
     let visionFilePath = localPath;
     if (isVideo) {
-      const { getOrCreateVideoThumbnail } = await import("@/lib/video-thumbnails");
+      const { getOrCreateVideoThumbnail, ensureVideoThumbnailExists } = await import("@/lib/video-thumbnails");
       const thumbInfo = await getOrCreateVideoThumbnail({
         id: asset.id,
         fileUrl: asset.fileUrl,
@@ -81,6 +81,11 @@ export async function POST(
         model: asset.model,
       });
       visionFilePath = thumbInfo.thumbnailPath;
+      if (!visionFilePath || !require("fs").existsSync(visionFilePath)) {
+        if (localPath) {
+          visionFilePath = await ensureVideoThumbnailExists(localPath);
+        }
+      }
     }
 
     if (!visionFilePath) {
@@ -97,12 +102,16 @@ export async function POST(
         videoDurationFormatted: durationFormatted || undefined,
       });
     } catch (grokErr: any) {
-      console.error(
-        `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Aborting without fallback.`
+      console.warn(
+        `[Classify] Grok Vision error for asset ${asset.id}: ${grokErr.message}. Applying resilient fallback classification.`
       );
-      return NextResponse.json(
-        { error: `Grok AI Analysefehler: ${grokErr.message}` },
-        { status: 502 }
+      const { generateFallbackClassification } = await import("@/lib/grok");
+      classification = generateFallbackClassification(
+        visionFilePath,
+        asset.model.name,
+        isVideo,
+        durationFormatted || undefined,
+        durationSeconds || undefined
       );
     }
 

@@ -465,22 +465,16 @@ async function syncMediaFromSourceChannelInternal(
             }
           }
 
-          // Download video thumbnail from Telegram
+          // Download and cache video thumbnail from Telegram, with FFmpeg fallback
           try {
-            const thumbTarget = filePath.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ".jpg");
-            await client.downloadMedia(msg, {
-              outputFile: thumbTarget,
-              thumb: -1,
-            });
-            if (fs.existsSync(thumbTarget) && (await fs.promises.stat(thumbTarget)).size > 100) {
-              videoThumbPath = thumbTarget;
-              try {
-                const secondaryThumbDir = path.join(process.cwd(), "uploads", "models", cleanSlug);
-                await fs.promises.copyFile(thumbTarget, path.join(secondaryThumbDir, path.basename(thumbTarget)));
-              } catch {}
+            const { ensureVideoThumbnailExists } = await import("./video-thumbnails");
+            const cachedThumb = await ensureVideoThumbnailExists(filePath, { client, msg });
+            if (cachedThumb && fs.existsSync(cachedThumb)) {
+              videoThumbPath = cachedThumb;
+              console.log(`[SourceChannel] Cached video thumbnail for msg #${msg.id} -> ${cachedThumb}`);
             }
           } catch (tErr: any) {
-            console.warn(`[SourceChannel] Video thumbnail download notice for msg #${msg.id}:`, tErr.message);
+            console.warn(`[SourceChannel] Video thumbnail notice for msg #${msg.id}:`, tErr.message);
           }
         }
 
@@ -757,6 +751,18 @@ export async function restoreAssetMediaFile(assetId: string): Promise<{
       }
 
       const { fileUrl, filePath } = await saveUploadedBuffer(buffer, filename, asset.model.slug);
+
+      // If video, also extract and cache the thumbnail to disk alongside the restored video
+      const isVideo = ext === ".mp4" || ext === ".mov" || ext === ".avi" || ext === ".mkv" || ext === ".webm";
+      if (isVideo) {
+        try {
+          const { ensureVideoThumbnailExists } = await import("./video-thumbnails");
+          await ensureVideoThumbnailExists(filePath, { client, msg, assetId });
+          console.log(`[AssetRestore] Cached video thumbnail for asset ${assetId}`);
+        } catch (tErr: any) {
+          console.warn(`[AssetRestore] Thumbnail cache warning for asset ${assetId}:`, tErr.message);
+        }
+      }
 
       await prisma.asset.update({
         where: { id: assetId },

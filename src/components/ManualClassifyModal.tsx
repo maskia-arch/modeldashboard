@@ -148,7 +148,12 @@ export function ManualClassifyModal({
               <div className="h-14 w-14 rounded bg-muted overflow-hidden shrink-0 border flex items-center justify-center">
                 {asset?.fileUrl ? (
                   isVideo ? (
-                    <video src={getMediaDisplayUrl(asset.fileUrl, asset.id)} className="h-full w-full object-cover" muted />
+                    <video
+                      src={getMediaDisplayUrl(asset.fileUrl, asset.id)}
+                      poster={getMediaDisplayUrl(asset.fileUrl, asset.id) + "?thumb=1"}
+                      className="h-full w-full object-cover"
+                      muted
+                    />
                   ) : (
                     <img src={getMediaDisplayUrl(asset.fileUrl, asset.id)} alt="Preview" className="h-full w-full object-cover" />
                   )

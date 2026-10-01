@@ -73,6 +73,41 @@ export async function GET(
       });
     }
 
+    const isVideo = asset.type === "VIDEO" || Boolean(localPath?.match(/\.(mp4|mov|mkv|avi|webm)$/i));
+    const isThumbRequested =
+      request.nextUrl.searchParams.get("thumb") === "1" ||
+      request.nextUrl.searchParams.get("thumbnail") === "1" ||
+      request.nextUrl.searchParams.get("poster") === "1";
+
+    // For videos: upon first access or when thumbnail is requested, ensure the video thumbnail is generated and cached to disk
+    if (isVideo) {
+      try {
+        const { getOrCreateVideoThumbnail } = await import("@/lib/video-thumbnails");
+        const thumbInfo = await getOrCreateVideoThumbnail({
+          id: asset.id,
+          fileUrl: asset.fileUrl,
+          notes: asset.notes,
+          tags: asset.tags,
+          modelId: asset.modelId,
+          model: asset.model,
+        });
+
+        if (isThumbRequested && thumbInfo.thumbnailPath && fs.existsSync(thumbInfo.thumbnailPath)) {
+          const thumbBuffer = await fs.promises.readFile(thumbInfo.thumbnailPath);
+          return new NextResponse(thumbBuffer, {
+            status: 200,
+            headers: {
+              "Content-Type": "image/jpeg",
+              "Content-Length": thumbBuffer.length.toString(),
+              "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+            },
+          });
+        }
+      } catch (tErr: any) {
+        console.warn(`[AssetPreview] Video thumbnail on-demand check notice for ${assetId}:`, tErr.message);
+      }
+    }
+
     const stat = await fs.promises.stat(localPath);
     const ext = path.extname(localPath).toLowerCase();
     const mimeMap: Record<string, string> = {
