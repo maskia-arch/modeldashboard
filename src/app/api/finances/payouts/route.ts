@@ -180,3 +180,126 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message || "Failed to log payout" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "MASTER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized. Master Admin access required." }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const action = searchParams.get("action");
+    const modelId = searchParams.get("modelId");
+
+    // Case 1: Auto-reconciliation of Fragment duplicate / failed withdrawal
+    if (action === "reconcile-fragment" && modelId) {
+      const model = await prisma.model.findUnique({
+        where: { id: modelId },
+        include: {
+          payouts: {
+            orderBy: { paidAt: "asc" },
+          },
+        },
+      });
+
+      if (!model) {
+        return NextResponse.json({ error: "Model nicht gefunden." }, { status: 404 });
+      }
+
+      const overallRevenue = model.telegramOverallRevenue || 0;
+      const currentBalance = model.telegramCurrentBalance || 0;
+      const telegramNetWithdrawn = Math.max(0, overallRevenue - currentBalance);
+      const totalDbWithdrawn = model.payouts.reduce((sum, p) => sum + (p.starsWithdrawn || 0), 0);
+      const excessStars = totalDbWithdrawn - telegramNetWithdrawn;
+
+      if (excessStars <= 0) {
+        return NextResponse.json({
+          message: "Keine Abhebungs-Differenz vorhanden. Hauptbuch und Telegram stimmen bereits exakt überein.",
+          reconciled: false,
+        });
+      }
+
+      // Find candidate payout to delete:
+      // Priority 1: Payout with exact starsWithdrawn matching excessStars (prefer earlier timestamp = failed attempt before retry)
+      let candidate = model.payouts.find((p) => p.starsWithdrawn === excessStars);
+
+      // Priority 2: Payout with identical stars withdrawn occurring more than once (the earlier one)
+      if (!candidate) {
+        for (let i = 0; i < model.payouts.length; i++) {
+          for (let j = i + 1; j < model.payouts.length; j++) {
+            if (model.payouts[i].starsWithdrawn === model.payouts[j].starsWithdrawn && model.payouts[i].starsWithdrawn > 0) {
+              candidate = model.payouts[i];
+              break;
+            }
+          }
+          if (candidate) break;
+        }
+      }
+
+      // Priority 3: Payout whose note mentions failure/error/refund
+      if (!candidate) {
+        candidate = model.payouts.find((p) => {
+          const n = (p.notes || "").toLowerCase();
+          return n.includes("fail") || n.includes("fehler") || n.includes("error") || n.includes("storno") || n.includes("rück");
+        });
+      }
+
+      if (!candidate) {
+        return NextResponse.json(
+          { error: `Keine passende Buchung für die Differenz von ${excessStars} Sternen gefunden. Bitte manuell im Hauptbuch löschen.` },
+          { status: 400 }
+        );
+      }
+
+      await prisma.payout.delete({
+        where: { id: candidate.id },
+      });
+
+      console.log(
+        `[Payouts API DELETE] Auto-reconciled Fragment error for model ${model.name}: deleted duplicate payout ${candidate.id} (${candidate.starsWithdrawn} stars).`
+      );
+
+      return NextResponse.json({
+        success: true,
+        reconciled: true,
+        deletedPayoutId: candidate.id,
+        starsReconciled: candidate.starsWithdrawn,
+        message: `Erfolgreich bereinigt: Fehlgeschlagene Abhebung über ${candidate.starsWithdrawn.toLocaleString()} Sterne wurde aus dem Hauptbuch gelöscht.`,
+      });
+    }
+
+    // Case 2: Delete specific payout by ID
+    if (!id) {
+      return NextResponse.json({ error: "Payout ID oder reconcile-action erforderlich." }, { status: 400 });
+    }
+
+    const existing = await prisma.payout.findUnique({
+      where: { id },
+      include: { model: { select: { name: true } } },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Auszahlung nicht gefunden." }, { status: 404 });
+    }
+
+    await prisma.payout.delete({
+      where: { id },
+    });
+
+    console.log(
+      `[Payouts API DELETE] Successfully deleted payout ${id} (${existing.starsWithdrawn} stars, model: ${existing.model?.name}).`
+    );
+
+    return NextResponse.json({
+      success: true,
+      deletedId: id,
+      starsWithdrawn: existing.starsWithdrawn,
+      message: "Buchung erfolgreich gelöscht.",
+    });
+  } catch (error: any) {
+    console.error("[Payouts API DELETE] Error deleting payout:", error);
+    return NextResponse.json({ error: error.message || "Failed to delete payout" }, { status: 500 });
+  }
+}

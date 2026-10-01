@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Wallet,
   ArrowRight,
@@ -19,6 +20,8 @@ import {
   Sliders,
   Sparkles,
   Users,
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,12 +61,22 @@ export function PayoutsAdminClient({
   initialPayouts,
 }: PayoutsAdminClientProps) {
   const { t, language } = useLanguage();
+  const router = useRouter();
 
   const [models, setModels] = useState<ModelWithFin[]>(initialModels);
   const [payouts, setPayouts] = useState<any[]>(initialPayouts);
   const [searchQuery, setSearchQuery] = useState("");
   const [modelFilter, setModelFilter] = useState("ALL");
   const [currencyFilter, setCurrencyFilter] = useState("ALL");
+  const [isReconciling, setIsReconciling] = useState(false);
+
+  useEffect(() => {
+    setModels(initialModels);
+  }, [initialModels]);
+
+  useEffect(() => {
+    setPayouts(initialPayouts);
+  }, [initialPayouts]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -88,6 +101,49 @@ export function PayoutsAdminClient({
   const handleOpenPayoutForModel = (model: ModelWithFin) => {
     setSelectedModel(model);
     setIsModalOpen(true);
+  };
+
+  const handleAutoReconcile = async (modelId: string) => {
+    try {
+      setIsReconciling(true);
+      const res = await fetch(`/api/finances/payouts?action=reconcile-fragment&modelId=${modelId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Fehler beim Bereinigen");
+        return;
+      }
+      alert(data.message || "Erfolgreich bereinigt!");
+      router.refresh();
+      await refreshData();
+    } catch (err: any) {
+      alert("Fehler: " + err.message);
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
+  const handleDeletePayout = async (id: string, stars: number) => {
+    const confirmMsg = language === "de"
+      ? `Möchten Sie diese Buchung (${stars > 0 ? `${stars.toLocaleString()} Sterne` : "Eintrag"}) wirklich aus dem Hauptbuch löschen?`
+      : `Do you really want to delete this payout entry (${stars > 0 ? `${stars.toLocaleString()} stars` : "entry"}) from the ledger?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`/api/finances/payouts?id=${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Fehler beim Löschen");
+        return;
+      }
+      router.refresh();
+      await refreshData();
+    } catch (err: any) {
+      alert("Fehler: " + err.message);
+    }
   };
 
   // Aggregated Stats
@@ -194,6 +250,42 @@ export function PayoutsAdminClient({
           {language === "de" ? "Neue Abhebung / Auszahlung erfassen" : "Record New Payout"}
         </Button>
       </div>
+
+      {/* Discrepancy Banner (Fragment Refund / Duplicate Withdrawals) */}
+      {models.filter((m) => m.fin?.hasDiscrepancy).map((m) => (
+        <div
+          key={`discrepancy-${m.id}`}
+          className="p-4 rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <span>{language === "de" ? "Fragment-Differenz erkannt" : "Fragment Discrepancy Detected"}</span>
+                <Badge variant="warning" className="text-[10px]">
+                  +{m.fin.duplicateWithdrawnStars?.toLocaleString()} ⭐ {language === "de" ? "Erstattung / Duplikat" : "Refund / Duplicate"}
+                </Badge>
+              </h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {language === "de"
+                  ? `Für "${m.name}" sind im Hauptbuch ${m.fin.rawStarsWithdrawn?.toLocaleString()} ⭐ Abhebungen erfasst, laut Telegram wurden netto aber nur ${m.fin.telegramOfficialNetWithdrawn?.toLocaleString()} ⭐ abgehoben (Fragment hatte einen Fehlversuch erstattet und zurückgebucht). Das Dashboard berechnet das Guthaben bereits automatisch korrekt nach Telegram-Stand.`
+                  : `For "${m.name}", ${m.fin.rawStarsWithdrawn?.toLocaleString()} ⭐ are recorded in ledger, but Telegram net withdrawn is ${m.fin.telegramOfficialNetWithdrawn?.toLocaleString()} ⭐ (Fragment refunded a failed attempt). Dashboard balance is already automatically reconciled using Telegram's ground truth.`}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            disabled={isReconciling}
+            onClick={() => handleAutoReconcile(m.id)}
+            className="gap-2 font-bold bg-amber-500 hover:bg-amber-400 text-black text-xs shrink-0"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isReconciling && "animate-spin")} />
+            <span>{language === "de" ? "Fehlgeschlagene Abhebung automatisch bereinigen" : "Clean Up Failed Payout"}</span>
+          </Button>
+        </div>
+      ))}
 
       {/* Quick Action Prompt for the first 1,800 Stars payout if not yet logged */}
       {stats.totalStarsWithdrawn === 0 && (
@@ -402,6 +494,11 @@ export function PayoutsAdminClient({
                         </td>
                         <td className="p-3 font-mono font-bold text-rose-400">
                           {withdrawnStars > 0 ? `-${withdrawnStars.toLocaleString()} ⭐` : "0 ⭐"}
+                          {model.fin.hasDiscrepancy && (
+                            <span className="block text-[10px] text-amber-400 font-normal">
+                              {language === "de" ? "Bereinigt" : "Reconciled"} (DB: {model.fin.rawStarsWithdrawn?.toLocaleString()} ⭐)
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 font-mono font-bold text-amber-400">
                           {availableStars.toLocaleString()} ⭐
@@ -503,12 +600,13 @@ export function PayoutsAdminClient({
                   <th className="p-3">{language === "de" ? "Empfänger (Gram/TON)" : "Recipient"}</th>
                   <th className="p-3">{language === "de" ? "TX Hash / Nachweis" : "TX Hash"}</th>
                   <th className="p-3">{language === "de" ? "Notiz" : "Note"}</th>
+                  <th className="p-3 text-right">{t.common.action}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filteredPayouts.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={10} className="p-8 text-center text-muted-foreground">
                       {language === "de"
                         ? "Bislang sind keine Abhebungen oder Auszahlungen erfasst."
                         : "No withdrawals or payouts recorded yet."}
@@ -574,6 +672,17 @@ export function PayoutsAdminClient({
                         </td>
                         <td className="p-3 text-[11px] text-muted-foreground max-w-xs truncate" title={payout.notes || ""}>
                           {payout.notes || "-"}
+                        </td>
+                        <td className="p-3 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeletePayout(payout.id, stars)}
+                            className="h-7 w-7 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title={language === "de" ? "Buchung löschen" : "Delete payout"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </td>
                       </tr>
                     );

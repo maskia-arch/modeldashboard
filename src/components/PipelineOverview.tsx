@@ -180,7 +180,14 @@ export function PipelineOverview({ financials, modelName, onOpenPayout }: Pipeli
             {financials.totalStarsWithdrawn > 0 && (
               <div className="flex items-center justify-between text-rose-400 font-medium">
                 <span>{language === "de" ? "Bereits abgehoben:" : "Withdrawn:"}</span>
-                <span className="font-mono font-bold">-{financials.totalStarsWithdrawn.toLocaleString()} ⭐</span>
+                <span className="font-mono font-bold">
+                  -{financials.totalStarsWithdrawn.toLocaleString()} ⭐
+                  {financials.hasDiscrepancy && (
+                    <span className="ml-1 text-[10px] text-amber-400 font-normal">
+                      ({language === "de" ? "bereinigt" : "reconciled"})
+                    </span>
+                  )}
+                </span>
               </div>
             )}
             <div className="flex items-center justify-between text-amber-400 font-medium">

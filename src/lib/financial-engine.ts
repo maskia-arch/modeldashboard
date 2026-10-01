@@ -65,6 +65,10 @@ export interface ChannelFinancials {
   totalPendingStars: number;
   totalMaturedStars: number;
   totalStarsWithdrawn: number;
+  rawStarsWithdrawn?: number;
+  telegramOfficialNetWithdrawn?: number;
+  duplicateWithdrawnStars?: number;
+  hasDiscrepancy?: boolean;
   availableStars: number;
   telegramAvailableStars?: number;
   telegramCurrentBalance?: number;
@@ -295,22 +299,51 @@ export function calculateChannelFinancials(
   }
   const effectiveGrossRevenueUsd = Number((effectiveGrossStars * starRate).toFixed(2));
 
-  // 2. Telegram's official "Belohnungen zur Abhebung verfügbar" (telegramAvailableStars) is the primary ground truth!
+  // 2. Telegram Official Net Withdrawn & Discrepancy Detection:
+  // Telegram's official ground truth:
+  // overallRevenue = Lifetime total stars earned
+  // currentBalance = Total unwithdrawn stars currently in channel
+  // telegramOfficialNetWithdrawn = overallRevenue - currentBalance
+  const hasTelegramCurrentBalance = typeof meta?.telegramCurrentBalance === "number" && meta.telegramCurrentBalance >= 0;
+  const telegramOfficialNetWithdrawn = (hasTelegramCurrentBalance && typeof meta?.telegramOverallRevenue === "number")
+    ? Math.max(0, meta.telegramOverallRevenue - meta.telegramCurrentBalance!)
+    : null;
+
+  // Discrepancy detection: e.g. when Fragment withdrawal failed and refunded, but was logged twice in DB payouts
+  const rawStarsWithdrawn = totalStarsWithdrawn;
+  const duplicateWithdrawnStars = (telegramOfficialNetWithdrawn !== null && rawStarsWithdrawn > telegramOfficialNetWithdrawn)
+    ? (rawStarsWithdrawn - telegramOfficialNetWithdrawn)
+    : 0;
+  const hasDiscrepancy = duplicateWithdrawnStars > 0;
+
+  // Clamped / Reconciled stars withdrawn:
+  // If Telegram official ground truth is present and DB has duplicate/excess payouts,
+  // use Telegram's actual net withdrawn amount so calculations and UI are not distorted
+  const effectiveStarsWithdrawn = (telegramOfficialNetWithdrawn !== null && rawStarsWithdrawn > telegramOfficialNetWithdrawn)
+    ? telegramOfficialNetWithdrawn
+    : rawStarsWithdrawn;
+
+  // 3. Telegram's official "Belohnungen zur Abhebung verfügbar" (telegramAvailableStars) is the primary ground truth!
   const hasTelegramAvailable = typeof meta?.telegramAvailableStars === "number";
   const availableStars = hasTelegramAvailable
     ? Math.max(0, meta.telegramAvailableStars!)
-    : Math.max(0, totalMaturedStars - totalStarsWithdrawn);
+    : Math.max(0, totalMaturedStars - effectiveStarsWithdrawn);
 
   const channelAvailableUsd = Number((availableStars * starRate).toFixed(2));
 
-  // 3. Align 21-Day Holding (Haltefrist) with Telegram reality:
+  // 4. Align 21-Day Holding (Haltefrist) with Telegram reality:
   // All unwithdrawn stars that are NOT yet withdrawable ("Belohnungen zur Abhebung verfügbar")
   // are locked in the 21-day holding period!
   let lockedPendingStars = totalPendingStars;
   let lockedPendingUsd = totalPendingUsd;
 
   if (hasTelegramAvailable) {
-    const unwithdrawnGrossStars = Math.max(0, effectiveGrossStars - totalStarsWithdrawn);
+    // If Telegram reports telegramCurrentBalance directly, that IS the unwithdrawn gross balance right now!
+    // Otherwise fallback to effectiveGrossStars - effectiveStarsWithdrawn
+    const unwithdrawnGrossStars = hasTelegramCurrentBalance
+      ? meta!.telegramCurrentBalance!
+      : Math.max(0, effectiveGrossStars - effectiveStarsWithdrawn);
+
     lockedPendingStars = Math.max(0, unwithdrawnGrossStars - availableStars);
     lockedPendingUsd = Number((lockedPendingStars * starRate).toFixed(2));
     totalMaturedStars = availableStars;
@@ -374,7 +407,11 @@ export function calculateChannelFinancials(
     totalGrossStars: effectiveGrossStars,
     totalPendingStars: lockedPendingStars,
     totalMaturedStars,
-    totalStarsWithdrawn,
+    totalStarsWithdrawn: effectiveStarsWithdrawn,
+    rawStarsWithdrawn,
+    telegramOfficialNetWithdrawn: telegramOfficialNetWithdrawn ?? undefined,
+    duplicateWithdrawnStars,
+    hasDiscrepancy,
     availableStars,
     telegramAvailableStars: meta?.telegramAvailableStars ?? undefined,
     telegramCurrentBalance: meta?.telegramCurrentBalance ?? undefined,
