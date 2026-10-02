@@ -135,33 +135,40 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
     };
   }
 
-  const resolved = await resolveClientAndPeerForChannel(channelId);
+  const resolved = await resolveClientAndPeerForChannel(channelId, { requireWriteRights: true });
   if (!resolved) {
     return {
       success: false,
-      error: `Kanal "${channelId}" konnte von keinem der aktiven Userbots aufgelöst werden. Bitte prüfen Sie, ob Userbot 1 oder Userbot 2 Administrator des Kanals ist.`,
+      error: `Kanal "${channelId}" konnte von keinem der aktiven Userbots mit Schreibrechten aufgelöst werden. Bitte prüfen Sie, ob Userbot 1 (redo666redo) oder Userbot 2 (de_404) Administrator oder Inhaber des Kanals ist und Schreibrechte besitzt.`,
     };
   }
 
-  const { client, peer, accountIndex, userbotLabel } = resolved;
-  console.log(`[Userbot Publisher] Kanal "${channelId}" wird über ${userbotLabel} (Account ${accountIndex}) bespielt...`);
+  const candidateBots = [resolved, ...(resolved.alternativeClients || [])];
 
-  try {
+  const localPath = getAssetLocalPath(params.fileUrl);
+  const isLocal = !!localPath && fs.existsSync(localPath);
 
-    const localPath = getAssetLocalPath(params.fileUrl);
-    const isLocal = !!localPath && fs.existsSync(localPath);
+  if (params.fileUrl && params.fileUrl.startsWith("/uploads/") && !isLocal) {
+    return {
+      success: false,
+      error: `Mediendatei nicht auf Festplatte gefunden (${params.fileUrl}). Wurde sie bereits gelöscht oder verschoben?`,
+    };
+  }
 
-    if (params.fileUrl && params.fileUrl.startsWith("/uploads/") && !isLocal) {
-      return {
-        success: false,
-        error: `Mediendatei nicht auf Festplatte gefunden (${params.fileUrl}). Wurde sie bereits gelöscht oder verschoben?`,
-      };
-    }
+  let lastError: any = null;
 
-    let sentResult: any;
+  for (let i = 0; i < candidateBots.length; i++) {
+    const candidate = candidateBots[i];
+    const { client, peer, accountIndex, userbotLabel, isCreator } = candidate;
+    console.log(
+      `[Userbot Publisher] Sendeversuch ${i + 1}/${candidateBots.length} für Kanal "${channelId}" über ${userbotLabel} (Account ${accountIndex}, Inhaber: ${isCreator ? "Ja" : "Nein"})...`
+    );
 
-    // 1. File Upload (Photo or Video)
-    if (isLocal && localPath) {
+    try {
+      let sentResult: any;
+
+      // 1. File Upload (Photo or Video)
+      if (isLocal && localPath) {
       const isVideo = params.type === "VIDEO" || Boolean(localPath.match(/\.(mp4|mov|mkv|avi|webm)$/i));
 
       // Extract accurate video duration so Telegram never converts it into a looping GIF
@@ -287,93 +294,128 @@ export async function publishViaUserbot(params: SendMediaParams): Promise<Telegr
             }
           }
         } catch (paidErr: any) {
-          console.warn(`[Userbot Publisher] Paid media send via Userbot failed: ${paidErr.message}`);
+          const paidErrMsg = String(paidErr?.message || paidErr);
+          const isPermError =
+              paidErrMsg.includes("CHAT_ADMIN_REQUIRED") ||
+              paidErrMsg.includes("CHAT_WRITE_FORBIDDEN") ||
+              paidErrMsg.includes("USER_BANNED_IN_CHANNEL") ||
+              paidErrMsg.includes("EXTENDED_MEDIA_PEER_INVALID");
 
-          // If Telegram Bot Token is configured, attempt fallback to Telegram Bot API sendPaidMedia
-          const hasBotToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== "demo_token");
-          if (hasBotToken) {
-            console.log(`[Userbot Publisher] Attempting paid media fallback via Telegram Bot API sendPaidMedia...`);
-            const botFallbackResult = await publishPaidMediaViaBotApi(params, localPath, isVideo);
-            if (botFallbackResult.success) {
-              return botFallbackResult;
+            // If there's an alternative bot candidate with write rights and this bot failed due to permissions, failover to the next bot!
+            if (isPermError && i + 1 < candidateBots.length) {
+              console.warn(
+                `[Userbot Publisher] ${userbotLabel} failed with permission error: ${paidErrMsg}. Retrying with next bot candidate...`
+              );
+              lastError = paidErr;
+              continue;
             }
-            console.warn(`[Userbot Publisher] Bot API paid fallback also failed: ${botFallbackResult.error}`);
+
+            // If Telegram Bot Token is configured, attempt fallback to Telegram Bot API sendPaidMedia
+            const hasBotToken = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== "demo_token");
+            if (hasBotToken) {
+              console.log(`[Userbot Publisher] Attempting paid media fallback via Telegram Bot API sendPaidMedia...`);
+              const botFallbackResult = await publishPaidMediaViaBotApi(params, localPath, isVideo);
+              if (botFallbackResult.success) {
+                return botFallbackResult;
+              }
+              console.warn(`[Userbot Publisher] Bot API paid fallback also failed: ${botFallbackResult.error}`);
+            }
+
+            // CRITICAL: NEVER drop the paywall! Under NO circumstances post paid VIP content for free!
+            return {
+              success: false,
+              error: translateUserbotError(paidErr, channelId),
+            };
+          }
+        } else {
+          // 1b. Standard Free Media (Photo or Video)
+          console.log(`[Userbot Publisher] Sending free media via sendFile (isVideo=${isVideo}, duration=${durationSec}s) to ${channelId}...`);
+
+          let freeThumbPath: string | undefined = undefined;
+          if (isVideo) {
+            const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
+            freeThumbPath = findExistingVideoThumbnail(localPath) || (await ensureVideoThumbnailExists(localPath));
           }
 
-          // CRITICAL: NEVER drop the paywall! Under NO circumstances post paid VIP content for free!
-          return {
-            success: false,
-            error: translateUserbotError(paidErr, channelId),
-          };
+          try {
+            sentResult = await client.sendFile(peer, {
+              file: localPath,
+              caption: params.caption || "",
+              parseMode: "html",
+              forceDocument: false,
+              supportsStreaming: isVideo,
+              thumb: freeThumbPath,
+              attributes: videoAttributes,
+              workers: 4,
+            });
+          } catch (parseErr: any) {
+            console.warn(`[Userbot Publisher] Retrying sendFile without HTML parsing: ${parseErr.message}`);
+            sentResult = await client.sendFile(peer, {
+              file: localPath,
+              caption: params.caption || "",
+              forceDocument: false,
+              supportsStreaming: isVideo,
+              thumb: freeThumbPath,
+              attributes: videoAttributes,
+              workers: 4,
+            });
+          }
+        }
+      } else if (params.caption) {
+        // 2. Text-only message
+        console.log(`[Userbot Publisher] Sending text message to ${channelId}...`);
+        try {
+          sentResult = await client.sendMessage(peer, {
+            message: params.caption,
+            parseMode: "html",
+          });
+        } catch {
+          sentResult = await client.sendMessage(peer, {
+            message: params.caption,
+          });
         }
       } else {
-        // 1b. Standard Free Media (Photo or Video)
-        console.log(`[Userbot Publisher] Sending free media via sendFile (isVideo=${isVideo}, duration=${durationSec}s) to ${channelId}...`);
-
-        let freeThumbPath: string | undefined = undefined;
-        if (isVideo) {
-          const { ensureVideoThumbnailExists, findExistingVideoThumbnail } = await import("./video-thumbnails");
-          freeThumbPath = findExistingVideoThumbnail(localPath) || (await ensureVideoThumbnailExists(localPath));
-        }
-
-        try {
-          sentResult = await client.sendFile(peer, {
-            file: localPath,
-            caption: params.caption || "",
-            parseMode: "html",
-            forceDocument: false,
-            supportsStreaming: isVideo,
-            thumb: freeThumbPath,
-            attributes: videoAttributes,
-            workers: 4,
-          });
-        } catch (parseErr: any) {
-          console.warn(`[Userbot Publisher] Retrying sendFile without HTML parsing: ${parseErr.message}`);
-          sentResult = await client.sendFile(peer, {
-            file: localPath,
-            caption: params.caption || "",
-            forceDocument: false,
-            supportsStreaming: isVideo,
-            thumb: freeThumbPath,
-            attributes: videoAttributes,
-            workers: 4,
-          });
-        }
+        return {
+          success: false,
+          error: "Keine Mediendatei und kein Text zum Posten angegeben.",
+        };
       }
-    } else if (params.caption) {
-      // 2. Text-only message
-      console.log(`[Userbot Publisher] Sending text message to ${channelId}...`);
-      try {
-        sentResult = await client.sendMessage(peer, {
-          message: params.caption,
-          parseMode: "html",
-        });
-      } catch {
-        sentResult = await client.sendMessage(peer, {
-          message: params.caption,
-        });
+
+      const messageId = extractMessageId(sentResult);
+      console.log(`[Userbot Publisher] Post published successfully to ${channelId} via ${userbotLabel}, Message ID: ${messageId}`);
+
+      return {
+        success: true,
+        messageId,
+      };
+    } catch (error: any) {
+      lastError = error;
+      const errMsg = String(error?.message || error);
+      console.error(`[Userbot Publisher] Error publishing to ${channelId} via ${userbotLabel}:`, error);
+
+      const isPermError =
+        errMsg.includes("CHAT_ADMIN_REQUIRED") ||
+        errMsg.includes("CHAT_WRITE_FORBIDDEN") ||
+        errMsg.includes("USER_BANNED_IN_CHANNEL") ||
+        errMsg.includes("CHANNEL_PRIVATE");
+
+      if (isPermError && i + 1 < candidateBots.length) {
+        console.warn(`[Userbot Publisher] Attempting failover to next userbot candidate...`);
+        continue;
       }
-    } else {
+
+      // If this was the last bot or a non-recoverable error, exit with translated error
       return {
         success: false,
-        error: "Keine Mediendatei und kein Text zum Posten angegeben.",
+        error: translateUserbotError(error, channelId),
       };
     }
-
-    const messageId = extractMessageId(sentResult);
-    console.log(`[Userbot Publisher] Post published successfully to ${channelId}, Message ID: ${messageId}`);
-
-    return {
-      success: true,
-      messageId,
-    };
-  } catch (error: any) {
-    console.error(`[Userbot Publisher] Error publishing to ${channelId}:`, error);
-    return {
-      success: false,
-      error: translateUserbotError(error, channelId),
-    };
   }
+
+  return {
+    success: false,
+    error: translateUserbotError(lastError, channelId),
+  };
 }
 
 /**

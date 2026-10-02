@@ -104,14 +104,14 @@ export function getUserbotConfigs(): UserbotAccountConfig[] {
   if (session1 && session1.length > 20 && apiId1 && apiHash1) {
     configs.push({
       index: 1,
-      label: "Userbot 1",
+      label: "Userbot 1 (redo666redo)",
       apiId: apiId1,
       apiHash: apiHash1,
       sessionString: session1,
     });
   }
 
-  // Account 2 (Security account)
+  // Account 2 (Security account / Quarantänebetrieb)
   const session2 = process.env.TELEGRAM_SESSION_STRING_2;
   const apiId2 = Number(process.env.TELEGRAM_API_ID_2 || process.env.TELEGRAM_API_ID || "2040");
   const apiHash2 = process.env.TELEGRAM_API_HASH_2 || process.env.TELEGRAM_API_HASH || "b18441a1ff607e10a989891a5462e627";
@@ -119,7 +119,7 @@ export function getUserbotConfigs(): UserbotAccountConfig[] {
   if (session2 && session2.length > 20 && apiId2 && apiHash2) {
     configs.push({
       index: 2,
-      label: "Userbot 2 (Sicherheit)",
+      label: "Userbot 2 (de_404)",
       apiId: apiId2,
       apiHash: apiHash2,
       sessionString: session2,
@@ -175,39 +175,125 @@ export async function getAllTelegramClients(): Promise<Array<{ index: number; la
   return results;
 }
 
+export interface ChannelPeerResolution {
+  client: TelegramClient;
+  peer: any;
+  accountIndex: number;
+  userbotLabel: string;
+  isCreator: boolean;
+  isAdmin: boolean;
+  canPost: boolean;
+  score: number;
+  alternativeClients?: ChannelPeerResolution[];
+}
+
 /**
- * Automatically discovers which userbot (Account 1 or Account 2) has access to a given channel ID.
- * Returns the connected client, the peer, and the bot metadata.
+ * Intelligent Channel Routing:
+ * Automatically inspects ALL connected userbots (Account 1 and Account 2).
+ * Priority Ranking:
+ * 1. INHABER / CREATOR of the channel (e.g. Userbot 2 "de_404" for Quarantänebetrieb like Hanni)
+ * 2. Administrator with post privileges (postMessages: true)
+ * 3. General administrator or member (for read operations)
+ * When requireWriteRights is true (e.g. for publishing), non-admin subscribers (who cannot post)
+ * are filtered out so Telegram permission errors never occur!
  */
 export async function resolveClientAndPeerForChannel(
   channelId: string,
-  options?: { clients?: Array<{ index: number; label: string; client: TelegramClient }> }
-): Promise<{ client: TelegramClient; peer: any; accountIndex: number; userbotLabel: string } | null> {
+  options?: {
+    clients?: Array<{ index: number; label: string; client: TelegramClient }>;
+    requireWriteRights?: boolean;
+    preferredAccountIndex?: number;
+  }
+): Promise<ChannelPeerResolution | null> {
   const cleanId = String(channelId).trim();
   const allClients = options?.clients || (await getAllTelegramClients());
 
   if (allClients.length === 0) {
-    console.warn("[Telegram Routing] No active Telegram userbots configured.");
+    console.warn("[Telegram Routing] Keine aktiven Telegram Userbots konfiguriert.");
     return null;
   }
+
+  const candidates: ChannelPeerResolution[] = [];
 
   for (const item of allClients) {
     try {
       const peer = await resolveChannelPeer(item.client, cleanId);
-      if (peer) {
-        return {
-          client: item.client,
-          peer,
-          accountIndex: item.index,
-          userbotLabel: item.label,
-        };
+      if (!peer) continue;
+
+      let isCreator = false;
+      let isAdmin = false;
+      let canPost = false;
+
+      try {
+        const entity = (await item.client.getEntity(peer)) as any;
+        if (entity) {
+          isCreator = Boolean(entity.creator);
+          isAdmin = Boolean(entity.creator || entity.adminRights);
+
+          if (entity.broadcast) {
+            // Broadcast channels require creator or admin with postMessages right
+            canPost = Boolean(entity.creator || (entity.adminRights && entity.adminRights.postMessages !== false));
+          } else {
+            // Megagroups / groups permit members to post unless banned
+            const banned = entity.defaultBannedRights;
+            canPost = Boolean(entity.creator || entity.adminRights || !banned?.sendMessages);
+          }
+        }
+      } catch (entErr: any) {
+        console.warn(`[Telegram Routing] Entity inspection notice for ${item.label} on ${cleanId}:`, entErr.message);
       }
+
+      let score = 0;
+      if (isCreator) score += 100; // INHABER des Kanals (Höchste Priorität!)
+      if (canPost) score += 50;   // Besitzt Schreib-/Senderechte
+      if (isAdmin) score += 20;   // Administrator-Status
+      if (options?.preferredAccountIndex && item.index === options.preferredAccountIndex) {
+        score += 30;              // Bevorzugtes Konto
+      }
+
+      candidates.push({
+        client: item.client,
+        peer,
+        accountIndex: item.index,
+        userbotLabel: item.label,
+        isCreator,
+        isAdmin,
+        canPost,
+        score,
+      });
     } catch {
       // Channel not accessible by this bot, try next
     }
   }
 
-  return null;
+  if (candidates.length === 0) {
+    console.warn(`[Telegram Routing] Kanal "${cleanId}" konnte von keinem Userbot aufgelöst werden.`);
+    return null;
+  }
+
+  // Sort candidates by score descending (Creator first, then Admin with post rights)
+  candidates.sort((a, b) => b.score - a.score);
+
+  // If write rights are required (e.g. publishing posts), prioritize bots that can post
+  if (options?.requireWriteRights !== false) {
+    const candidatesWithWrite = candidates.filter((c) => c.canPost);
+    if (candidatesWithWrite.length > 0) {
+      const best = candidatesWithWrite[0];
+      best.alternativeClients = candidatesWithWrite.slice(1);
+      console.log(
+        `[Telegram Routing] Kanal "${cleanId}" zugeordnet zu: ${best.userbotLabel} (Inhaber: ${best.isCreator ? "Ja" : "Nein"}, Schreibrechte: ${best.canPost ? "Ja" : "Nein"}, Score: ${best.score})`
+      );
+      return best;
+    }
+
+    console.warn(
+      `[Telegram Routing] Kein Userbot besitzt Schreibrechte im Kanal "${cleanId}". Gefundene Bots: ${candidates.map(c => `${c.userbotLabel} (Inhaber: ${c.isCreator})`).join(", ")}`
+    );
+  }
+
+  const best = candidates[0];
+  best.alternativeClients = candidates.slice(1);
+  return best;
 }
 
 /**
