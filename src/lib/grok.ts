@@ -84,106 +84,31 @@ export async function generateGrokSchedule(params: GenerateScheduleParams): Prom
     return generateRealisticSchedule(params);
   }
 
-  // To guarantee the response returns within 3-4 seconds and completely avoids reverse-proxy 520 timeouts:
-  // We ask Grok to design the core narrative anchor posts (up to 4 days with up to 6 key assets).
-  // If requestedDays > 4, we seamlessly extend the storyline across the remaining days locally in 3ms.
-  const grokTargetDays = Math.min(requestedDays, 4);
-
-  // Pick up to 6 representative anchor assets across tiers for Grok's opening narrative
-  const teaserAssets = params.availableAssets.filter((a) => a.explicitLevel === "TEASER");
-  const softAssets = params.availableAssets.filter((a) => a.explicitLevel === "SOFT");
-  const ppvAssets = params.availableAssets.filter((a) => a.explicitLevel === "PPV");
-
-  const grokAssets: typeof params.availableAssets = [];
-  grokAssets.push(...teaserAssets.slice(0, 2));
-  grokAssets.push(...softAssets.slice(0, 2));
-  grokAssets.push(...ppvAssets.slice(0, 2));
-
-  if (grokAssets.length < 6) {
-    const includedIds = new Set(grokAssets.map((a) => a.id));
-    for (const a of params.availableAssets) {
-      if (!includedIds.has(a.id)) {
-        grokAssets.push(a);
-        includedIds.add(a.id);
-        if (grokAssets.length >= 6) break;
-      }
-    }
+  const available = params.availableAssets || [];
+  if (available.length === 0) {
+    return {
+      schedule: [],
+      stats: {
+        totalPosts: 0,
+        totalDays: requestedDays,
+        pauseDays: requestedDays,
+        daysWithOnePost: 0,
+        daysWithTwoPosts: 0,
+        teaserCount: 0,
+        softCount: 0,
+        ppvCount: 0,
+      },
+    };
   }
 
   const { getGermanDateParts } = await import("./timezone");
   const nowGerman = getGermanDateParts(new Date());
   const currentGermanTimeStr = `${String(nowGerman.hour).padStart(2, "0")}:${String(nowGerman.minute).padStart(2, "0")}`;
 
-  const systemPrompt = `You are the authentic, intimate German creator voice for "${params.modelName}" on Telegram.
-You are designing a narrative-driven, authentic content schedule across ${grokTargetDays} days for her Telegram VIP Channel.
-Tone & Persona: ${params.modelTone || "Authentic, intimate, charming, playful, flirty German creator"}.
-Strategy: ${params.strategy || "REALISTIC"} (Realistic posting rhythm with rest days and weekend peaks).
+  const assetMap = new Map(available.map((a) => [a.id, a]));
 
-CURRENT TIME CONTEXT (Europe/Berlin):
-- Right now in Germany it is ${currentGermanTimeStr} Uhr. Day 0 is TODAY.
-- If it is already past 11:30 in Germany: Morning slots (07:00 - 11:30) for Day 0 have ALREADY PASSED!
-  Any morning posts ("Guten Morgen", coffee, waking thoughts) MUST be scheduled for Day 1 (tomorrow morning, e.g. 09:30 or 10:15) or later!
-  Day 0 may only have slots strictly AFTER ${currentGermanTimeStr} Uhr.
-- If it is already past 21:00 in Germany: Day 0 has ended; start your schedule on Day 1 (tomorrow morning).
-- Every post will be scheduled at its EXACT planned "timeOfDay" and "timeOffsetDays".
-
-CORE PRINCIPLES:
-1. AUTHENTIC FIRST-PERSON MESSAGES (NO MARKETING SPEAK!):
-   - You write exclusively in first-person ("ich", "mein", "euch", "meine Lieben").
-   - It must feel like an intimate personal text message or voice note from the model directly to her subscribers.
-   - NEVER use corporate or marketing phrases like "Exklusiver VIP Content", "Mein persönliches Lieblingsfoto des Monats", "Klickt unten auf den Stern".
-
-2. COHESIVE STORYLINE & NARRATIVE ARC:
-   - Schedule posts that tell an ongoing story across days and hours:
-     * Morning (09:00 - 11:30): Waking up in bed, morning coffee, waking thoughts, checking in on the community ("Guten Morgen ihr Lieben ☕...").
-     * Midday/Afternoon (13:00 - 16:30): Casual lifestyle, workout, errands, outfit check, what she's doing today, asking fans a question.
-     * Evening (18:30 - 21:00): Feierabend, winding down on the couch, relaxing, getting ready to go out, teasing the night ahead.
-     * Late Night / Drop (21:30 - 00:30): Intimate bedtime thoughts, sleeplessness, drops of spicy PPV content, whispering mood ("Kann noch nicht schlafen...").
-     * Weekly flow: Mon/Tue chill start -> Wed/Thu anticipation & sneak peeks -> Fri/Sat peak VIP drops & party/weekend vibe -> Sun relaxed cuddling & recovery.
-
-3. DEEP CONNECTION TO VISUAL ANALYSIS:
-   - For every asset, you are provided with: 'setting', 'clothing', 'perspective', and 'highlights' (e.g. tattoos, shower, wet hair, bed, oversized hoodie).
-   - You MUST explicitly and organically reference what is actually visible in the media:
-     * Setting in Bathroom / Mirror -> mention the bathroom mirror, shower, getting ready, or wet hair.
-     * Setting in Bed / Bedroom -> mention relaxing in bed, cuddling under the blanket, sleepless night, pillows. (If posted in the evening, talk about an evening bedtime/cuddle mood, NOT "Guten Morgen"!).
-     * Clothing Oversized Hoodie -> joke about wearing cozy oversized loungewear and what might (or might not) be underneath.
-     * Tattoos visible -> mention your tattoos, asking how they like the ink on your skin.
-     * Topless / Nude PPV drop -> be intimate, personal and vulnerable, teasing that you dared to share something private.
-
-4. VIDEO DURATION & EXCLUSIVITY (CRITICAL):
-   - For VIDEO assets, you receive 'videoDuration' (e.g. "10 Minuten", "45 Sekunden" or "2 Min. 15 Sek."):
-     * EVERY video is VIP Content! Even video teasers / previews cost Stars (min 25 Stars).
-     * The caption MUST prominently emphasize the duration and exclusivity:
-       e.g. "\${videoDuration} Exklusiv-Content für euch 🔥 Direkt unten freischalten 🔓✨",
-       "Ganze \${videoDuration} pure Intimität komplett ohne Schnitt... 🔥 Holt euch den Clip direkt in den Chat 🌟".
-     * Never call a video a photo or snapshot!
-
-5. CRITICAL MEDIA FORMAT INTEGRITY:
-   - For 'PHOTO' assets: NEVER use words like "Video", "Clip", "Film", "gefilmt", etc. You must use authentic photo words like "Foto", "Bild", "Schnappschuss", "Shooting", "Aufnahme", "Spiegelselfie".
-   - For 'VIDEO' assets: Refer to it accurately as "Video", "Clip", "Aufnahme". Do NOT call it a photo or snapshot.
-
-6. ZERO REPETITION:
-   - Every single caption MUST be unique in wording, emotion, and angle. Never reuse identical hooks or phrases across days.
-
-7. PRICING RULES:
-   - ALL VIDEO ASSETS: Must have starsPrice >= 25 (e.g. 25-50 for teaser clips, 100-250 for standard, 250-450 for full/explicit).
-   - PHOTO TEASER assets: starsPrice = 0.
-   - PHOTO SOFT assets: starsPrice = 15 to 50.
-   - PHOTO PPV assets: starsPrice = 100 to 450.
-
-8. ABSOLUTE STRICT TIME-OF-DAY CONSISTENCY:
-   - "timeOfDay" dictates the greeting and emotional context:
-     * If timeOfDay >= "12:00" (e.g. 14:00, 19:30, 20:00, 20:15, 21:00): It is STRICTLY FORBIDDEN to say "Guten Morgen", "Morgengruß", "Start in den Tag", "direkt nach dem Aufstehen", or "erstmal drei Kaffee"!
-     * For 18:00 - 21:59: You MUST use evening greetings ("Schönen Feierabend", "Guten Abend meine Lieben", "Gemütlicher Abend", "Ausgehen").
-     * For 22:00 - 05:00: You MUST use late-night thoughts ("Gute Nacht", "Kann noch nicht schlafen", "Später Einblick").
-     * "Guten Morgen" is EXCLUSIVELY permitted for morning slots between 07:00 and 11:30!
-
-9. STRICT 1-TO-1 ASSET USAGE (NO DUPLICATE ASSETS):
-   - Every post in "schedule" MUST reference a unique "assetId". NEVER reuse an assetId more than once.
-   - Do NOT schedule more posts than the number of available assets provided.
-   - Return STRICT valid JSON conforming to the schema.`;
-
-  const enrichedAssets = grokAssets.map((a) => {
+  // Enrich all available assets with rich visual context & duration
+  const enrichedAssets = available.map((a) => {
     const vis = extractAssetVisualContext(a);
     return {
       assetId: a.id,
@@ -199,74 +124,120 @@ CORE PRINCIPLES:
     };
   });
 
-  const userPrompt = `Assets available for scheduling with rich visual context & duration:
-${JSON.stringify(enrichedAssets, null, 2)}
+  // Batch assets into chunks of up to 20 assets each so Grok produces thorough, highly specific copy
+  const BATCH_SIZE = 20;
+  const batches: (typeof enrichedAssets)[] = [];
+  for (let i = 0; i < enrichedAssets.length; i += BATCH_SIZE) {
+    batches.push(enrichedAssets.slice(i, i + BATCH_SIZE));
+  }
 
-Create a posting plan over ${grokTargetDays} days using the provided asset IDs with strategy: ${params.strategy || "REALISTIC"}, allowPauseDays: ${params.allowPauseDays ?? true}.
+  const numBatches = batches.length;
+  const daysPerBatch = Math.max(1, Math.ceil(requestedDays / numBatches));
+
+  try {
+    const batchPromises = batches.map(async (batchAssets, batchIdx) => {
+      const startDay = batchIdx * daysPerBatch;
+      const batchTargetDays = Math.min(daysPerBatch, Math.max(1, requestedDays - startDay));
+
+      const systemPrompt = `You are the authentic creator voice for "${params.modelName}" on Telegram.
+You are designing an authentic content schedule for her Telegram VIP Channel.
+
+MANDATORY PERSONA & TONALITY (HIGHEST PRIORITY):
+Voice & Persona: ${params.modelTone || "Authentic, intimate, charming, playful, flirty German creator"}.
+You MUST adopt this EXACT personality for ALL captions!
+- Incorporate her unique tone of voice, attitude, slang, expressions, quirks, and humor in EVERY post.
+- NEVER use generic bot / canned phrases (such as "Guten Morgen meine Lieben ☕ Direkt nach dem Aufstehen... Wer von euch braucht heute auch erstmal drei Kaffee?"). These sound like robotic templates and are strictly forbidden.
+- Write like a real person typing on Telegram or recording a quick voice note directly to her closest VIP fans.
+- Directly incorporate what is visible in the media organically (setting, outfit, tattoos, wet hair, bed, mirror).
+- For VIDEO assets: emphasize video duration and exclusivity.
+- Schedule entries must use unique assetIds from the provided list. Every asset in the list must be scheduled.
+
+CURRENT TIME CONTEXT (Europe/Berlin):
+- Right now in Germany it is ${currentGermanTimeStr} Uhr. Day 0 is TODAY.
+- If it is already past 11:30 in Germany: Morning slots (07:00 - 11:30) for Day 0 have ALREADY PASSED!
+  Any morning posts ("Guten Morgen", coffee, waking thoughts) MUST be scheduled for Day 1 (tomorrow morning, e.g. 09:30 or 10:15) or later!
+  Day 0 may only have slots strictly AFTER ${currentGermanTimeStr} Uhr.
+- If it is already past 21:00 in Germany: Day 0 has ended; start your schedule on Day 1 (tomorrow morning).
+
+PRICING & FORMAT RULES:
+- ALL VIDEO ASSETS: starsPrice >= 25 (e.g. 25-50 for teaser clips, 100-250 for standard, 250-450 for full/explicit).
+- PHOTO TEASER assets: starsPrice = 0.
+- PHOTO SOFT assets: starsPrice = 15 to 50.
+- PHOTO PPV assets: starsPrice = 100 to 450.
+- For PHOTO assets: NEVER use words like "Video", "Clip", "Film", "gefilmt".
+- For VIDEO assets: Use "Video", "Clip", "Aufnahme". NEVER call it a photo or snapshot.
+
+Return strictly valid JSON conforming to the schema.`;
+
+      const userPrompt = `Assets to schedule (all ${batchAssets.length} assets must be scheduled):
+${JSON.stringify(batchAssets, null, 2)}
+
+Create a posting plan starting at timeOffsetDays = ${startDay} spanning across ${batchTargetDays} days (from day ${startDay} to ${startDay + batchTargetDays - 1}).
+Strategy: ${params.strategy || "REALISTIC"}, allowPauseDays: ${params.allowPauseDays ?? true}.
+Each asset must be scheduled exactly once using its unique assetId.
 Respond in strict JSON with the following structure:
 {
   "schedule": [
     {
-      "timeOffsetDays": 0,
-      "timeOfDay": "11:00",
-      "assetId": "asset-uuid",
+      "timeOffsetDays": ${startDay},
+      "timeOfDay": "14:30",
+      "assetId": "asset-id",
       "caption": "Authentische, persönliche deutsche Bildunterschrift mit direktem Bezug zum Bild...",
       "starsPrice": 0
     }
   ]
 }`;
 
-  // 7.5s hard timeout: well below reverse-proxy 520 / 524 limits (15-20s).
-  // If Grok doesn't answer within 7.5s, fallback instantly generates the full schedule locally in 2ms.
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 7500);
+      // 45s timeout per batch call: provides plenty of buffer for deep Grok reasoning & rich copy
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-  try {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        response_format: {
-          type: "json_object",
-        },
-      }),
+      try {
+        const response = await fetch("https://api.x.ai/v1/chat/completions", {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7,
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`xAI API HTTP ${response.status}: ${errText}`);
+        }
+
+        const data = await response.json();
+        const rawContent = data.choices?.[0]?.message?.content;
+        if (!rawContent) throw new Error("Empty content in xAI response");
+
+        const parsedJson = JSON.parse(rawContent);
+        const validated = GrokScheduleResponseSchema.parse(parsedJson);
+        return validated.schedule || [];
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
 
-    clearTimeout(timeoutId);
+    const batchResults = await Promise.all(batchPromises);
+    const combinedSchedule: ScheduleItem[] = batchResults.flat();
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.warn(`xAI API returned non-OK ${response.status}: ${errText}. Falling back to realistic scheduler.`);
-      return generateRealisticSchedule(params);
-    }
-
-    const data = await response.json();
-    const rawContent = data.choices?.[0]?.message?.content;
-
-    if (!rawContent) {
-      console.warn("Empty response from xAI Grok API. Falling back to realistic scheduler.");
-      return generateRealisticSchedule(params);
-    }
-
-    const parsedJson = JSON.parse(rawContent);
-    const validated = GrokScheduleResponseSchema.parse(parsedJson);
-
-    // Format integrity: Deduplicate by assetId and sanitize all captions against media type and time of day
-    const assetMap = new Map(params.availableAssets.map((a) => [a.id, a]));
+    // Deduplicate by assetId and sanitize all captions
     const seenAssetIds = new Set<string>();
-    const deduplicatedSchedule: typeof validated.schedule = [];
+    const deduplicatedSchedule: ScheduleItem[] = [];
 
-    for (const item of validated.schedule) {
+    for (const item of combinedSchedule) {
       if (!seenAssetIds.has(item.assetId) && assetMap.has(item.assetId)) {
         seenAssetIds.add(item.assetId);
         const asset = assetMap.get(item.assetId)!;
@@ -276,8 +247,7 @@ Respond in strict JSON with the following structure:
           starsPrice = Math.max(starsPrice, 25);
         }
 
-        let timeOffsetDays = item.timeOffsetDays;
-        // Exact timing protection: if planned for Day 0 but time has already passed today, roll forward to tomorrow at exact time
+        let timeOffsetDays = Math.max(0, item.timeOffsetDays);
         if (timeOffsetDays === 0 && item.timeOfDay <= currentGermanTimeStr) {
           timeOffsetDays = 1;
         }
@@ -291,140 +261,57 @@ Respond in strict JSON with the following structure:
         });
       }
     }
-    validated.schedule = deduplicatedSchedule;
 
-    // If user requested more days than the Grok anchor window (e.g. 30, 60, 90 days),
-    // extend the schedule ONLY with remaining unused assets (NEVER recycle used assets!)
-    if (requestedDays > grokTargetDays && validated.schedule.length > 0) {
-      const unusedAssets = params.availableAssets.filter((a) => !seenAssetIds.has(a.id));
-      let nextUnusedIdx = 0;
-      const usedCaptionsSet = new Set(validated.schedule.map((p) => p.caption));
+    // Safety check: If Grok omitted any asset from the prompt, fill it with persona-aware fallback
+    const missedAssets = available.filter((a) => !seenAssetIds.has(a.id));
+    if (missedAssets.length > 0) {
+      console.log(`[generateGrokSchedule] Grok missed ${missedAssets.length} assets, filling with persona-aware captions...`);
+      const usedCaptionsSet = new Set(deduplicatedSchedule.map((p) => p.caption));
+      let nextDayOffset = deduplicatedSchedule.length > 0
+        ? Math.max(...deduplicatedSchedule.map((p) => p.timeOffsetDays)) + 1
+        : 0;
 
-      const maxGrokDay = Math.max(...validated.schedule.map((p) => p.timeOffsetDays), grokTargetDays - 1);
+      for (const asset of missedAssets) {
+        seenAssetIds.add(asset.id);
+        const dayIdx = nextDayOffset++;
+        const timeOfDay = "20:15";
+        const isVideo = asset.type === "VIDEO";
+        let starsPrice = isVideo ? 150 : (asset.explicitLevel === "PPV" ? 150 : (asset.explicitLevel === "SOFT" ? 25 : 0));
+        if (isVideo) starsPrice = Math.max(starsPrice, 25);
 
-      for (let d = maxGrokDay + 1; d < requestedDays; d++) {
-        if (nextUnusedIdx >= unusedAssets.length) {
-          // All available assets scheduled! Stop so post count NEVER exceeds files in folder!
-          break;
-        }
-
-        const dayOfWeek = d % 7;
-        const remainingUnused = unusedAssets.length - nextUnusedIdx;
-        const remainingDays = requestedDays - d;
-
-        const strategy = params.strategy || "REALISTIC";
-        let isPauseDay = false;
-        let postCount = 1;
-
-        if (strategy === "EVERY_2_DAYS") {
-          isPauseDay = d % 2 !== 0;
-          postCount = 1;
-        } else if (strategy === "EVERY_3_DAYS") {
-          isPauseDay = d % 3 !== 0;
-          postCount = 1;
-        } else if (strategy === "RELAXED") {
-          // Mon, Wed, Fri
-          isPauseDay = !(dayOfWeek === 0 || dayOfWeek === 2 || dayOfWeek === 4);
-          postCount = 1;
-        } else if (strategy === "FIXED_1") {
-          isPauseDay = false;
-          postCount = 1;
-        } else if (strategy === "FIXED_2") {
-          isPauseDay = false;
-          postCount = 2;
-        } else if (strategy === "VARIABLE_1_2") {
-          isPauseDay = (params.allowPauseDays ?? true) && d % 10 === 6;
-          postCount = [1, 2, 1, 2, 2, 2, 1][dayOfWeek];
-        } else {
-          // REALISTIC
-          isPauseDay = (params.allowPauseDays ?? true) && (remainingDays > remainingUnused) && (dayOfWeek === 6 || (dayOfWeek === 2 && d % 14 === 2));
-          postCount = ((dayOfWeek === 4 || dayOfWeek === 5) || remainingUnused > remainingDays) && remainingUnused >= 2 ? 2 : 1;
-        }
-
-        if (isPauseDay) continue;
-        postCount = Math.min(postCount, remainingUnused);
-        for (let p = 0; p < postCount && nextUnusedIdx < unusedAssets.length; p++) {
-          const asset = unusedAssets[nextUnusedIdx++];
-          seenAssetIds.add(asset.id);
-          const timeOfDay = p === 0 ? (postCount === 2 ? "14:30" : "20:15") : "20:45";
-          const slot: "morning" | "afternoon" | "evening" | "latenight" = p === 0 ? (postCount === 2 ? "afternoon" : "evening") : "evening";
-          const isVideo = asset.type === "VIDEO";
-          const level = asset.explicitLevel;
-          let starsPrice = isVideo ? (level === "PPV" ? 200 : 50) : (level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0));
-          if (isVideo) starsPrice = Math.max(starsPrice, 25);
-
-          const caption = composeStorylineCaption({
-            asset,
-            dayOfWeek,
-            dayIndex: d,
-            timeSlot: slot,
-            modelName: params.modelName,
-            usedCaptionsSet,
-          });
-
-          validated.schedule.push({
-            timeOffsetDays: d,
-            timeOfDay,
-            assetId: asset.id,
-            caption: ensureCaptionTimeConsistency(caption, timeOfDay),
-            starsPrice,
-          });
-        }
-      }
-
-      // If there are still unused assets, backfill them into days with only 1 post (max 2 posts/day)
-      if (nextUnusedIdx < unusedAssets.length) {
-        const postsPerDayMap = new Map<number, number>();
-        validated.schedule.forEach((p) => {
-          postsPerDayMap.set(p.timeOffsetDays, (postsPerDayMap.get(p.timeOffsetDays) || 0) + 1);
+        const caption = composeStorylineCaption({
+          asset,
+          dayOfWeek: dayIdx % 7,
+          dayIndex: dayIdx,
+          timeSlot: "evening",
+          modelName: params.modelName,
+          modelTone: params.modelTone,
+          usedCaptionsSet,
         });
 
-        for (let d = 0; d < requestedDays && nextUnusedIdx < unusedAssets.length; d++) {
-          const countOnDay = postsPerDayMap.get(d) || 0;
-          if (countOnDay === 1) {
-            const asset = unusedAssets[nextUnusedIdx++];
-            seenAssetIds.add(asset.id);
-            const isVideo = asset.type === "VIDEO";
-            const level = asset.explicitLevel;
-            let starsPrice = isVideo ? (level === "PPV" ? 200 : 50) : (level === "PPV" ? 150 : (level === "SOFT" ? 25 : 0));
-            if (isVideo) starsPrice = Math.max(starsPrice, 25);
-            const caption = composeStorylineCaption({
-              asset,
-              dayOfWeek: d % 7,
-              dayIndex: d,
-              timeSlot: "afternoon",
-              modelName: params.modelName,
-              usedCaptionsSet,
-            });
-
-            validated.schedule.push({
-              timeOffsetDays: d,
-              timeOfDay: "14:30",
-              assetId: asset.id,
-              caption: ensureCaptionTimeConsistency(caption, "14:30"),
-              starsPrice,
-            });
-            postsPerDayMap.set(d, 2);
-          }
-        }
+        deduplicatedSchedule.push({
+          timeOffsetDays: dayIdx,
+          timeOfDay,
+          assetId: asset.id,
+          caption: ensureCaptionTimeConsistency(sanitizeCaptionForMediaType(caption, asset.type), timeOfDay),
+          starsPrice,
+        });
       }
-
-      // Re-sort schedule by timeOffsetDays and timeOfDay
-      validated.schedule.sort((a, b) => {
-        if (a.timeOffsetDays !== b.timeOffsetDays) return a.timeOffsetDays - b.timeOffsetDays;
-        return a.timeOfDay.localeCompare(b.timeOfDay);
-      });
     }
 
-    // Hard ceiling: A schedule must NEVER contain more posts than available assets!
-    if (validated.schedule.length > params.availableAssets.length) {
-      validated.schedule = validated.schedule.slice(0, params.availableAssets.length);
-    }
+    // Sort schedule chronologically
+    deduplicatedSchedule.sort((a, b) => {
+      if (a.timeOffsetDays !== b.timeOffsetDays) return a.timeOffsetDays - b.timeOffsetDays;
+      return a.timeOfDay.localeCompare(b.timeOfDay);
+    });
 
-    // Calculate stats for the full requestedDays schedule
+    // Hard ceiling: A schedule must NEVER contain more posts than available assets
+    const finalSchedule = deduplicatedSchedule.slice(0, available.length);
+
+    // Calculate stats
     const postsByDay = new Map<number, number>();
     for (let d = 0; d < requestedDays; d++) postsByDay.set(d, 0);
-    validated.schedule.forEach((item) => {
+    finalSchedule.forEach((item) => {
       postsByDay.set(item.timeOffsetDays, (postsByDay.get(item.timeOffsetDays) || 0) + 1);
     });
 
@@ -437,20 +324,20 @@ Respond in strict JSON with the following structure:
       else if (count >= 2) daysWithTwoPosts++;
     });
 
-    validated.stats = {
-      totalPosts: validated.schedule.length,
+    const stats: ScheduleStats = {
+      totalPosts: finalSchedule.length,
       totalDays: requestedDays,
       pauseDays,
       daysWithOnePost,
       daysWithTwoPosts,
-      teaserCount: validated.schedule.filter((p) => p.starsPrice === 0).length,
-      softCount: validated.schedule.filter((p) => p.starsPrice > 0 && p.starsPrice <= 50).length,
-      ppvCount: validated.schedule.filter((p) => p.starsPrice > 50).length,
+      teaserCount: finalSchedule.filter((p) => p.starsPrice === 0).length,
+      softCount: finalSchedule.filter((p) => p.starsPrice > 0 && p.starsPrice <= 50).length,
+      ppvCount: finalSchedule.filter((p) => p.starsPrice > 50).length,
     };
 
-    return validated;
+    return { schedule: finalSchedule, stats };
   } catch (error) {
-    console.warn("xAI Grok call timed out or failed. Generating realistic schedule locally:", error);
+    console.warn("[generateGrokSchedule] xAI Grok call failed or timed out. Falling back to realistic scheduler:", error);
     return generateRealisticSchedule(params);
   }
 }
@@ -534,6 +421,7 @@ export function generateRealisticSchedule(params: GenerateScheduleParams): GrokS
       dayIndex: dayIdx,
       timeSlot,
       modelName: params.modelName,
+      modelTone: params.modelTone,
       usedCaptionsSet,
     });
   };

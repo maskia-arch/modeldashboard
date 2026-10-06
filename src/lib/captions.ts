@@ -33,6 +33,7 @@ export interface StorylineOptions {
   dayIndex?: number;
   timeSlot?: "morning" | "afternoon" | "evening" | "latenight";
   modelName?: string;
+  modelTone?: string;
   usedCaptionsSet?: Set<string>;
 }
 

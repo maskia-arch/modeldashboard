@@ -49,6 +49,7 @@ import {
   BarChart3,
   ArrowDownToLine,
   ShieldCheck,
+  Edit3,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -141,6 +142,35 @@ export function ModelDetailClient({
   const [assignEnableExpenseRecoupment, setAssignEnableExpenseRecoupment] = useState<boolean>(model.enableExpenseRecoupment !== false);
   const [isSavingAssign, setIsSavingAssign] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  // Model Persona Modal state
+  const [isPersonaModalOpen, setIsPersonaModalOpen] = useState(false);
+  const [editPersonaText, setEditPersonaText] = useState(model.persona || "");
+  const [isSavingPersona, setIsSavingPersona] = useState(false);
+  const [personaError, setPersonaError] = useState<string | null>(null);
+
+  const handleSavePersona = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPersona(true);
+    setPersonaError(null);
+    try {
+      const res = await fetch(`/api/models/${model.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persona: editPersonaText.trim() || null,
+        }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error || "Fehler beim Speichern der Persona");
+      setIsPersonaModalOpen(false);
+      await refreshData();
+    } catch (err: any) {
+      setPersonaError(err.message || "Fehler beim Speichern der Persona");
+    } finally {
+      setIsSavingPersona(false);
+    }
+  };
 
   const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -818,6 +848,31 @@ export function ModelDetailClient({
                 >
                   <Sliders className="h-3 w-3" />
                   {t.modelDetail.adjustSplitButton}
+                </Button>
+              )}
+            </div>
+
+            {/* Persona & Tonality Display */}
+            <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-border/40 text-xs">
+              <span className="text-muted-foreground font-semibold flex items-center gap-1.5 text-purple-400">
+                <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                {language === "de" ? "Persona & Tonalität (xAI Grok):" : "Persona & Tone (xAI Grok):"}
+              </span>
+              <span className="text-foreground italic max-w-md sm:max-w-xl truncate">
+                "{model.persona || (language === "de" ? "Alluring, playful, seductive German VIP creator (Standard)" : "Alluring, playful, seductive German VIP creator (Default)")}"
+              </span>
+              {isMasterAdmin && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setEditPersonaText(model.persona || "");
+                    setIsPersonaModalOpen(true);
+                  }}
+                  className="h-6 text-[11px] px-2 text-purple-400 hover:text-purple-300 gap-1 font-semibold"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  {language === "de" ? "Persona anpassen" : "Edit Persona"}
                 </Button>
               )}
             </div>
@@ -1938,11 +1993,118 @@ export function ModelDetailClient({
         open={isGrokModalOpen}
         onOpenChange={setIsGrokModalOpen}
         modelId={model.id}
+        modelSlug={model.slug}
         modelName={model.name}
         channelTitle={model.channelTitle}
+        initialTone={model.persona}
         availableAssets={(model.assets || []).filter((a: any) => !a?.isUsed)}
         onScheduleCreated={refreshData}
       />
+
+      {/* Edit Persona & Tonality Modal */}
+      <Dialog open={isPersonaModalOpen} onOpenChange={setIsPersonaModalOpen}>
+        <DialogContent className="max-w-md" onClose={() => setIsPersonaModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-400" />
+              {language === "de" ? "Persona & Tonalität für xAI Grok" : "Persona & Tone for xAI Grok"} ({model.name})
+            </DialogTitle>
+            <DialogDescription>
+              {language === "de"
+                ? "Legen Sie hier die Persönlichkeit, Sprache, Slang und Tonalität fest, die xAI Grok für alle Bildunterschriften und Postings dieses Models verwendet."
+                : "Define the personality, slang, language, and tonality that xAI Grok will use for all captions and posts of this model."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {personaError && (
+            <div className="p-3 rounded-lg bg-destructive/15 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{personaError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSavePersona} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-foreground block">
+                {language === "de" ? "Persönlichkeitsbeschreibung & Slang:" : "Personality Description & Slang:"}
+              </label>
+              <textarea
+                rows={4}
+                value={editPersonaText}
+                onChange={(e) => setEditPersonaText(e.target.value)}
+                placeholder={language === "de"
+                  ? "z.B. Frech, humorvoll, frech-flirty, Berliner Schnauze, nutzt lockere Sprüche wie 'Na Keule', 'ey', 'Bock', 'Alter'..."
+                  : "e.g. Sassy, humorous, flirty German slang, playful, uses expressions like 'Na Keule', 'ey'..."}
+                className="w-full text-xs rounded-lg border bg-background p-3 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+              />
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-[10px] text-muted-foreground mr-1">
+                  {language === "de" ? "Presets:" : "Presets:"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditPersonaText("Frech, humorvoll, frech-flirty, Berliner Schnauze, nutzt lockere Sprüche ('Na Keule', 'ey', 'Bock', 'Alter'), kein 0815-Marketing")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition-colors"
+                >
+                  ⚡ Frech / Berlin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditPersonaText("Alluring, playful, seductive, charmant, warmherzig und flirty VIP Creator")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 transition-colors"
+                >
+                  💕 Verspielt & Flirty
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditPersonaText("Sehr intim, verschmust, liebevoll, Girlfriend Experience (GFE), tief verbunden mit Fans")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors"
+                >
+                  🧸 Intim & GFE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditPersonaText("Souverän, geheimnisvoll, elegant, exklusiver High-End VIP-Vibe")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-colors"
+                >
+                  👑 Exklusiv & Elegant
+                </button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPersonaModalOpen(false)}
+                disabled={isSavingPersona}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                variant="gradient"
+                disabled={isSavingPersona}
+                className="gap-1.5"
+              >
+                {isSavingPersona ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    {language === "de" ? "Speichert..." : "Saving..."}
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {language === "de" ? "Persona speichern" : "Save Persona"}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Payout Modal */}
       <PayoutModal

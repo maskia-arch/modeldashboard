@@ -80,6 +80,7 @@ model Model {
   telegramChannelId String            @unique
   channelTitle      String?
   avatarUrl         String?
+  persona           String?           // Individuelle Persönlichkeit, Tonalität & Slang für xAI Grok Captions
   openInvestBalance Float             @default(0.0) // Offene Investitionen, die getilgt werden müssen ($)
 
   // Telegram Official Revenue Stats ("Belohnungen zur Abhebung verfügbar")

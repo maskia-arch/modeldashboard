@@ -11,13 +11,40 @@ export const maxDuration = 60; // Allow up to 60s for high-quality AI copy & sch
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { modelName, channelTitle, targetDays, postsPerDay, strategy, allowPauseDays, modelTone, availableAssets } = body;
+    const { modelId, modelSlug, modelName, channelTitle, targetDays, postsPerDay, strategy, allowPauseDays, modelTone, availableAssets } = body;
 
     if (!modelName || !availableAssets || availableAssets.length === 0) {
       return NextResponse.json(
         { error: "modelName and at least one availableAsset are required" },
         { status: 400 }
       );
+    }
+
+    // Retrieve model from DB to access saved persona & persist newly entered persona
+    let dbModel = null;
+    if (modelId) {
+      dbModel = await prisma.model.findUnique({ where: { id: modelId } });
+    } else if (modelSlug) {
+      dbModel = await prisma.model.findUnique({ where: { slug: modelSlug } });
+    } else if (modelName) {
+      dbModel = await prisma.model.findFirst({
+        where: { name: { equals: modelName, mode: "insensitive" } },
+      });
+    }
+
+    const effectiveTone =
+      modelTone?.trim() || dbModel?.persona?.trim() || "Playful, alluring, authentic German VIP creator";
+
+    // If a new or edited persona was submitted in the modal, persist it to the model record
+    if (dbModel && modelTone?.trim() && dbModel.persona !== modelTone.trim()) {
+      try {
+        await prisma.model.update({
+          where: { id: dbModel.id },
+          data: { persona: modelTone.trim() },
+        });
+      } catch (err) {
+        console.warn("[schedule/generate] Could not update model persona:", err);
+      }
     }
 
     // Fetch database asset records to retrieve full notes, fileUrls, and accurate types
@@ -105,7 +132,7 @@ export async function POST(req: Request) {
       postsPerDay: postsPerDay ? parseInt(postsPerDay, 10) : 1,
       strategy,
       allowPauseDays: typeof allowPauseDays === "boolean" ? allowPauseDays : true,
-      modelTone: modelTone || "Playful, alluring, authentic German VIP creator",
+      modelTone: effectiveTone,
       availableAssets: enrichedAssets,
     });
 

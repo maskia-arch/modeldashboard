@@ -26,8 +26,10 @@ interface GrokSchedulerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelId: string;
+  modelSlug?: string;
   modelName: string;
   channelTitle?: string | null;
+  initialTone?: string | null;
   availableAssets: Asset[];
   onScheduleCreated?: () => void;
 }
@@ -36,8 +38,10 @@ export function GrokSchedulerModal({
   open,
   onOpenChange,
   modelId,
+  modelSlug,
   modelName,
   channelTitle,
+  initialTone,
   availableAssets,
   onScheduleCreated,
 }: GrokSchedulerModalProps) {
@@ -46,7 +50,16 @@ export function GrokSchedulerModal({
   const [strategy, setStrategy] = useState<SchedulingStrategy>("REALISTIC");
   const [allowPauseDays, setAllowPauseDays] = useState<boolean>(true);
   const [postsPerDay, setPostsPerDay] = useState<number>(1);
-  const [tone, setTone] = useState<string>("Alluring, playful, engaging German VIP creator");
+  const [tone, setTone] = useState<string>(
+    initialTone || "Alluring, playful, engaging German VIP creator"
+  );
+
+  React.useEffect(() => {
+    if (initialTone) {
+      setTone(initialTone);
+    }
+  }, [initialTone, open]);
+
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleItem[]>([]);
   const [stats, setStats] = useState<ScheduleStats | null>(null);
@@ -75,6 +88,7 @@ export function GrokSchedulerModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           modelId,
+          modelSlug,
           modelName,
           channelTitle,
           targetDays: days,
@@ -404,15 +418,58 @@ export function GrokSchedulerModal({
               </div>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground block mb-1">
-                {t.grokScheduler.toneLabel}
-              </label>
-              <Input
+            <div className="space-y-2 pt-1 border-t border-border/40">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                  {t.grokScheduler.toneLabel}
+                </label>
+                <span className="text-[10px] text-purple-300 font-medium">
+                  {language === "de" ? "Wird dauerhaft für dieses Model hinterlegt" : "Saved permanently for this model"}
+                </span>
+              </div>
+              <textarea
                 value={tone}
                 onChange={(e) => setTone(e.target.value)}
-                placeholder="e.g. Flirty, natural, seductive German influencer"
+                rows={3}
+                className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500 resize-none"
+                placeholder={language === "de"
+                  ? "z.B. Frech, humorvoll, frech-flirty, Berliner Schnauze, nutzt Ausdrücke wie 'Na Keule', 'ey', 'Bock', 'Alter'..."
+                  : "e.g. Sassy, humorous, flirty German slang, playful, uses expressions like 'Na Keule', 'ey'..."}
               />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-muted-foreground mr-1">
+                  {language === "de" ? "Schnell-Presets:" : "Quick Presets:"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTone("Frech, humorvoll, frech-flirty, Berliner Schnauze, nutzt lockere Sprüche ('Na Keule', 'ey', 'Bock', 'Alter'), kein 0815-Marketing")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 transition-colors"
+                >
+                  ⚡ Frech / Berliner Schnauze
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTone("Alluring, playful, seductive, charmant, warmherzig und flirty VIP Creator")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 transition-colors"
+                >
+                  💕 Verspielt & Flirty
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTone("Sehr intim, verschmust, liebevoll, Girlfriend Experience (GFE), tief verbunden mit Fans")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 transition-colors"
+                >
+                  🧸 Intim & GFE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTone("Souverän, geheimnisvoll, elegant, exklusiver High-End VIP-Vibe")}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition-colors"
+                >
+                  👑 Exklusiv & Elegant
+                </button>
+              </div>
             </div>
           </div>
         ) : (

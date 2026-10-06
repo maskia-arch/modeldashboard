@@ -124,6 +124,9 @@ export async function PATCH(
     if (body.name !== undefined) updateData.name = body.name;
     if (body.channelTitle !== undefined) updateData.channelTitle = body.channelTitle;
     if (body.avatarUrl !== undefined) updateData.avatarUrl = body.avatarUrl;
+    if (body.persona !== undefined) {
+      updateData.persona = body.persona ? String(body.persona).trim() : null;
+    }
     if (body.telegramChannelId !== undefined && body.telegramChannelId.trim()) {
       updateData.telegramChannelId = normalizeTelegramChatId(body.telegramChannelId);
     }

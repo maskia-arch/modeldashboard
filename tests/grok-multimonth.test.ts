@@ -2,13 +2,14 @@ import { GrokScheduleResponseSchema, generateMockSchedule } from "../src/lib/gro
 
 console.log("=== Testing Multi-Month (60-Day) Content Schedule & Pacing ===");
 
-const mockAssets = [
-  { id: "asset-1", title: "Strand Teaser #1", theme: "Strand", type: "PHOTO" as const, explicitLevel: "TEASER" as const, tags: ["beach"] },
-  { id: "asset-2", title: "Strand Teaser #2", theme: "Strand", type: "PHOTO" as const, explicitLevel: "TEASER" as const, tags: ["beach"] },
-  { id: "asset-3", title: "Lingerie Soft #1", theme: "Boudoir", type: "PHOTO" as const, explicitLevel: "SOFT" as const, tags: ["lingerie"] },
-  { id: "asset-4", title: "VIP Clip #1", theme: "VIP Room", type: "VIDEO" as const, explicitLevel: "PPV" as const, tags: ["vip"] },
-  { id: "asset-5", title: "VIP Clip #2", theme: "VIP Shower", type: "VIDEO" as const, explicitLevel: "PPV" as const, tags: ["vip"] },
-];
+const mockAssets = Array.from({ length: 60 }).map((_, i) => ({
+  id: `asset-${i + 1}`,
+  title: `Media #${i + 1}`,
+  theme: i % 2 === 0 ? "Strand" : "Boudoir",
+  type: i % 3 === 0 ? ("VIDEO" as const) : ("PHOTO" as const),
+  explicitLevel: i % 3 === 0 ? ("PPV" as const) : i % 3 === 1 ? ("TEASER" as const) : ("SOFT" as const),
+  tags: ["vip"],
+}));
 
 // Test 60-Day (2 Months) Schedule Generation
 const result60 = generateMockSchedule({

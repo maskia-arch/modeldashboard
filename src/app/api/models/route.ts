@@ -72,6 +72,7 @@ export async function POST(req: Request) {
       telegramChannelId,
       channelTitle,
       avatarUrl,
+      persona,
       openInvestBalance,
       investorId,
       investorSharePercent,
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
         telegramChannelId: normalizeTelegramChatId(telegramChannelId),
         channelTitle,
         avatarUrl,
+        persona: persona ? String(persona).trim() : null,
         openInvestBalance: parseFloat(openInvestBalance) || 0.0,
         investorId: investorId && investorId !== "NONE" ? investorId : null,
         investorSharePercent:

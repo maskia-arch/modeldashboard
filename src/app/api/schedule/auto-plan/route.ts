@@ -137,69 +137,13 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const count = availableAssets.length;
-      let dayOffset = 0;
-      let assetIndex = 0;
       let modelCreated = 0;
       let modelPauses = 0;
       let lastDayParts = getGermanDateParts(createGermanDate(modelStartYear, modelStartMonth, modelStartDay, 12, 0));
-      const usedCaptionsSet = new Set<string>();
 
-      // Determine pacing strategy based on inventory count:
-      // - count <= 6: 1 post every 3 days (pause 2 days)
-      // - count <= 12: 1 post every 2 days (pause 1 day)
-      // - count <= 20: 1 post/day, with Sunday pause
-      // - count > 20: 1 to 2 posts/day max (1 post on weekdays, 2 on Fri/Sat, Sunday optional pause)
-
-      while (assetIndex < count) {
-        const currentTargetDate = new Date(createGermanDate(modelStartYear, modelStartMonth, modelStartDay, 12, 0).getTime() + dayOffset * 86400000);
-        const currentDayParts = getGermanDateParts(currentTargetDate);
-        lastDayParts = currentDayParts;
-        const dayOfWeek = currentDayParts.dayOfWeek; // 0 = Sun, 5 = Fri, 6 = Sat
-
-        // Decide if this day is a pause day
-        let isPauseDay = false;
-
-        if (count <= 6) {
-          // Post on day 0, 3, 6, 9...
-          isPauseDay = dayOffset % 3 !== 0;
-        } else if (count <= 12) {
-          // Post on day 0, 2, 4, 6...
-          isPauseDay = dayOffset % 2 !== 0;
-        } else if (count <= 20) {
-          // Pause on Sundays
-          isPauseDay = dayOfWeek === 0;
-        }
-
-        if (isPauseDay) {
-          modelPauses++;
-          dayOffset++;
-          continue;
-        }
-
-        // Determine how many posts for today: 1 or 2 (NEVER more than 2!)
-        let postsToday = 1;
-        if (count > 20 && (dayOfWeek === 5 || dayOfWeek === 6) && (count - assetIndex) >= 2) {
-          postsToday = 2;
-        }
-
-        for (let slot = 0; slot < postsToday && assetIndex < count; slot++) {
-          const asset = availableAssets[assetIndex];
-
-          // Prime times strictly in German Time (Europe/Berlin):
-          // Slot 0 (Afternoon): 14:30 German time
-          // Slot 1 (Evening): 20:15 German time
-          let postDate = (slot === 0 && postsToday === 2)
-            ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 14, 30)
-            : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day, 20, 15);
-
-          // If scheduling on Day 0 and slot has already passed today, roll forward to tomorrow at exact slot time
-          if (dayOffset === 0 && postDate.getTime() <= Date.now()) {
-            postDate = (slot === 0 && postsToday === 2)
-              ? createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day + 1, 14, 30)
-              : createGermanDate(currentDayParts.year, currentDayParts.month, currentDayParts.day + 1, 20, 15);
-          }
-
+      // Enrich available assets with video duration
+      const enrichedAssets = await Promise.all(
+        availableAssets.map(async (asset) => {
           const isVideo = asset.type === "VIDEO";
           let durationFormatted: string | null = null;
           let durationSeconds: number | null = null;
@@ -216,56 +160,72 @@ export async function POST(req: Request) {
             }
           }
 
-          let starsPrice = asset.explicitLevel === ExplicitLevel.PPV ? 150 : (asset.explicitLevel === ExplicitLevel.SOFT ? 25 : 0);
-          if (isVideo) {
-            starsPrice = Math.max(starsPrice, 25);
-          }
-          if (asset.notes && asset.notes.includes("Stars: ")) {
-            const sMatch = asset.notes.match(/Stars:\s*(\d+)/);
-            if (sMatch && sMatch[1]) {
-              starsPrice = parseInt(sMatch[1], 10) || starsPrice;
-            }
-          }
+          return {
+            id: asset.id,
+            title: asset.title,
+            theme: asset.theme,
+            notes: asset.notes,
+            fileUrl: asset.fileUrl,
+            type: asset.type,
+            explicitLevel: asset.explicitLevel,
+            tags: asset.tags,
+            duration: durationSeconds,
+            durationFormatted,
+          };
+        })
+      );
 
-          let caption = composeStorylineCaption({
-            asset: {
-              ...asset,
-              duration: durationSeconds,
-              durationFormatted,
+      // Plan with xAI Grok using the model's exact persona & tonality
+      const { generateGrokSchedule } = await import("@/lib/grok");
+      const targetDays = Math.max(14, Math.ceil(enrichedAssets.length * 1.5));
+
+      const grokRes = await generateGrokSchedule({
+        modelName: model.name,
+        channelTitle: model.channelTitle,
+        targetDays,
+        strategy: "REALISTIC",
+        allowPauseDays: true,
+        modelTone: model.persona || "Playful, alluring, authentic German VIP creator",
+        availableAssets: enrichedAssets,
+      });
+
+      for (const item of grokRes.schedule) {
+        const [hour, minute] = item.timeOfDay.split(":").map(Number);
+        const postDate = new Date(
+          createGermanDate(modelStartYear, modelStartMonth, modelStartDay, hour || 14, minute || 30).getTime() +
+          item.timeOffsetDays * 86400000
+        );
+
+        // If scheduled on Day 0 and already passed, roll to tomorrow
+        const finalDate = postDate.getTime() <= Date.now()
+          ? new Date(postDate.getTime() + 86400000)
+          : postDate;
+
+        const dateParts = getGermanDateParts(finalDate);
+        lastDayParts = dateParts;
+
+        await prisma.$transaction([
+          prisma.post.create({
+            data: {
+              modelId: model.id,
+              assetId: item.assetId,
+              caption: item.caption,
+              starsPrice: item.starsPrice,
+              scheduledFor: finalDate,
+              status: PostStatus.SCHEDULED,
             },
-            dayOfWeek,
-            dayIndex: dayOffset,
-            timeSlot: slot === 0 && postsToday === 2 ? "afternoon" : "evening",
-            modelName: model.name,
-            usedCaptionsSet,
-          });
+          }),
+          prisma.asset.update({
+            where: { id: item.assetId },
+            data: { isUsed: true },
+          }),
+        ]);
 
-          caption = ensureCaptionTimeConsistency(caption, slot === 0 && postsToday === 2 ? "14:30" : "20:15");
-
-          await prisma.$transaction([
-            prisma.post.create({
-              data: {
-                modelId: model.id,
-                assetId: asset.id,
-                caption,
-                starsPrice,
-                scheduledFor: postDate,
-                status: PostStatus.SCHEDULED,
-              },
-            }),
-            prisma.asset.update({
-              where: { id: asset.id },
-              data: { isUsed: true },
-            }),
-          ]);
-
-          modelCreated++;
-          totalCreated++;
-          assetIndex++;
-        }
-
-        dayOffset++;
+        modelCreated++;
+        totalCreated++;
       }
+
+      modelPauses = grokRes.stats?.pauseDays || 0;
 
       totalPauseDays += modelPauses;
       modelReports.push({
