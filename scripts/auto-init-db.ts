@@ -95,15 +95,14 @@ async function autoSetupDatabase() {
       if (mausi) {
         console.log(`🔍 [Auto-Init] Found model Mausi (${mausi.id}, slug: ${mausi.slug}). Checking data consistency...`);
 
-        // A. Ensure investorSharePercent is 75%
+        // A. Sync telegramAvailableStars (do NOT override investorSharePercent – that is managed via the admin UI)
         await prisma.model.update({
           where: { id: mausi.id },
           data: {
-            investorSharePercent: 75.0,
             telegramAvailableStars: 0, // Belohnungen zur Abhebung verfügbar is currently 0 after withdrawal
           },
         });
-        console.log("✅ [Auto-Init] Mausi investorSharePercent set to 75% and telegramAvailableStars synchronized.");
+        console.log("✅ [Auto-Init] Mausi telegramAvailableStars synchronized.");
 
         // B. Purge erroneous 1800 star transaction (where withdrawal was credited as incoming revenue)
         const purgedWrong = await prisma.starTransaction.deleteMany({
